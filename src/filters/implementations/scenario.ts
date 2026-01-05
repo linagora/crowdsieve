@@ -3,12 +3,15 @@ import type { Filter, FilterContext, FilterResult } from '../types.js';
 
 export type MatchMode = 'exact' | 'glob' | 'regex';
 
+// Maximum regex pattern length to prevent ReDoS
+const MAX_REGEX_LENGTH = 500;
+
 export class ScenarioFilter implements Filter {
   readonly name: string;
   readonly enabled: boolean;
   private patterns: string[];
   private matchMode: MatchMode;
-  private compiledPatterns?: RegExp[];
+  private compiledPatterns: (RegExp | null)[] = [];
 
   constructor(name: string, enabled: boolean, patterns: string[], matchMode: MatchMode = 'glob') {
     this.name = name;
@@ -16,9 +19,25 @@ export class ScenarioFilter implements Filter {
     this.patterns = patterns;
     this.matchMode = matchMode;
 
-    // Pre-compile regex patterns
+    // Pre-compile regex patterns with validation
     if (this.matchMode === 'regex') {
-      this.compiledPatterns = patterns.map((p) => new RegExp(p));
+      this.compiledPatterns = patterns.map((p) => this.compileRegex(p));
+    }
+  }
+
+  /**
+   * Safely compile a regex pattern with length limit
+   */
+  private compileRegex(pattern: string): RegExp | null {
+    try {
+      // Limit pattern length to prevent ReDoS
+      if (pattern.length > MAX_REGEX_LENGTH) {
+        return null;
+      }
+      return new RegExp(pattern);
+    } catch {
+      // Invalid regex pattern - return null to skip it
+      return null;
     }
   }
 
@@ -44,8 +63,10 @@ export class ScenarioFilter implements Filter {
         break;
 
       case 'regex':
-        for (let i = 0; i < this.compiledPatterns!.length; i++) {
-          if (this.compiledPatterns![i].test(scenario)) {
+        for (let i = 0; i < this.compiledPatterns.length; i++) {
+          const regex = this.compiledPatterns[i];
+          // Skip invalid/null patterns
+          if (regex && regex.test(scenario)) {
             matched = true;
             matchedPattern = this.patterns[i];
             break;

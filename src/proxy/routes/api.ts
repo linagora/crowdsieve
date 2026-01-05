@@ -1,7 +1,26 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+
+// Constants for input validation
+const MAX_LIMIT = 1000;
+const DEFAULT_LIMIT = 100;
+const MAX_SCENARIO_LENGTH = 200;
+const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
 
 const apiRoutes: FastifyPluginAsync = async (fastify) => {
   const { storage, proxyLogger: logger } = fastify;
+
+  // API key authentication hook
+  fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+    const configuredKey = process.env.DASHBOARD_API_KEY;
+
+    // No API key configured = development mode (allow all)
+    if (!configuredKey) return;
+
+    const apiKey = request.headers['x-api-key'];
+    if (apiKey !== configuredKey) {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
+  });
 
   // Get alerts
   fastify.get<{
@@ -14,12 +33,31 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     };
   }>('/api/alerts', async (request, reply) => {
     try {
+      // Input validation with bounds
+      const rawLimit = parseInt(request.query.limit || String(DEFAULT_LIMIT), 10);
+      const rawOffset = parseInt(request.query.offset || '0', 10);
+
+      const limit = Math.min(Math.max(isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1), MAX_LIMIT);
+      const offset = Math.max(isNaN(rawOffset) ? 0 : rawOffset, 0);
+
+      // Validate country code format (ISO 3166-1 alpha-2)
+      const country = request.query.country;
+      if (country && !COUNTRY_CODE_REGEX.test(country)) {
+        return reply.code(400).send({ error: 'Invalid country code format' });
+      }
+
+      // Validate scenario length to prevent abuse
+      const scenario = request.query.scenario;
+      if (scenario && scenario.length > MAX_SCENARIO_LENGTH) {
+        return reply.code(400).send({ error: 'Scenario filter too long' });
+      }
+
       const query = {
-        limit: request.query.limit ? parseInt(request.query.limit, 10) : 100,
-        offset: request.query.offset ? parseInt(request.query.offset, 10) : 0,
+        limit,
+        offset,
         filtered: request.query.filtered ? request.query.filtered === 'true' : undefined,
-        scenario: request.query.scenario,
-        sourceCountry: request.query.country,
+        scenario,
+        sourceCountry: country,
       };
 
       const alerts = await storage.queryAlerts(query);
@@ -36,6 +74,12 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/api/alerts/:id', async (request, reply) => {
     try {
       const id = parseInt(request.params.id, 10);
+
+      // Validate ID is a positive integer
+      if (isNaN(id) || id < 1) {
+        return reply.code(400).send({ error: 'Invalid alert ID' });
+      }
+
       const alert = await storage.getAlertById(id);
 
       if (!alert) {
