@@ -7,6 +7,24 @@ import type { FilterEngine } from '../filters/index.js';
 import type { AlertStorage } from '../storage/index.js';
 import type { Logger } from 'pino';
 
+/**
+ * Validate CORS origin - must be empty or a valid URL
+ */
+function validateCorsOrigin(origin: string | undefined): string | false {
+  if (!origin) return false;
+
+  try {
+    const url = new URL(origin);
+    // Only allow http/https protocols
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return false;
+    }
+    return origin;
+  } catch {
+    return false;
+  }
+}
+
 export interface ProxyServerDeps {
   config: Config;
   filterEngine: FilterEngine;
@@ -40,17 +58,23 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     referrerPolicy: { policy: 'no-referrer' },
   });
 
-  // Rate limiting
+  // Rate limiting - only for dashboard API routes, not CrowdSec passthrough
   const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
   const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
   await app.register(rateLimit, {
     max: isNaN(rateLimitMax) || rateLimitMax < 1 ? 100 : rateLimitMax,
     timeWindow: isNaN(rateLimitWindow) || rateLimitWindow < 1000 ? 60000 : rateLimitWindow,
+    // Only apply to dashboard API, not CrowdSec passthrough routes
+    allowList: (request) => {
+      const url = request.url;
+      // Exclude CrowdSec CAPI passthrough routes from rate limiting
+      return !url.startsWith('/api/') && url !== '/health';
+    },
   });
 
-  // CORS - restrictive by default
+  // CORS - restrictive by default, validate origin URL
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || false,
+    origin: validateCorsOrigin(process.env.CORS_ORIGIN),
     credentials: true,
     methods: ['GET', 'POST'],
   });
