@@ -1,0 +1,10 @@
+dist
+node_modules
+.next
+dashboard/.next
+coverage
+data
+*.db
+*.mmdb
+pnpm-lock.yaml
+package-lock.json

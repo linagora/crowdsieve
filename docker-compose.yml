@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  crowdsieve:
+    build: .
+    container_name: crowdsieve
+    restart: unless-stopped
+    ports:
+      - "${PROXY_PORT:-8080}:8080"       # Proxy API
+      - "${DASHBOARD_PORT:-3000}:3000"   # Dashboard UI
+    volumes:
+      - ./config:/app/config:ro
+      - crowdsieve-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - CONFIG_PATH=/app/config/filters.yaml
+      - DATABASE_PATH=/app/data/crowdsieve.db
+      - GEOIP_DB_PATH=/app/data/GeoLite2-City.mmdb
+      - PROXY_PORT=8080
+      - DASHBOARD_PORT=3000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - crowdsec-network
+
+volumes:
+  crowdsieve-data:
+    driver: local
+
+networks:
+  crowdsec-network:
+    driver: bridge

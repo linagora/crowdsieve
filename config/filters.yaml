@@ -1,0 +1,63 @@
+# CrowdSieve Configuration
+
+proxy:
+  listen_port: 8080
+  capi_url: "https://api.crowdsec.net"
+  timeout_ms: 30000
+  # Set to false to disable forwarding to CAPI (test mode)
+  forward_enabled: true
+
+storage:
+  path: "./data/crowdsieve.db"
+  retention_days: 30
+
+logging:
+  level: info  # debug, info, warn, error
+  format: json # json, pretty
+
+# Filter configuration
+# mode: "block" = matching alerts are NOT forwarded to CAPI
+# mode: "allow" = only matching alerts are forwarded to CAPI
+filters:
+  mode: "block"
+
+  rules:
+    # Filter alerts without decisions
+    - name: "no-decisions"
+      type: "no-decision"
+      enabled: true
+      description: "Block alerts that have no associated decisions"
+
+    # Filter specific noisy scenarios
+    - name: "noise-scenarios"
+      type: "scenario"
+      enabled: true
+      patterns:
+        - "crowdsecurity/http-probing"
+        - "crowdsecurity/http-bad-user-agent"
+      match_mode: "glob"  # exact, glob, regex
+
+    # Filter by source country
+    - name: "country-filter"
+      type: "source-country"
+      enabled: false
+      mode: "blocklist"  # allowlist or blocklist
+      countries:
+        - "XX"  # Unknown country
+
+    # Filter internal IPs
+    - name: "internal-ips"
+      type: "source-ip"
+      enabled: true
+      mode: "blocklist"
+      cidrs:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+        - "127.0.0.0/8"
+
+    # Filter simulated alerts
+    - name: "simulated"
+      type: "simulated"
+      enabled: true
+      description: "Block simulated alerts"
