@@ -1,22 +1,26 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
+import eslint from '@eslint/js';
+import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'prettier'),
+export default [
+  eslint.configs.recommended,
+  prettier,
   {
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        React: 'readonly',
+      },
+    },
     rules: {
-      'react/no-unescaped-entities': 'off',
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-undef': 'off', // TypeScript handles this
     },
   },
+  {
+    ignores: ['.next/**', 'node_modules/**'],
+  },
 ];
-
-export default eslintConfig;
