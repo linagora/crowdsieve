@@ -4,6 +4,13 @@ import type { FilterEngineResult } from '../filters/types.js';
 import { getDatabase, schema } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
 
+/**
+ * Escape SQL LIKE wildcards to prevent injection
+ */
+function escapeLikePattern(pattern: string): string {
+  return pattern.replace(/[%_\\]/g, '\\$&');
+}
+
 export interface AlertQuery {
   filtered?: boolean;
   scenario?: string;
@@ -139,7 +146,8 @@ export function createStorage(): AlertStorage {
         conditions.push(eq(schema.alerts.filtered, query.filtered));
       }
       if (query.scenario) {
-        conditions.push(like(schema.alerts.scenario, `%${query.scenario}%`));
+        const escaped = escapeLikePattern(query.scenario);
+        conditions.push(like(schema.alerts.scenario, `%${escaped}%`));
       }
       if (query.sourceCountry) {
         conditions.push(eq(schema.alerts.geoCountryCode, query.sourceCountry));

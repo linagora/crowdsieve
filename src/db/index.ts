@@ -8,10 +8,10 @@ let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let sqlite: Database.Database | null = null;
 
 export function initializeDatabase(dbPath: string) {
-  // Ensure data directory exists
+  // Ensure data directory exists with restrictive permissions
   const dataDir = path.dirname(dbPath);
   if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   }
 
   // Initialize SQLite with WAL mode
@@ -19,6 +19,17 @@ export function initializeDatabase(dbPath: string) {
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('busy_timeout = 5000');
+
+  // Set restrictive permissions on database file
+  try {
+    fs.chmodSync(dbPath, 0o600);
+  } catch (err) {
+    // On Windows, chmod may not be supported; ignore errors there.
+    // On other platforms, log a warning so permission issues are visible.
+    if (process.platform !== 'win32') {
+      console.warn('Warning: failed to set restrictive permissions (0600) on database file:', dbPath, err);
+    }
+  }
 
   // Create Drizzle instance
   db = drizzle(sqlite, { schema });
