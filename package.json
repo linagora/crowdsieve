@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "description": "CrowdSieve - CrowdSec CAPI filtering proxy with dashboard",
   "type": "module",
+  "workspaces": ["dashboard"],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "dev:dashboard": "next dev dashboard",
-    "build": "tsc && next build dashboard",
+    "build": "tsc && cd dashboard && next build",
     "start": "node dist/index.js",
     "start:dashboard": "next start dashboard",
     "db:generate": "drizzle-kit generate",

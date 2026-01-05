@@ -12,7 +12,7 @@ RUN npm ci
 # Copy and build proxy
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build -- --outDir dist
+RUN npx tsc --outDir dist
 
 # Build stage for dashboard
 FROM node:20-alpine AS dashboard-builder
@@ -20,8 +20,8 @@ FROM node:20-alpine AS dashboard-builder
 WORKDIR /app/dashboard
 
 # Install dashboard dependencies
-COPY dashboard/package*.json ./
-RUN npm ci
+COPY dashboard/package.json ./
+RUN npm install
 
 # Copy dashboard source
 COPY dashboard ./
