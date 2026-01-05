@@ -97,6 +97,17 @@ async function main() {
   }, cleanupInterval);
 }
 
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason);
+  // Don't exit - let the app continue
+});
+
 main().catch((err) => {
   console.error('Failed to start:', err);
   process.exit(1);

@@ -41,6 +41,23 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     );
   });
 
+  // Global error handler
+  app.setErrorHandler((error, request, reply) => {
+    logger.error(
+      {
+        err: error,
+        method: request.method,
+        url: request.url,
+      },
+      'Request error'
+    );
+
+    // Don't expose internal errors to clients
+    reply.code(error.statusCode || 500).send({
+      error: error.statusCode ? error.message : 'Internal Server Error',
+    });
+  });
+
   // Health check endpoint
   app.get('/health', async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };

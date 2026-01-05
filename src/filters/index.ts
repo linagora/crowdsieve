@@ -69,10 +69,14 @@ export class FilterEngine {
       for (const filter of this.filters) {
         if (!filter.enabled) continue;
 
-        const filterResult = filter.matches(ctx);
-        if (filterResult.matched) {
-          matchedFilters.push(filterResult);
-          anyMatch = true;
+        try {
+          const filterResult = filter.matches(ctx);
+          if (filterResult.matched) {
+            matchedFilters.push(filterResult);
+            anyMatch = true;
+          }
+        } catch {
+          // Skip filter on error, don't crash the process
         }
       }
 
