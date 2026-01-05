@@ -71,7 +71,7 @@ describe('Security - Regex Validation', () => {
   });
 
   it('should handle very long regex patterns', () => {
-    // Pattern longer than MAX_REGEX_LENGTH (500)
+    // Pattern longer than the allowed MAX_REGEX_LENGTH
     const longPattern = 'a'.repeat(600);
     const filter = new ScenarioFilter('test', true, [longPattern], 'regex');
     // Should not match due to pattern being too long

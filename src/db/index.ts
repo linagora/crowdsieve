@@ -23,8 +23,12 @@ export function initializeDatabase(dbPath: string) {
   // Set restrictive permissions on database file
   try {
     fs.chmodSync(dbPath, 0o600);
-  } catch {
-    // Ignore permission errors (may happen on Windows)
+  } catch (err) {
+    // On Windows, chmod may not be supported; ignore errors there.
+    // On other platforms, log a warning so permission issues are visible.
+    if (process.platform !== 'win32') {
+      console.warn('Warning: failed to set restrictive permissions (0600) on database file:', dbPath, err);
+    }
   }
 
   // Create Drizzle instance

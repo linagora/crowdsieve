@@ -1,10 +1,21 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import { timingSafeEqual } from 'crypto';
 
 // Constants for input validation
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 100;
 const MAX_SCENARIO_LENGTH = 200;
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
+
+/**
+ * Constant-time string comparison to prevent timing attacks
+ */
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 const apiRoutes: FastifyPluginAsync = async (fastify) => {
   const { storage, proxyLogger: logger } = fastify;
@@ -17,7 +28,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     if (!configuredKey) return;
 
     const apiKey = request.headers['x-api-key'];
-    if (apiKey !== configuredKey) {
+    if (typeof apiKey !== 'string' || !safeCompare(apiKey, configuredKey)) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
   });

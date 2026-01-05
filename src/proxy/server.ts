@@ -29,15 +29,23 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'https:'],
+        imgSrc: ["'self'", 'data:'],
       },
     },
+    // Enable HSTS only in production to avoid issues on non-HTTPS environments
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 60 * 60 * 24 * 180, includeSubDomains: true, preload: false }
+        : false,
+    referrerPolicy: { policy: 'no-referrer' },
   });
 
   // Rate limiting
+  const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
+  const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
   await app.register(rateLimit, {
-    max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
-    timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
+    max: isNaN(rateLimitMax) || rateLimitMax < 1 ? 100 : rateLimitMax,
+    timeWindow: isNaN(rateLimitWindow) || rateLimitWindow < 1000 ? 60000 : rateLimitWindow,
   });
 
   // CORS - restrictive by default
