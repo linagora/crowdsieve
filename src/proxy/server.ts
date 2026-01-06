@@ -96,6 +96,91 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     );
   });
 
+  // CAPI passthrough hook - forwards /v2/* and /v3/* requests to CAPI
+  // except /v2/signals which has its own handler with filtering logic
+  app.addHook('onRequest', async (request, reply) => {
+    const url = request.url;
+
+    // Only intercept /v2/* and /v3/* routes
+    if (!url.startsWith('/v2/') && !url.startsWith('/v3/')) {
+      return; // Let other routes handle this
+    }
+
+    // Skip /v2/signals - it has its own handler with filtering logic
+    if (url === '/v2/signals' || url.startsWith('/v2/signals?')) {
+      return; // Let the signals route handle this
+    }
+
+    const capiUrl = config.proxy.capi_url;
+    const targetUrl = `${capiUrl}${url}`;
+
+    logger.debug({ method: request.method, url }, 'Forwarding to CAPI');
+
+    try {
+      const headers: Record<string, string> = {};
+
+      // Copy relevant headers for proxying
+      const headersToCopy = [
+        'authorization',
+        'content-type',
+        'content-encoding',
+        'user-agent',
+        'accept',
+      ];
+
+      for (const header of headersToCopy) {
+        const value = request.headers[header];
+        if (typeof value === 'string') {
+          headers[header] = value;
+        }
+      }
+
+      // Read raw body for POST/PUT/PATCH
+      let body: Buffer | undefined;
+      if (['POST', 'PUT', 'PATCH'].includes(request.method)) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request.raw) {
+          chunks.push(chunk as Buffer);
+        }
+        if (chunks.length > 0) {
+          body = Buffer.concat(chunks);
+        }
+      }
+
+      const fetchOptions: RequestInit = {
+        method: request.method,
+        headers,
+        signal: AbortSignal.timeout(config.proxy.timeout_ms),
+      };
+
+      if (body) {
+        fetchOptions.body = body;
+      }
+
+      const response = await fetch(targetUrl, fetchOptions);
+      const responseBody = await response.arrayBuffer();
+
+      // Log errors from CAPI
+      if (response.status >= 400) {
+        const bodyText = new TextDecoder().decode(responseBody);
+        logger.warn({ status: response.status, url, error: bodyText }, 'CAPI returned error');
+      }
+
+      // Forward status and headers
+      reply.code(response.status);
+
+      const contentType = response.headers.get('content-type');
+      if (contentType) {
+        reply.header('content-type', contentType);
+      }
+
+      reply.send(Buffer.from(responseBody));
+    } catch (err) {
+      logger.error({ err, url }, 'Failed to forward request');
+      reply.code(502).send({ error: 'Failed to forward to CAPI' });
+    }
+  });
+
   // Global error handler
   app.setErrorHandler((error: FastifyError, request, reply) => {
     logger.error(
@@ -121,7 +206,6 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   // Register routes
   await app.register(import('./routes/api.js'));
   await app.register(import('./routes/signals.js'));
-  await app.register(import('./routes/passthrough.js'));
 
   return app;
 }
