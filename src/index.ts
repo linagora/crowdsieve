@@ -65,16 +65,23 @@ async function main() {
 
   // Initialize filter engine
   const filterEngine = new FilterEngine(config.filters.mode, allFilters);
+  const loadedFilters = filterEngine.getFilters();
   logger.info(
     {
       mode: config.filters.mode,
       fromConfig: config.filters.rules.length,
       fromDir: dirFilters.length,
-      total: filterEngine.getFilters().length,
+      total: loadedFilters.length,
       filtersDir,
+      filters: loadedFilters.map((f) => ({ name: f.name, enabled: f.enabled })),
     },
     'Filter engine initialized'
   );
+
+  // Log each filter in debug mode
+  for (const filter of loadedFilters) {
+    logger.debug({ name: filter.name, enabled: filter.enabled }, 'Filter loaded');
+  }
 
   // Initialize storage
   const storage = createStorage();
