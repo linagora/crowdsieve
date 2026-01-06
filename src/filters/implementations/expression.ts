@@ -283,7 +283,11 @@ export class ExpressionFilter implements Filter {
     try {
       const cidrObj = new IPCIDR(cidr);
       return cidrObj.contains(ip);
-    } catch {
+    } catch (error) {
+      console.warn(
+        `ExpressionFilter "${this.name}": failed to parse CIDR "${cidr}" for IP "${ip}". ` +
+          `Check filter configuration. Error: ${error instanceof Error ? error.message : String(error)}`
+      );
       return false;
     }
   }
