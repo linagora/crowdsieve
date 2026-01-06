@@ -28,7 +28,7 @@ async function main() {
     transport: config.logging.format === 'pretty' ? { target: 'pino-pretty' } : undefined,
   });
 
-  logger.info('Starting CrowdSec Proxy...');
+  logger.info('Starting CrowdSieve...');
   logger.info({ configPath: CONFIG_PATH }, 'Configuration loaded');
 
   // Initialize database

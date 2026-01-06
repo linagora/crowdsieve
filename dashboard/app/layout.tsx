@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CrowdSec Proxy Dashboard',
+  title: 'CrowdSieve Dashboard',
   description: 'Monitor and visualize CrowdSec alerts',
 };
 
@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className="bg-crowdsec-primary text-white">
             <div className="max-w-7xl mx-auto px-4 py-4">
               <div className="flex items-center justify-between">
-                <h1 className="text-xl font-bold">CrowdSec Proxy</h1>
+                <h1 className="text-xl font-bold">CrowdSieve</h1>
                 <nav className="flex gap-4">
                   <a href="/" className="hover:text-crowdsec-accent transition-colors">
                     Dashboard
