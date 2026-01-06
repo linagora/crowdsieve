@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, existsSync } from 'fs';
+import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
 // Filter rule schemas
@@ -9,6 +10,7 @@ const BaseFilterSchema = z.object({
   description: z.string().optional(),
 });
 
+// Legacy filter schemas (kept for backward compatibility)
 const NoDecisionFilterSchema = BaseFilterSchema.extend({
   type: z.literal('no-decision'),
 });
@@ -35,12 +37,86 @@ const SourceIpFilterSchema = BaseFilterSchema.extend({
   cidrs: z.array(z.string()),
 });
 
+// Expression filter schema (new generic system)
+// Primitive value types
+const PrimitiveValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+
+// Array of primitives or strings (for 'in', 'cidr', etc.)
+const ValueArray = z.array(z.union([z.string(), z.number(), z.boolean()]));
+
+// Field condition operators
+const FieldOperator = z.enum([
+  'eq', // equals
+  'ne', // not equals
+  'gt', // greater than
+  'gte', // greater than or equal
+  'lt', // less than
+  'lte', // less than or equal
+  'in', // value in array
+  'not_in', // value not in array
+  'contains', // string/array contains
+  'not_contains', // string/array does not contain
+  'starts_with', // string starts with
+  'ends_with', // string ends with
+  'empty', // array/string/null is empty
+  'not_empty', // array/string is not empty
+  'glob', // glob pattern match
+  'regex', // regex pattern match
+  'cidr', // IP in CIDR range(s)
+]);
+
+// Base condition for field operations
+const FieldConditionSchema = z.object({
+  field: z.string(),
+  op: FieldOperator,
+  value: z.union([PrimitiveValue, ValueArray]).optional(),
+});
+
+// Recursive expression type for logical operators
+type ExpressionCondition =
+  | z.infer<typeof FieldConditionSchema>
+  | { op: 'and'; conditions: ExpressionCondition[] }
+  | { op: 'or'; conditions: ExpressionCondition[] }
+  | { op: 'not'; condition: ExpressionCondition };
+
+// Recursive schema using z.lazy
+const ExpressionConditionSchema: z.ZodType<ExpressionCondition> = z.lazy(() =>
+  z.union([
+    FieldConditionSchema,
+    z.object({
+      op: z.literal('and'),
+      conditions: z.array(ExpressionConditionSchema),
+    }),
+    z.object({
+      op: z.literal('or'),
+      conditions: z.array(ExpressionConditionSchema),
+    }),
+    z.object({
+      op: z.literal('not'),
+      condition: ExpressionConditionSchema,
+    }),
+  ])
+);
+
+const ExpressionFilterSchema = BaseFilterSchema.extend({
+  type: z.literal('expression'),
+  filter: ExpressionConditionSchema,
+});
+
+export type ExpressionConditionType = ExpressionCondition;
+
 const FilterRuleSchema = z.discriminatedUnion('type', [
   NoDecisionFilterSchema,
   SimulatedFilterSchema,
   ScenarioFilterSchema,
   SourceCountryFilterSchema,
   SourceIpFilterSchema,
+  ExpressionFilterSchema,
 ]);
 
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
@@ -103,4 +179,38 @@ export function loadConfigFromEnv(): Partial<Config> {
       format: (process.env.LOG_FORMAT as Config['logging']['format']) || 'json',
     },
   };
+}
+
+export interface FilterLoadResult {
+  filters: FilterRule[];
+  errors: Array<{ file: string; error: string }>;
+}
+
+export function loadFiltersFromDirectory(dirPath: string): FilterLoadResult {
+  const result: FilterLoadResult = { filters: [], errors: [] };
+
+  if (!existsSync(dirPath)) {
+    return result;
+  }
+
+  const files = readdirSync(dirPath)
+    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+    .filter((f) => !f.startsWith('_') && !f.startsWith('.'))
+    .sort();
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(dirPath, file), 'utf-8');
+      const parsed = parseYaml(content);
+      const validated = FilterRuleSchema.parse(parsed);
+      result.filters.push(validated);
+    } catch (error) {
+      result.errors.push({
+        file,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return result;
 }

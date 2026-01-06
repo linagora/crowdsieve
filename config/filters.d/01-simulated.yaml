@@ -1,0 +1,8 @@
+name: simulated
+type: expression
+enabled: true
+description: "Block simulated alerts"
+filter:
+  field: simulated
+  op: eq
+  value: true

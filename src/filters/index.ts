@@ -6,6 +6,7 @@ import { SimulatedFilter } from './implementations/simulated.js';
 import { ScenarioFilter } from './implementations/scenario.js';
 import { SourceCountryFilter } from './implementations/source-country.js';
 import { SourceIpFilter } from './implementations/source-ip.js';
+import { ExpressionFilter } from './implementations/expression.js';
 
 export class FilterEngine {
   private filters: Filter[] = [];
@@ -36,6 +37,9 @@ export class FilterEngine {
 
       case 'source-ip':
         return new SourceIpFilter(config.name, config.enabled, config.cidrs, config.mode);
+
+      case 'expression':
+        return new ExpressionFilter(config.name, config.enabled, config.filter);
 
       default:
         throw new Error(`Unknown filter type: ${(config as FilterRule).type}`);
