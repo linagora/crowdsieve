@@ -6,12 +6,22 @@ import type { StoredAlert, AlertStats } from '@/lib/types';
 
 // Use internal API route which will be rewritten to proxy
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
+const API_KEY = process.env.DASHBOARD_API_KEY;
+
+function getApiHeaders(): HeadersInit {
+  const headers: HeadersInit = {};
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+  return headers;
+}
 
 async function getAlerts(): Promise<StoredAlert[]> {
   try {
     // In server components, we need the full URL
     const res = await fetch(`${API_BASE}/api/alerts?limit=50`, {
       cache: 'no-store',
+      headers: getApiHeaders(),
     });
     if (!res.ok) return [];
     return res.json();
@@ -24,6 +34,7 @@ async function getStats(): Promise<AlertStats> {
   try {
     const res = await fetch(`${API_BASE}/api/stats`, {
       cache: 'no-store',
+      headers: getApiHeaders(),
     });
     if (!res.ok) {
       return { total: 0, filtered: 0, forwarded: 0, topScenarios: [], topCountries: [] };
