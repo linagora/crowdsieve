@@ -31,20 +31,22 @@ describe('loadFiltersFromDirectory', () => {
     writeFileSync(
       join(TEST_DIR, '00-no-decision.yaml'),
       `name: no-decision
-type: no-decision
 enabled: true
 description: "Block alerts without decisions"
+filter:
+  field: decisions
+  op: empty
 `
     );
 
     const result = loadFiltersFromDirectory(TEST_DIR);
 
     expect(result.filters).toHaveLength(1);
-    expect(result.filters[0]).toEqual({
+    expect(result.filters[0]).toMatchObject({
       name: 'no-decision',
-      type: 'no-decision',
       enabled: true,
       description: 'Block alerts without decisions',
+      filter: { field: 'decisions', op: 'empty' },
     });
     expect(result.errors).toEqual([]);
   });
@@ -53,19 +55,22 @@ description: "Block alerts without decisions"
     writeFileSync(
       join(TEST_DIR, '20-scenario.yaml'),
       `name: scenario-filter
-type: scenario
 enabled: true
-patterns:
-  - "crowdsecurity/*"
-match_mode: glob
+filter:
+  field: scenario
+  op: glob
+  value: "crowdsecurity/*"
 `
     );
 
     writeFileSync(
       join(TEST_DIR, '10-simulated.yaml'),
       `name: simulated
-type: simulated
 enabled: true
+filter:
+  field: simulated
+  op: eq
+  value: true
 `
     );
 
@@ -81,16 +86,21 @@ enabled: true
     writeFileSync(
       join(TEST_DIR, '_disabled.yaml'),
       `name: disabled
-type: no-decision
 enabled: true
+filter:
+  field: decisions
+  op: empty
 `
     );
 
     writeFileSync(
       join(TEST_DIR, 'active.yaml'),
       `name: active
-type: simulated
 enabled: true
+filter:
+  field: simulated
+  op: eq
+  value: true
 `
     );
 
@@ -104,16 +114,21 @@ enabled: true
     writeFileSync(
       join(TEST_DIR, '.hidden.yaml'),
       `name: hidden
-type: no-decision
 enabled: true
+filter:
+  field: decisions
+  op: empty
 `
     );
 
     writeFileSync(
       join(TEST_DIR, 'visible.yaml'),
       `name: visible
-type: simulated
 enabled: true
+filter:
+  field: simulated
+  op: eq
+  value: true
 `
     );
 
@@ -127,16 +142,21 @@ enabled: true
     writeFileSync(
       join(TEST_DIR, 'filter1.yaml'),
       `name: filter1
-type: no-decision
 enabled: true
+filter:
+  field: decisions
+  op: empty
 `
     );
 
     writeFileSync(
       join(TEST_DIR, 'filter2.yml'),
       `name: filter2
-type: simulated
 enabled: true
+filter:
+  field: simulated
+  op: eq
+  value: true
 `
     );
 
@@ -149,8 +169,10 @@ enabled: true
     writeFileSync(
       join(TEST_DIR, 'invalid.yaml'),
       `name: invalid
-type: unknown-type
 enabled: true
+filter:
+  field: test
+  op: unknown-operator
 `
     );
 
@@ -159,7 +181,6 @@ enabled: true
     expect(result.filters).toHaveLength(0);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].file).toBe('invalid.yaml');
-    expect(result.errors[0].error).toContain('Invalid discriminator');
   });
 
   it('should report errors for malformed YAML', () => {
@@ -172,16 +193,17 @@ enabled: true
     expect(result.errors[0].file).toBe('malformed.yaml');
   });
 
-  it('should load source-ip filter correctly', () => {
+  it('should load cidr filter correctly', () => {
     writeFileSync(
       join(TEST_DIR, 'ip-filter.yaml'),
       `name: internal-ips
-type: source-ip
 enabled: true
-mode: blocklist
-cidrs:
-  - "10.0.0.0/8"
-  - "192.168.0.0/16"
+filter:
+  field: source.ip
+  op: cidr
+  value:
+    - "10.0.0.0/8"
+    - "192.168.0.0/16"
 `
     );
 
@@ -190,22 +212,25 @@ cidrs:
     expect(result.filters).toHaveLength(1);
     expect(result.filters[0]).toMatchObject({
       name: 'internal-ips',
-      type: 'source-ip',
-      mode: 'blocklist',
-      cidrs: ['10.0.0.0/8', '192.168.0.0/16'],
+      filter: {
+        field: 'source.ip',
+        op: 'cidr',
+        value: ['10.0.0.0/8', '192.168.0.0/16'],
+      },
     });
   });
 
-  it('should load source-country filter correctly', () => {
+  it('should load country filter correctly', () => {
     writeFileSync(
       join(TEST_DIR, 'country-filter.yaml'),
       `name: block-countries
-type: source-country
 enabled: true
-mode: blocklist
-countries:
-  - "CN"
-  - "RU"
+filter:
+  field: source.cn
+  op: in
+  value:
+    - "CN"
+    - "RU"
 `
     );
 
@@ -214,9 +239,11 @@ countries:
     expect(result.filters).toHaveLength(1);
     expect(result.filters[0]).toMatchObject({
       name: 'block-countries',
-      type: 'source-country',
-      mode: 'blocklist',
-      countries: ['CN', 'RU'],
+      filter: {
+        field: 'source.cn',
+        op: 'in',
+        value: ['CN', 'RU'],
+      },
     });
   });
 
@@ -224,23 +251,29 @@ countries:
     writeFileSync(
       join(TEST_DIR, '01-valid.yaml'),
       `name: valid
-type: no-decision
 enabled: true
+filter:
+  field: decisions
+  op: empty
 `
     );
 
     writeFileSync(
       join(TEST_DIR, '02-invalid.yaml'),
       `name: invalid
-type: unknown
+filter:
+  invalid: structure
 `
     );
 
     writeFileSync(
       join(TEST_DIR, '03-also-valid.yaml'),
       `name: also-valid
-type: simulated
 enabled: true
+filter:
+  field: simulated
+  op: eq
+  value: true
 `
     );
 
@@ -250,5 +283,35 @@ enabled: true
     expect(result.errors).toHaveLength(1);
     expect(result.filters[0].name).toBe('valid');
     expect(result.filters[1].name).toBe('also-valid');
+  });
+
+  it('should load complex filter with logical operators', () => {
+    writeFileSync(
+      join(TEST_DIR, 'complex.yaml'),
+      `name: complex-filter
+enabled: true
+filter:
+  op: and
+  conditions:
+    - field: simulated
+      op: eq
+      value: false
+    - op: or
+      conditions:
+        - field: scenario
+          op: contains
+          value: "ssh"
+        - field: source.ip
+          op: cidr
+          value:
+            - "192.168.0.0/16"
+`
+    );
+
+    const result = loadFiltersFromDirectory(TEST_DIR);
+
+    expect(result.filters).toHaveLength(1);
+    expect(result.filters[0].name).toBe('complex-filter');
+    expect(result.filters[0].filter).toHaveProperty('op', 'and');
   });
 });

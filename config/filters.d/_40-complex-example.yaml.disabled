@@ -1,6 +1,5 @@
 # Example of complex filter with AND/OR conditions (disabled by default)
 name: complex-filter
-type: expression
 enabled: true
 description: "Block simulated SSH alerts from internal IPs"
 filter:
@@ -12,8 +11,8 @@ filter:
     - op: or
       conditions:
         - field: scenario
-          op: glob
-          value: "*ssh*"
+          op: contains
+          value: "ssh"
         - field: source.ip
           op: cidr
           value:

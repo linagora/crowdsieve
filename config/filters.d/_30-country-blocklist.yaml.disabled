@@ -1,6 +1,5 @@
 # Example filter for country blocklist (disabled by default)
 name: blocked-countries
-type: expression
 enabled: true
 description: "Block alerts from specific countries"
 filter:

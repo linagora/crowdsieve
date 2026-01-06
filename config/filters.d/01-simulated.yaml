@@ -1,5 +1,4 @@
 name: simulated
-type: expression
 enabled: true
 description: "Block simulated alerts"
 filter:

@@ -453,7 +453,6 @@ describe('ExpressionFilter - FilterEngine integration', () => {
     const engine = new FilterEngine('block', [
       {
         name: 'simulated-filter',
-        type: 'expression',
         enabled: true,
         filter: { field: 'simulated', op: 'eq', value: true },
       },

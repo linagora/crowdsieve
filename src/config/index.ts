@@ -3,41 +3,14 @@ import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
-// Filter rule schemas
+// Filter rule schema
 const BaseFilterSchema = z.object({
   name: z.string(),
   enabled: z.boolean().default(true),
   description: z.string().optional(),
 });
 
-// Legacy filter schemas (kept for backward compatibility)
-const NoDecisionFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('no-decision'),
-});
-
-const SimulatedFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('simulated'),
-});
-
-const ScenarioFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('scenario'),
-  patterns: z.array(z.string()),
-  match_mode: z.enum(['exact', 'glob', 'regex']).default('glob'),
-});
-
-const SourceCountryFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('source-country'),
-  mode: z.enum(['allowlist', 'blocklist']),
-  countries: z.array(z.string()),
-});
-
-const SourceIpFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('source-ip'),
-  mode: z.enum(['allowlist', 'blocklist']),
-  cidrs: z.array(z.string()),
-});
-
-// Expression filter schema (new generic system)
+// Expression filter schema
 // Primitive value types
 const PrimitiveValue = z.union([
   z.string(),
@@ -103,22 +76,11 @@ const ExpressionConditionSchema: z.ZodType<ExpressionCondition> = z.lazy(() =>
   ])
 );
 
-const ExpressionFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('expression'),
+const FilterRuleSchema = BaseFilterSchema.extend({
   filter: ExpressionConditionSchema,
 });
 
 export type ExpressionConditionType = ExpressionCondition;
-
-const FilterRuleSchema = z.discriminatedUnion('type', [
-  NoDecisionFilterSchema,
-  SimulatedFilterSchema,
-  ScenarioFilterSchema,
-  SourceCountryFilterSchema,
-  SourceIpFilterSchema,
-  ExpressionFilterSchema,
-]);
-
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
 
 const ConfigSchema = z.object({

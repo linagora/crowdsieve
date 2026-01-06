@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ScenarioFilter } from '../src/filters/implementations/scenario.js';
+import { ExpressionFilter } from '../src/filters/implementations/expression.js';
 import type { FilterContext } from '../src/filters/types.js';
 
 /**
@@ -57,14 +57,22 @@ describe('Security - SQL LIKE Escaping', () => {
 
 describe('Security - Regex Validation', () => {
   it('should handle valid regex patterns', () => {
-    const filter = new ScenarioFilter('test', true, ['.*ssh.*'], 'regex');
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'regex',
+      value: '.*ssh.*',
+    });
     const result = filter.matches(createMockContext('crowdsecurity/ssh-bf'));
     expect(result.matched).toBe(true);
   });
 
   it('should handle invalid regex patterns gracefully', () => {
     // Invalid regex pattern with unclosed bracket
-    const filter = new ScenarioFilter('test', true, ['[invalid'], 'regex');
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'regex',
+      value: '[invalid',
+    });
     // Should not throw, should not match
     const result = filter.matches(createMockContext('test'));
     expect(result.matched).toBe(false);
@@ -73,14 +81,22 @@ describe('Security - Regex Validation', () => {
   it('should handle very long regex patterns', () => {
     // Pattern longer than the allowed MAX_REGEX_LENGTH
     const longPattern = 'a'.repeat(600);
-    const filter = new ScenarioFilter('test', true, [longPattern], 'regex');
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'regex',
+      value: longPattern,
+    });
     // Should not match due to pattern being too long
     const result = filter.matches(createMockContext('aaaaaaa'));
     expect(result.matched).toBe(false);
   });
 
-  it('should handle mixed valid and invalid patterns', () => {
-    const filter = new ScenarioFilter('test', true, ['[invalid', 'ssh.*'], 'regex');
+  it('should handle mixed valid and invalid patterns in array', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'regex',
+      value: ['[invalid', 'ssh.*'],
+    });
     // Should match second pattern
     const result = filter.matches(createMockContext('ssh-brute'));
     expect(result.matched).toBe(true);

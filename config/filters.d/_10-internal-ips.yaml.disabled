@@ -1,6 +1,5 @@
 # Example filter for internal IPs (disabled by default - rename without underscore to enable)
 name: internal-ips
-type: expression
 enabled: true
 description: "Block internal IP ranges"
 filter:

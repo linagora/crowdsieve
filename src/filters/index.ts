@@ -1,11 +1,6 @@
 import type { Alert } from '../models/alert.js';
 import type { FilterRule } from '../config/index.js';
 import type { Filter, FilterContext, FilterResult, FilterEngineResult } from './types.js';
-import { NoDecisionFilter } from './implementations/no-decision.js';
-import { SimulatedFilter } from './implementations/simulated.js';
-import { ScenarioFilter } from './implementations/scenario.js';
-import { SourceCountryFilter } from './implementations/source-country.js';
-import { SourceIpFilter } from './implementations/source-ip.js';
 import { ExpressionFilter } from './implementations/expression.js';
 
 export class FilterEngine {
@@ -14,36 +9,7 @@ export class FilterEngine {
 
   constructor(mode: 'block' | 'allow', rules: FilterRule[]) {
     this.mode = mode;
-    this.filters = this.buildFilters(rules);
-  }
-
-  private buildFilters(rules: FilterRule[]): Filter[] {
-    return rules.map((rule) => this.createFilter(rule));
-  }
-
-  private createFilter(config: FilterRule): Filter {
-    switch (config.type) {
-      case 'no-decision':
-        return new NoDecisionFilter(config.name, config.enabled);
-
-      case 'simulated':
-        return new SimulatedFilter(config.name, config.enabled);
-
-      case 'scenario':
-        return new ScenarioFilter(config.name, config.enabled, config.patterns, config.match_mode);
-
-      case 'source-country':
-        return new SourceCountryFilter(config.name, config.enabled, config.countries, config.mode);
-
-      case 'source-ip':
-        return new SourceIpFilter(config.name, config.enabled, config.cidrs, config.mode);
-
-      case 'expression':
-        return new ExpressionFilter(config.name, config.enabled, config.filter);
-
-      default:
-        throw new Error(`Unknown filter type: ${(config as FilterRule).type}`);
-    }
+    this.filters = rules.map((rule) => new ExpressionFilter(rule.name, rule.enabled, rule.filter));
   }
 
   /**
