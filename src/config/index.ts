@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readFileSync, readdirSync, existsSync } from 'fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
@@ -63,11 +63,11 @@ const ExpressionConditionSchema: z.ZodType<ExpressionCondition> = z.lazy(() =>
     FieldConditionSchema,
     z.object({
       op: z.literal('and'),
-      conditions: z.array(ExpressionConditionSchema),
+      conditions: z.array(ExpressionConditionSchema).min(1),
     }),
     z.object({
       op: z.literal('or'),
-      conditions: z.array(ExpressionConditionSchema),
+      conditions: z.array(ExpressionConditionSchema).min(1),
     }),
     z.object({
       op: z.literal('not'),
@@ -155,10 +155,28 @@ export function loadFiltersFromDirectory(dirPath: string): FilterLoadResult {
     return result;
   }
 
-  const files = readdirSync(dirPath)
-    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .filter((f) => !f.startsWith('_') && !f.startsWith('.'))
-    .sort();
+  // Verify the path is a directory
+  try {
+    if (!statSync(dirPath).isDirectory()) {
+      return result;
+    }
+  } catch {
+    return result;
+  }
+
+  let files: string[];
+  try {
+    files = readdirSync(dirPath)
+      .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+      .filter((f) => !f.startsWith('_') && !f.startsWith('.'))
+      .sort();
+  } catch (error) {
+    result.errors.push({
+      file: dirPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return result;
+  }
 
   for (const file of files) {
     try {

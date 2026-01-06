@@ -32,24 +32,35 @@ export class ExpressionFilter implements Filter {
     condition: ExpressionConditionType,
     data: Record<string, unknown>
   ): { matched: boolean; reason?: string } {
-    // Logical operators
+    // Logical operators with short-circuit evaluation
     if ('conditions' in condition) {
       if (condition.op === 'and') {
-        const results = condition.conditions.map((c) => this.evaluate(c, data));
-        const allMatched = results.every((r) => r.matched);
+        const reasons: string[] = [];
+        for (const c of condition.conditions) {
+          const result = this.evaluate(c, data);
+          if (!result.matched) {
+            return { matched: false };
+          }
+          if (result.reason) {
+            reasons.push(result.reason);
+          }
+        }
         return {
-          matched: allMatched,
-          reason: allMatched ? results.map((r) => r.reason).filter(Boolean).join(' AND ') : undefined,
+          matched: true,
+          reason: reasons.join(' AND '),
         };
       }
       if (condition.op === 'or') {
-        const results = condition.conditions.map((c) => this.evaluate(c, data));
-        const anyMatched = results.some((r) => r.matched);
-        const matchedReasons = results.filter((r) => r.matched).map((r) => r.reason);
-        return {
-          matched: anyMatched,
-          reason: anyMatched ? matchedReasons.filter(Boolean).join(' OR ') : undefined,
-        };
+        for (const c of condition.conditions) {
+          const result = this.evaluate(c, data);
+          if (result.matched) {
+            return {
+              matched: true,
+              reason: result.reason,
+            };
+          }
+        }
+        return { matched: false };
       }
     }
 
@@ -173,9 +184,9 @@ export class ExpressionFilter implements Filter {
           matched = minimatch(fieldValue, value);
           reason = matched ? `${condition.field} matches glob "${value}"` : undefined;
         } else if (typeof fieldValue === 'string' && Array.isArray(value)) {
-          const matchedPattern = value.find((p) => typeof p === 'string' && minimatch(fieldValue, p));
-          matched = matchedPattern !== undefined;
-          reason = matched ? `${condition.field} matches glob "${matchedPattern}"` : undefined;
+          const matchingPattern = value.find((p) => typeof p === 'string' && minimatch(fieldValue, p));
+          matched = matchingPattern !== undefined;
+          reason = matched ? `${condition.field} matches glob "${matchingPattern}"` : undefined;
         }
         break;
 
@@ -206,9 +217,13 @@ export class ExpressionFilter implements Filter {
             matched = this.isInCIDR(fieldValue, value);
             reason = matched ? `${condition.field} in CIDR ${value}` : undefined;
           } else if (Array.isArray(value)) {
-            const matchedCidr = value.find((c) => typeof c === 'string' && this.isInCIDR(fieldValue, c));
-            matched = matchedCidr !== undefined;
-            reason = matched ? `${condition.field} in CIDR ${matchedCidr}` : undefined;
+            for (const cidr of value) {
+              if (typeof cidr === 'string' && this.isInCIDR(fieldValue, cidr)) {
+                matched = true;
+                reason = `${condition.field} in CIDR ${cidr}`;
+                break;
+              }
+            }
           }
         }
         break;
@@ -217,6 +232,11 @@ export class ExpressionFilter implements Filter {
     return { matched, reason };
   }
 
+  /**
+   * Get a nested field value using dot notation.
+   * Note: Does not support escaped dots in field names or array index notation (e.g., 'events[0]').
+   * Use simple dot paths like 'source.ip' or 'source.cn'.
+   */
   private getFieldValue(data: Record<string, unknown>, path: string): FieldValue {
     const parts = path.split('.');
     let current: unknown = data;

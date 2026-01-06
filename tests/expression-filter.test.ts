@@ -467,3 +467,94 @@ describe('ExpressionFilter - FilterEngine integration', () => {
     expect(result.passedCount).toBe(1);
   });
 });
+
+describe('ExpressionFilter - not_contains operator', () => {
+  it('should match string not containing value', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'not_contains',
+      value: 'http',
+    });
+    const alert = createMockAlert({ scenario: 'crowdsecurity/ssh-bf' });
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(true);
+  });
+
+  it('should not match string containing value', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'not_contains',
+      value: 'ssh',
+    });
+    const alert = createMockAlert({ scenario: 'crowdsecurity/ssh-bf' });
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(false);
+  });
+
+  it('should match array not containing value', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'events',
+      op: 'not_contains',
+      value: 'test-event',
+    });
+    const alert = createMockAlert({ events: [] });
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(true);
+  });
+});
+
+describe('ExpressionFilter - undefined and null handling', () => {
+  it('should match undefined field with empty operator', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'nonexistent_field',
+      op: 'empty',
+    });
+    const alert = createMockAlert();
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(true);
+  });
+
+  it('should not match undefined field with not_empty operator', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'nonexistent_field',
+      op: 'not_empty',
+    });
+    const alert = createMockAlert();
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(false);
+  });
+
+  it('should not match undefined field with eq operator', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'nonexistent_field',
+      op: 'eq',
+      value: 'some-value',
+    });
+    const alert = createMockAlert();
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(false);
+  });
+
+  it('should match undefined field with ne operator', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'nonexistent_field',
+      op: 'ne',
+      value: 'some-value',
+    });
+    const alert = createMockAlert();
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(true);
+  });
+
+  it('should match null source.cn with empty operator', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'source.cn',
+      op: 'empty',
+    });
+    const alert = createMockAlert({
+      source: { scope: 'ip', value: '1.2.3.4' },
+    });
+    const result = filter.matches({ alert, timestamp: new Date() });
+    expect(result.matched).toBe(true);
+  });
+});

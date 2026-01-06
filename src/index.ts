@@ -48,7 +48,11 @@ async function main() {
   }
 
   // Load filters from filters.d/ directory
-  const filtersDir = process.env.FILTERS_DIR || join(dirname(CONFIG_PATH), 'filters.d');
+  const configDir = (() => {
+    const dir = dirname(CONFIG_PATH);
+    return !dir || dir === '.' ? process.cwd() : dir;
+  })();
+  const filtersDir = process.env.FILTERS_DIR || join(configDir, 'filters.d');
   const { filters: dirFilters, errors: filterErrors } = loadFiltersFromDirectory(filtersDir);
 
   // Log filter loading errors
