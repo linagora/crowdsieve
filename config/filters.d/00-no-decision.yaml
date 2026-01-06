@@ -1,0 +1,6 @@
+name: no-decision
+enabled: true
+description: "Block alerts without decisions"
+filter:
+  field: decisions
+  op: empty

@@ -1,5 +1,6 @@
 import pino from 'pino';
-import { loadConfig, loadConfigFromEnv, Config } from './config/index.js';
+import { dirname, join } from 'path';
+import { loadConfig, loadConfigFromEnv, loadFiltersFromDirectory, Config } from './config/index.js';
 import { initializeDatabase, closeDatabase } from './db/index.js';
 import { FilterEngine } from './filters/index.js';
 import { createStorage } from './storage/index.js';
@@ -25,6 +26,10 @@ async function main() {
   // Initialize logger
   const logger = pino({
     level: config.logging.level,
+    formatters: {
+      level: (label) => ({ level: label }),
+    },
+    timestamp: () => `,"time":"${new Date().toISOString()}"`,
     transport: config.logging.format === 'pretty' ? { target: 'pino-pretty' } : undefined,
   });
 
@@ -42,15 +47,41 @@ async function main() {
     logger.warn('GeoIP database not available, IP enrichment will be disabled');
   }
 
+  // Load filters from filters.d/ directory
+  const configDir = (() => {
+    const dir = dirname(CONFIG_PATH);
+    return !dir || dir === '.' ? process.cwd() : dir;
+  })();
+  const filtersDir = process.env.FILTERS_DIR || join(configDir, 'filters.d');
+  const { filters: dirFilters, errors: filterErrors } = loadFiltersFromDirectory(filtersDir);
+
+  // Log filter loading errors
+  for (const { file, error } of filterErrors) {
+    logger.warn({ file, error }, 'Failed to load filter file');
+  }
+
+  // Merge filters: config rules first, then directory filters
+  const allFilters = [...config.filters.rules, ...dirFilters];
+
   // Initialize filter engine
-  const filterEngine = new FilterEngine(config.filters.mode, config.filters.rules);
+  const filterEngine = new FilterEngine(config.filters.mode, allFilters);
+  const loadedFilters = filterEngine.getFilters();
   logger.info(
     {
       mode: config.filters.mode,
-      filterCount: filterEngine.getFilters().length,
+      fromConfig: config.filters.rules.length,
+      fromDir: dirFilters.length,
+      total: loadedFilters.length,
+      filtersDir,
+      filters: loadedFilters.map((f) => ({ name: f.name, enabled: f.enabled })),
     },
     'Filter engine initialized'
   );
+
+  // Log each filter in debug mode
+  for (const filter of loadedFilters) {
+    logger.debug({ name: filter.name, enabled: filter.enabled }, 'Filter loaded');
+  }
 
   // Initialize storage
   const storage = createStorage();

@@ -1,0 +1,9 @@
+# Example filter for country blocklist (disabled by default)
+name: blocked-countries
+enabled: true
+description: "Block alerts from specific countries"
+filter:
+  field: source.cn
+  op: in
+  value:
+    - "XX"  # Unknown country

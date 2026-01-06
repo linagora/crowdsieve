@@ -1,48 +1,86 @@
 import { z } from 'zod';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
+import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
-// Filter rule schemas
+// Filter rule schema
 const BaseFilterSchema = z.object({
   name: z.string(),
   enabled: z.boolean().default(true),
   description: z.string().optional(),
 });
 
-const NoDecisionFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('no-decision'),
-});
-
-const SimulatedFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('simulated'),
-});
-
-const ScenarioFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('scenario'),
-  patterns: z.array(z.string()),
-  match_mode: z.enum(['exact', 'glob', 'regex']).default('glob'),
-});
-
-const SourceCountryFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('source-country'),
-  mode: z.enum(['allowlist', 'blocklist']),
-  countries: z.array(z.string()),
-});
-
-const SourceIpFilterSchema = BaseFilterSchema.extend({
-  type: z.literal('source-ip'),
-  mode: z.enum(['allowlist', 'blocklist']),
-  cidrs: z.array(z.string()),
-});
-
-const FilterRuleSchema = z.discriminatedUnion('type', [
-  NoDecisionFilterSchema,
-  SimulatedFilterSchema,
-  ScenarioFilterSchema,
-  SourceCountryFilterSchema,
-  SourceIpFilterSchema,
+// Expression filter schema
+// Primitive value types
+const PrimitiveValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
 ]);
 
+// Array of primitives or strings (for 'in', 'cidr', etc.)
+const ValueArray = z.array(z.union([z.string(), z.number(), z.boolean()]));
+
+// Field condition operators
+const FieldOperator = z.enum([
+  'eq', // equals
+  'ne', // not equals
+  'gt', // greater than
+  'gte', // greater than or equal
+  'lt', // less than
+  'lte', // less than or equal
+  'in', // value in array
+  'not_in', // value not in array
+  'contains', // string/array contains
+  'not_contains', // string/array does not contain
+  'starts_with', // string starts with
+  'ends_with', // string ends with
+  'empty', // array/string/null is empty
+  'not_empty', // array/string is not empty
+  'glob', // glob pattern match
+  'regex', // regex pattern match
+  'cidr', // IP in CIDR range(s)
+]);
+
+// Base condition for field operations
+const FieldConditionSchema = z.object({
+  field: z.string(),
+  op: FieldOperator,
+  value: z.union([PrimitiveValue, ValueArray]).optional(),
+});
+
+// Recursive expression type for logical operators
+type ExpressionCondition =
+  | z.infer<typeof FieldConditionSchema>
+  | { op: 'and'; conditions: ExpressionCondition[] }
+  | { op: 'or'; conditions: ExpressionCondition[] }
+  | { op: 'not'; condition: ExpressionCondition };
+
+// Recursive schema using z.lazy
+const ExpressionConditionSchema: z.ZodType<ExpressionCondition> = z.lazy(() =>
+  z.union([
+    FieldConditionSchema,
+    z.object({
+      op: z.literal('and'),
+      conditions: z.array(ExpressionConditionSchema).min(1),
+    }),
+    z.object({
+      op: z.literal('or'),
+      conditions: z.array(ExpressionConditionSchema).min(1),
+    }),
+    z.object({
+      op: z.literal('not'),
+      condition: ExpressionConditionSchema,
+    }),
+  ])
+);
+
+const FilterRuleSchema = BaseFilterSchema.extend({
+  filter: ExpressionConditionSchema,
+});
+
+export type ExpressionConditionType = ExpressionCondition;
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
 
 const ConfigSchema = z.object({
@@ -103,4 +141,56 @@ export function loadConfigFromEnv(): Partial<Config> {
       format: (process.env.LOG_FORMAT as Config['logging']['format']) || 'json',
     },
   };
+}
+
+export interface FilterLoadResult {
+  filters: FilterRule[];
+  errors: Array<{ file: string; error: string }>;
+}
+
+export function loadFiltersFromDirectory(dirPath: string): FilterLoadResult {
+  const result: FilterLoadResult = { filters: [], errors: [] };
+
+  if (!existsSync(dirPath)) {
+    return result;
+  }
+
+  // Verify the path is a directory
+  try {
+    if (!statSync(dirPath).isDirectory()) {
+      return result;
+    }
+  } catch {
+    return result;
+  }
+
+  let files: string[];
+  try {
+    files = readdirSync(dirPath)
+      .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+      .filter((f) => !f.startsWith('_') && !f.startsWith('.'))
+      .sort();
+  } catch (error) {
+    result.errors.push({
+      file: dirPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return result;
+  }
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(dirPath, file), 'utf-8');
+      const parsed = parseYaml(content);
+      const validated = FilterRuleSchema.parse(parsed);
+      result.filters.push(validated);
+    } catch (error) {
+      result.errors.push({
+        file,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return result;
 }

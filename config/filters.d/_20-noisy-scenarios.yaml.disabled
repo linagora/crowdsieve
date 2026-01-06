@@ -1,0 +1,10 @@
+# Example filter for noisy scenarios (disabled by default - rename without underscore to enable)
+name: noisy-http
+enabled: true
+description: "Block noisy HTTP scenarios"
+filter:
+  field: scenario
+  op: glob
+  value:
+    - "crowdsecurity/http-probing"
+    - "crowdsecurity/http-bad-user-agent"
