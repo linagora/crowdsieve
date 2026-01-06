@@ -1,5 +1,5 @@
 import pino from 'pino';
-import { loadConfig } from './config/index.js';
+import { loadConfig, loadConfigFromEnv, Config } from './config/index.js';
 import { initializeDatabase, closeDatabase } from './db/index.js';
 import { FilterEngine } from './filters/index.js';
 import { createStorage } from './storage/index.js';
@@ -10,8 +10,17 @@ const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/GeoLite2-City.mmdb';
 
 async function main() {
-  // Load configuration
-  const config = loadConfig(CONFIG_PATH);
+  // Load configuration from file, then override with environment variables
+  const fileConfig = loadConfig(CONFIG_PATH);
+  const envConfig = loadConfigFromEnv();
+
+  // Merge configs (env overrides file)
+  const config: Config = {
+    proxy: { ...fileConfig.proxy, ...envConfig.proxy },
+    storage: { ...fileConfig.storage, ...envConfig.storage },
+    logging: { ...fileConfig.logging, ...envConfig.logging },
+    filters: fileConfig.filters, // Filters only from file
+  };
 
   // Initialize logger
   const logger = pino({

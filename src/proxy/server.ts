@@ -106,8 +106,13 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
       return; // Let other routes handle this
     }
 
-    // Skip /v2/signals - it has its own handler with filtering logic
-    if (url === '/v2/signals' || url.startsWith('/v2/signals?')) {
+    // Skip /v2/signals and /v3/signals - they have their own handler with filtering logic
+    if (
+      url === '/v2/signals' ||
+      url.startsWith('/v2/signals?') ||
+      url === '/v3/signals' ||
+      url.startsWith('/v3/signals?')
+    ) {
       return; // Let the signals route handle this
     }
 

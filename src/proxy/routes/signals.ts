@@ -1,17 +1,22 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import type { SignalsRequest } from '../../models/alert.js';
 
 const signalsRoute: FastifyPluginAsync = async (fastify) => {
   const { config, filterEngine, storage, proxyLogger: logger } = fastify;
 
-  fastify.post<{ Body: SignalsRequest }>('/v2/signals', async (request, reply) => {
+  // Shared handler for both /v2/signals and /v3/signals
+  const handleSignals = async (
+    request: FastifyRequest<{ Body: SignalsRequest }>,
+    reply: FastifyReply,
+    apiVersion: 'v2' | 'v3'
+  ) => {
     const alerts = request.body;
 
     if (!Array.isArray(alerts)) {
       return reply.code(400).send({ error: 'Invalid request body: expected array' });
     }
 
-    logger.info({ count: alerts.length }, 'Received signals batch');
+    logger.info({ count: alerts.length, apiVersion }, 'Received signals batch');
 
     // Process through filter engine
     const filterResult = filterEngine.process(alerts);
@@ -48,10 +53,10 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
       return reply.code(200).send({ message: 'OK (forwarding disabled)' });
     }
 
-    // Forward remaining alerts to CAPI
+    // Forward remaining alerts to CAPI (using same API version as incoming request)
     try {
       const capiUrl = config.proxy.capi_url;
-      const response = await fetch(`${capiUrl}/v2/signals`, {
+      const response = await fetch(`${capiUrl}/${apiVersion}/signals`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,7 +92,16 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
       logger.error({ err }, 'Failed to forward to CAPI');
       return reply.code(502).send({ error: 'Failed to forward to CAPI' });
     }
-  });
+  };
+
+  // Register routes for both API versions
+  fastify.post<{ Body: SignalsRequest }>('/v2/signals', (request, reply) =>
+    handleSignals(request, reply, 'v2')
+  );
+
+  fastify.post<{ Body: SignalsRequest }>('/v3/signals', (request, reply) =>
+    handleSignals(request, reply, 'v3')
+  );
 };
 
 export default signalsRoute;
