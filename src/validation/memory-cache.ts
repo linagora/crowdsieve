@@ -20,12 +20,14 @@ export class LRUCache {
   }
 
   set(key: string, entry: CacheEntry): void {
-    // If key exists, delete it first to update position
+    // If key exists, just update it (delete + re-add to move to end)
     if (this.cache.has(key)) {
       this.cache.delete(key);
+      this.cache.set(key, entry);
+      return;
     }
 
-    // Evict oldest entry if at capacity
+    // New key: evict oldest entry if at capacity
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
       if (firstKey) {
