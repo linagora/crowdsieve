@@ -1,0 +1,26 @@
+{{- if .Values.crowdsieve.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}-config
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+data:
+  filters.yaml: |
+    proxy:
+      listen_port: {{ .Values.crowdsieve.proxy.port }}
+      capi_url: {{ .Values.crowdsieve.proxy.capiUrl | quote }}
+      timeout_ms: {{ .Values.crowdsieve.proxy.timeoutMs }}
+      forward_enabled: {{ .Values.crowdsieve.proxy.forwardEnabled }}
+
+    storage:
+      path: "/app/data/crowdsieve.db"
+      retention_days: {{ .Values.crowdsieve.storage.retentionDays }}
+
+    logging:
+      level: {{ .Values.crowdsieve.logging.level | quote }}
+      format: {{ .Values.crowdsieve.logging.format | quote }}
+
+    filters:
+      mode: {{ .Values.crowdsieve.filters.mode | quote }}
+{{- end }}
