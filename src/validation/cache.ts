@@ -5,6 +5,17 @@ import type { CacheEntry } from './types.js';
 export class ValidationCache {
   async lookup(tokenHash: string): Promise<CacheEntry | null> {
     const db = getDatabase();
+
+    // Update last accessed time and access count atomically
+    await db
+      .update(schema.validatedClients)
+      .set({
+        lastAccessedAt: new Date().toISOString(),
+        accessCount: sql`${schema.validatedClients.accessCount} + 1`,
+      })
+      .where(eq(schema.validatedClients.tokenHash, tokenHash));
+
+    // Then fetch the row
     const result = await db
       .select()
       .from(schema.validatedClients)
@@ -16,16 +27,6 @@ export class ValidationCache {
     }
 
     const row = result[0];
-
-    // Update last accessed time and access count
-    await db
-      .update(schema.validatedClients)
-      .set({
-        lastAccessedAt: new Date().toISOString(),
-        accessCount: (row.accessCount || 0) + 1,
-      })
-      .where(eq(schema.validatedClients.tokenHash, tokenHash));
-
     return {
       tokenHash: row.tokenHash,
       expiresAt: new Date(row.expiresAt),
