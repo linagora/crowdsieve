@@ -46,7 +46,21 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Install production dependencies for proxy
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && \
+    npm cache clean --force && \
+    rm -rf /root/.npm && \
+    find node_modules -type f \( \
+        -name "README*" -o \
+        -name "CHANGELOG*" -o \
+        -name "*.md" -o \
+        -name "*.map" \
+    \) -delete && \
+    find node_modules -type d \( \
+        -name "test" -o \
+        -name "tests" -o \
+        -name ".github" -o \
+        -name "docs" \
+    \) -exec rm -rf {} + 2>/dev/null || true
 
 # Copy proxy build
 COPY --from=proxy-builder /app/dist ./dist

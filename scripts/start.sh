@@ -25,8 +25,8 @@ shutdown() {
 
 trap shutdown SIGTERM SIGINT
 
-# Wait for any process to exit
-wait -n
+# Wait for both processes (POSIX-compatible)
+wait $PROXY_PID $DASHBOARD_PID
 
-# If one exits, stop the other
+# If any exits, stop all
 shutdown
