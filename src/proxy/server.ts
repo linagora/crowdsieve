@@ -116,17 +116,6 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   app.decorate('proxyLogger', logger);
   app.decorate('clientValidator', clientValidator);
 
-  // Request logging
-  app.addHook('onRequest', async (request) => {
-    logger.debug(
-      {
-        method: request.method,
-        url: request.url,
-      },
-      'Incoming request'
-    );
-  });
-
   // CAPI passthrough hook - forwards /v2/* and /v3/* requests to CAPI
   // except /v2/signals which has its own handler with filtering logic
   app.addHook('onRequest', async (request, reply) => {
@@ -150,7 +139,7 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     const capiUrl = config.proxy.capi_url;
     const targetUrl = `${capiUrl}${url}`;
 
-    logger.debug({ method: request.method, url }, 'Forwarding to CAPI');
+    logger.debug({ method: request.method, url, clientIp: request.ip }, 'Forwarded request');
 
     try {
       const headers: Record<string, string> = {};
