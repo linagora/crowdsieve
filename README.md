@@ -4,15 +4,14 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 
 ## Features
 
-- **Alert Filtering**: Filter alerts based on configurable rules
-  - Alerts without decisions
-  - Scenario patterns (glob, regex)
-  - Source country
-  - Source IP/CIDR
-  - Simulated alerts
+- **Alert Filtering**: Powerful expression-based filter rules with logical operators (and, or, not)
+  - Field operators: eq, ne, gt, lt, in, contains, starts_with, ends_with, regex, glob, cidr
+  - Combinable conditions for complex filtering logic
+- **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
 - **GeoIP Enrichment**: Enrich alerts with geographic information
+- **Lightweight**: Docker image under 250MB
 
 ## Quick Start
 
@@ -31,6 +30,7 @@ docker compose logs -f
 ```
 
 The container runs both services:
+
 - **Proxy**: http://localhost:8080 (for CrowdSec LAPI)
 - **Dashboard**: http://localhost:3000 (web interface)
 
@@ -77,71 +77,108 @@ Edit `config/filters.yaml`:
 ```yaml
 proxy:
   listen_port: 8080
-  capi_url: "https://api.crowdsec.net"
+  capi_url: 'https://api.crowdsec.net'
   timeout_ms: 30000
-  # Set to false to disable forwarding (test mode - alerts are stored but not sent)
-  forward_enabled: true
+  forward_enabled: true # Set to false for test mode
 
 storage:
-  path: "./data/crowdsieve.db"
+  path: './data/crowdsieve.db'
   retention_days: 30
 
 filters:
-  mode: "block"  # "block" or "allow"
-  rules:
-    # Block alerts without decisions
-    - name: "no-decisions"
-      type: "no-decision"
-      enabled: true
-
-    # Block noisy scenarios
-    - name: "noise-scenarios"
-      type: "scenario"
-      enabled: false
-      patterns:
-        - "crowdsecurity/http-probing"
-      match_mode: "glob"
-
-    # Block specific countries
-    - name: "country-filter"
-      type: "source-country"
-      enabled: false
-      mode: "blocklist"
-      countries:
-        - "XX"
-
-    # Block internal IPs
-    - name: "internal-ips"
-      type: "source-ip"
-      enabled: false
-      mode: "blocklist"
-      cidrs:
-        - "10.0.0.0/8"
-        - "192.168.0.0/16"
+  mode: 'block' # "block" = matching alerts NOT forwarded; "allow" = only matching forwarded
+  # Rules are loaded from config/filters.d/*.yaml
 ```
 
-## Filter Types
+### Filter Rules
 
-| Type | Description |
-|------|-------------|
-| `no-decision` | Match alerts without any decisions |
-| `simulated` | Match simulated alerts |
-| `scenario` | Match by scenario name (exact, glob, or regex) |
-| `source-country` | Match by source country code |
-| `source-ip` | Match by source IP/CIDR |
+Filter rules are YAML files in `config/filters.d/`. Each rule uses an expression-based syntax:
+
+```yaml
+# config/filters.d/00-no-decision.yaml
+name: no-decision
+enabled: true
+description: 'Block alerts without decisions'
+filter:
+  field: decisions
+  op: empty
+```
+
+```yaml
+# config/filters.d/10-internal-ips.yaml
+name: internal-ips
+enabled: true
+description: 'Block internal IP ranges'
+filter:
+  field: source.ip
+  op: cidr
+  value:
+    - '10.0.0.0/8'
+    - '172.16.0.0/12'
+    - '192.168.0.0/16'
+```
+
+```yaml
+# Complex filter with logical operators
+name: complex-filter
+enabled: true
+filter:
+  op: and
+  conditions:
+    - field: scenario
+      op: glob
+      value: 'crowdsecurity/*'
+    - op: not
+      condition:
+        field: source.country
+        op: in
+        value: ['FR', 'DE', 'US']
+```
+
+## Filter Operators
+
+| Operator                | Description            |
+| ----------------------- | ---------------------- |
+| `eq`, `ne`              | Equals / Not equals    |
+| `gt`, `gte`, `lt`, `lte`| Numeric comparisons    |
+| `in`, `not_in`          | Value in array         |
+| `contains`, `not_contains` | String/array contains |
+| `starts_with`, `ends_with` | String prefix/suffix |
+| `glob`, `regex`         | Pattern matching       |
+| `cidr`                  | IP in CIDR range(s)    |
+| `empty`, `not_empty`    | Check if empty         |
+| `and`, `or`, `not`      | Logical operators      |
+
+## Client Validation
+
+CrowdSieve can optionally validate CrowdSec clients against CAPI before accepting alerts. This prevents unauthorized clients from sending data through the proxy.
+
+Enable via environment variables:
+
+```bash
+CLIENT_VALIDATION_ENABLED=true
+CLIENT_VALIDATION_CACHE_TTL=604800        # Cache valid clients for 1 week
+CLIENT_VALIDATION_CACHE_TTL_ERROR=3600    # Cache on CAPI errors for 1 hour
+CLIENT_VALIDATION_FAIL_CLOSED=false       # Set to true to reject when CAPI unavailable
+```
+
+Validation uses a dual-layer cache (in-memory LRU + SQLite) for performance.
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CONFIG_PATH` | `./config/filters.yaml` | Path to config file |
-| `DATABASE_PATH` | `./data/crowdsieve.db` | Path to SQLite database |
-| `GEOIP_DB_PATH` | `./data/GeoLite2-City.mmdb` | Path to GeoIP database |
-| `PROXY_PORT` | `8080` | Proxy listen port |
-| `DASHBOARD_PORT` | `3000` | Dashboard listen port |
-| `LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
-| `LOG_FORMAT` | `json` | Log format (json, pretty) |
-| `FORWARD_ENABLED` | `true` | Set to `false` to disable CAPI forwarding (test mode) |
+| Variable          | Default                     | Description                                           |
+| ----------------- | --------------------------- | ----------------------------------------------------- |
+| `CONFIG_PATH`     | `./config/filters.yaml`     | Path to config file                                   |
+| `DATABASE_PATH`   | `./data/crowdsieve.db`      | Path to SQLite database                               |
+| `GEOIP_DB_PATH`   | `./data/GeoLite2-City.mmdb` | Path to GeoIP database                                |
+| `PROXY_PORT`      | `8080`                      | Proxy listen port                                     |
+| `DASHBOARD_PORT`  | `3000`                      | Dashboard listen port                                 |
+| `LOG_LEVEL`       | `info`                      | Log level (debug, info, warn, error)                  |
+| `LOG_FORMAT`      | `json`                      | Log format (json, pretty)                             |
+| `FORWARD_ENABLED` | `true`                      | Set to `false` to disable CAPI forwarding (test mode) |
+| `CLIENT_VALIDATION_ENABLED` | `false`         | Enable client validation against CAPI                 |
+| `CLIENT_VALIDATION_CACHE_TTL` | `604800`      | Cache TTL for validated clients (seconds)             |
+| `CLIENT_VALIDATION_FAIL_CLOSED` | `false`     | Reject requests when CAPI is unavailable              |
 
 ## GeoIP Database
 
@@ -172,22 +209,30 @@ npm run lint
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌──────────────┐
-│ CrowdSec LAPI   │────▶│ Fastify Proxy   │────▶│ CrowdSec CAPI│
-│ (multiples)     │     │ (port 8080)     │     │api.crowdsec  │
-└─────────────────┘     └────────┬────────┘     └──────────────┘
-                                 │
-                        ┌────────┴────────┐
-                        │    SQLite DB    │
-                        └────────┬────────┘
-                                 │
-                        ┌────────▼────────┐
-                        │ Next.js Dashboard│
-                        │ (port 3000)      │
-                        └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph Clients
+        LAPI1[CrowdSec LAPI]
+        LAPI2[CrowdSec LAPI]
+        LAPI3[CrowdSec LAPI]
+    end
+
+    subgraph CrowdSieve
+        Proxy[Fastify Proxy<br/>:8080]
+        DB[(SQLite DB)]
+        Dashboard[Next.js Dashboard<br/>:3000]
+    end
+
+    CAPI[CrowdSec CAPI<br/>api.crowdsec.net]
+
+    LAPI1 --> Proxy
+    LAPI2 --> Proxy
+    LAPI3 --> Proxy
+    Proxy --> CAPI
+    Proxy --> DB
+    Dashboard --> DB
 ```
 
 ## License
 
-MIT
+AGPL-3.0-only
