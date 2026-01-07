@@ -1,4 +1,4 @@
-import { eq, lt } from 'drizzle-orm';
+import { eq, lt, sql } from 'drizzle-orm';
 import { getDatabase, schema } from '../db/index.js';
 import type { CacheEntry } from './types.js';
 
@@ -54,6 +54,7 @@ export class ValidationCache {
           validatedAt: now.toISOString(),
           expiresAt: expiresAt.toISOString(),
           lastAccessedAt: now.toISOString(),
+          accessCount: sql`${schema.validatedClients.accessCount} + 1`,
         },
       });
   }

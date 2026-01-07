@@ -128,7 +128,7 @@ function runMigrations(sqlite: Database.Database) {
       access_count INTEGER DEFAULT 1
     );
 
-    CREATE INDEX IF NOT EXISTS idx_vc_token_hash ON validated_clients(token_hash);
+    -- Note: token_hash already has implicit index from UNIQUE constraint
     CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
   `);
 }

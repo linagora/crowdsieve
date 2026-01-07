@@ -67,6 +67,9 @@ export class ClientValidator {
         signal: AbortSignal.timeout(this.config.validationTimeoutMs),
       });
 
+      // Consume response body to allow connection reuse
+      await response.text().catch(() => {});
+
       if (response.ok) {
         await this.cacheClient(tokenHash, this.config.cacheTtlSeconds);
         this.logger.info({ tokenHash: shortHash }, 'Client validated with CAPI');

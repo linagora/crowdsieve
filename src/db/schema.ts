@@ -117,7 +117,7 @@ export const validatedClients = sqliteTable(
     accessCount: integer('access_count').default(1),
   },
   (table) => ({
-    tokenHashIdx: index('idx_vc_token_hash').on(table.tokenHash),
+    // Note: tokenHash already has implicit index from UNIQUE constraint
     expiresAtIdx: index('idx_vc_expires_at').on(table.expiresAt),
   })
 );

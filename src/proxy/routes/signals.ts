@@ -11,7 +11,12 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     apiVersion: 'v2' | 'v3'
   ) => {
     // Client validation (if enabled)
-    if (config.client_validation?.enabled && clientValidator) {
+    if (config.client_validation?.enabled) {
+      if (!clientValidator) {
+        logger.error('Client validation enabled but clientValidator not initialized');
+        return reply.code(500).send({ error: 'Internal server error' });
+      }
+
       const result = await clientValidator.validate(request.headers.authorization);
 
       if (!result.valid) {
