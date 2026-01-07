@@ -13,7 +13,11 @@ crowdsieve:
   # -- Enable CrowdSieve deployment
   enabled: true
 
-  # -- Number of replicas (keep at 1 for SQLite backend)
+  # -- Number of replicas
+  # NOTE: CrowdSieve uses a SQLite backend by default.
+  #       When using SQLite, you MUST keep replicaCount set to 1 to avoid
+  #       data corruption and inconsistent behavior. Scale beyond 1 only
+  #       if you switch to a shared, concurrency-safe database backend.
   replicaCount: 1
 
   image:
@@ -140,6 +144,10 @@ crowdsieve:
     enabled: false
     # -- MaxMind license key for downloading GeoLite2-City.mmdb
     # Get a free license key at https://www.maxmind.com/en/geolite2/signup
+    # NOTE: The license key is stored in a Kubernetes Secret but will be
+    # visible in the init container's environment (pod spec). For sensitive
+    # environments, consider pre-downloading the database and mounting it
+    # via a PVC or using an external secrets manager.
     maxmindLicenseKey: ""
 
   # ---------------------------------------------------------------------------
@@ -257,8 +265,14 @@ crowdsec:
 
     # -- LAPI environment variables
     env: []
-    # NOTE: We don't set DISABLE_ONLINE_API because we want CrowdSec to use
-    # the online_api_credentials.yaml that points to CrowdSieve
+    # NOTE: We intentionally do NOT set DISABLE_ONLINE_API here.
+    # Setting DISABLE_ONLINE_API=true would prevent CrowdSec from using the
+    # online API (CAPI). In this chart, LAPI is configured to read
+    # /etc/crowdsec/online_api_credentials.yaml, which points to CrowdSieve
+    # so that all CAPI traffic is proxied through it.
+    # If you set DISABLE_ONLINE_API in this section, CrowdSec will not use
+    # the online_api_credentials.yaml file and the CrowdSieve integration
+    # will be effectively disabled.
 
     # -- Extra volume mounts for LAPI
     # NOTE: The ConfigMap name follows pattern: <release-name>-crowdsieve-capi-credentials

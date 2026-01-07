@@ -36,10 +36,14 @@ spec:
       {{- if .Values.crowdsieve.geoip.enabled }}
       initContainers:
         - name: download-geoip
-          image: curlimages/curl:latest
+          image: curlimages/curl:8.11.1
           command:
             - sh
             - -c
+            # NOTE: MaxMind does not provide checksums for GeoLite2 free databases.
+            # The download is done over HTTPS which provides transport security.
+            # For additional integrity verification, consider using a paid GeoIP2
+            # database which includes SHA256 checksums.
             - |
               if [ ! -f /data/GeoLite2-City.mmdb ]; then
                 echo "Downloading GeoLite2-City.mmdb..."
