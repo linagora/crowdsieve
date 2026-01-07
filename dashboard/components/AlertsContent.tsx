@@ -13,15 +13,8 @@ interface AlertsContentProps {
 
 export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
   const router = useRouter();
-  const {
-    filters,
-    updateFilters,
-    resetFilters,
-    alerts,
-    isLoading,
-    hasActiveFilters,
-    timeBounds,
-  } = useAlertFilters({ initialAlerts, limit: 200 });
+  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds } =
+    useAlertFilters({ initialAlerts, limit: 200 });
 
   return (
     <div className="space-y-4">
@@ -42,9 +35,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
           <h2 className="text-lg font-semibold">
             Toutes les alertes
             {isLoading && (
-              <span className="ml-2 text-sm font-normal text-slate-400">
-                Chargement...
-              </span>
+              <span className="ml-2 text-sm font-normal text-slate-400">Chargement...</span>
             )}
           </h2>
           <span className="text-sm text-slate-500">

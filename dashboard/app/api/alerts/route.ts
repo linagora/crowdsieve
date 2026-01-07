@@ -21,19 +21,13 @@ export async function GET(request: NextRequest) {
     });
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: 'Failed to fetch alerts' },
-        { status: res.status }
-      );
+      return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: res.status });
     }
 
     const data = await res.json();
     return NextResponse.json(data);
   } catch (error) {
     console.error('API proxy error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch alerts' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: 500 });
   }
 }

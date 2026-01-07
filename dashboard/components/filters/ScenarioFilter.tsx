@@ -30,9 +30,7 @@ export function ScenarioFilter({
   const [open, setOpen] = useState(false);
 
   const selectedItem = scenarios.find((s) => s.scenario === selectedScenario);
-  const displayName = selectedItem
-    ? selectedItem.scenario.split('/').pop()
-    : 'Tous les scénarios';
+  const displayName = selectedItem ? selectedItem.scenario.split('/').pop() : 'Tous les scénarios';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -63,10 +61,7 @@ export function ScenarioFilter({
                 }}
               >
                 <Check
-                  className={cn(
-                    'mr-2 h-4 w-4',
-                    !selectedScenario ? 'opacity-100' : 'opacity-0'
-                  )}
+                  className={cn('mr-2 h-4 w-4', !selectedScenario ? 'opacity-100' : 'opacity-0')}
                 />
                 Tous les scénarios
               </CommandItem>

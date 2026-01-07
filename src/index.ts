@@ -114,10 +114,7 @@ async function main() {
       config.proxy.capi_url,
       logger
     );
-    logger.info(
-      { failClosed: config.client_validation.fail_closed },
-      'Client validation enabled'
-    );
+    logger.info({ failClosed: config.client_validation.fail_closed }, 'Client validation enabled');
   }
 
   // Create and start proxy server

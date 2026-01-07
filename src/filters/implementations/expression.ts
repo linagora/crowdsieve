@@ -107,7 +107,8 @@ export class ExpressionFilter implements Filter {
         break;
 
       case 'gte':
-        matched = typeof fieldValue === 'number' && typeof value === 'number' && fieldValue >= value;
+        matched =
+          typeof fieldValue === 'number' && typeof value === 'number' && fieldValue >= value;
         reason = matched ? `${condition.field} >= ${value}` : undefined;
         break;
 
@@ -117,7 +118,8 @@ export class ExpressionFilter implements Filter {
         break;
 
       case 'lte':
-        matched = typeof fieldValue === 'number' && typeof value === 'number' && fieldValue <= value;
+        matched =
+          typeof fieldValue === 'number' && typeof value === 'number' && fieldValue <= value;
         reason = matched ? `${condition.field} <= ${value}` : undefined;
         break;
 
@@ -184,7 +186,9 @@ export class ExpressionFilter implements Filter {
           matched = minimatch(fieldValue, value);
           reason = matched ? `${condition.field} matches glob "${value}"` : undefined;
         } else if (typeof fieldValue === 'string' && Array.isArray(value)) {
-          const matchingPattern = value.find((p) => typeof p === 'string' && minimatch(fieldValue, p));
+          const matchingPattern = value.find(
+            (p) => typeof p === 'string' && minimatch(fieldValue, p)
+          );
           matched = matchingPattern !== undefined;
           reason = matched ? `${condition.field} matches glob "${matchingPattern}"` : undefined;
         }

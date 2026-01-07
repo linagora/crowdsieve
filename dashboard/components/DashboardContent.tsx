@@ -15,15 +15,8 @@ interface DashboardContentProps {
 
 export function DashboardContent({ initialAlerts, stats }: DashboardContentProps) {
   const router = useRouter();
-  const {
-    filters,
-    updateFilters,
-    resetFilters,
-    alerts,
-    isLoading,
-    hasActiveFilters,
-    timeBounds,
-  } = useAlertFilters({ initialAlerts });
+  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds } =
+    useAlertFilters({ initialAlerts });
 
   return (
     <div className="space-y-6">
@@ -42,11 +35,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
         {/* Map */}
         <div className="card p-4">
           <h2 className="text-lg font-semibold mb-4">Origines des alertes</h2>
-          <Suspense
-            fallback={
-              <div className="h-[400px] bg-slate-100 animate-pulse rounded-lg" />
-            }
-          >
+          <Suspense fallback={<div className="h-[400px] bg-slate-100 animate-pulse rounded-lg" />}>
             <WorldMapWrapper alerts={alerts} />
           </Suspense>
         </div>
@@ -57,9 +46,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
             <h2 className="text-lg font-semibold">
               Alertes récentes
               {isLoading && (
-                <span className="ml-2 text-sm font-normal text-slate-400">
-                  Chargement...
-                </span>
+                <span className="ml-2 text-sm font-normal text-slate-400">Chargement...</span>
               )}
             </h2>
             <span className="text-sm text-slate-500">
@@ -99,9 +86,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
                 <div className="text-sm font-medium truncate" title={item.scenario}>
                   {item.scenario.split('/').pop()}
                 </div>
-                <div className="text-2xl font-bold text-crowdsec-primary">
-                  {item.count}
-                </div>
+                <div className="text-2xl font-bold text-crowdsec-primary">{item.count}</div>
               </div>
             ))}
           </div>

@@ -9,12 +9,7 @@ import 'react-day-picker/style.css';
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
-function Calendar({
-  className,
-  classNames,
-  showOutsideDays = true,
-  ...props
-}: CalendarProps) {
+function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}

@@ -97,11 +97,17 @@ export class ClientValidator {
     } catch (err) {
       // Timeout/network error
       if (this.config.failClosed) {
-        this.logger.error({ err, tokenHash: shortHash }, 'CAPI validation failed, rejecting request (fail-closed mode)');
+        this.logger.error(
+          { err, tokenHash: shortHash },
+          'CAPI validation failed, rejecting request (fail-closed mode)'
+        );
         return { valid: false, reason: 'capi_error_failclosed' };
       }
 
-      this.logger.warn({ err, tokenHash: shortHash }, 'CAPI validation failed, allowing request (fail-open)');
+      this.logger.warn(
+        { err, tokenHash: shortHash },
+        'CAPI validation failed, allowing request (fail-open)'
+      );
       await this.cacheClient(tokenHash, this.config.cacheTtlErrorSeconds);
       return { valid: true, reason: 'capi_error_failopen' };
     }

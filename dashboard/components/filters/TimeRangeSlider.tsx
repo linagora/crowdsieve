@@ -79,10 +79,7 @@ export function TimeRangeSlider({
     return format(date, 'd MMM yyyy');
   };
 
-  const daysDiff = differenceInDays(
-    until || maxDate,
-    since || minDate
-  );
+  const daysDiff = differenceInDays(until || maxDate, since || minDate);
 
   return (
     <div className={cn('space-y-3', isLoading && 'opacity-50 pointer-events-none')}>

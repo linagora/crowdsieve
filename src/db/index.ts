@@ -27,7 +27,11 @@ export function initializeDatabase(dbPath: string) {
     // On Windows, chmod may not be supported; ignore errors there.
     // On other platforms, log a warning so permission issues are visible.
     if (process.platform !== 'win32') {
-      console.warn('Warning: failed to set restrictive permissions (0600) on database file:', dbPath, err);
+      console.warn(
+        'Warning: failed to set restrictive permissions (0600) on database file:',
+        dbPath,
+        err
+      );
     }
   }
 

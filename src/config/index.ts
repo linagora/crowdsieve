@@ -12,12 +12,7 @@ const BaseFilterSchema = z.object({
 
 // Expression filter schema
 // Primitive value types
-const PrimitiveValue = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-]);
+const PrimitiveValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
 // Array of primitives or strings (for 'in', 'cidr', etc.)
 const ValueArray = z.array(z.union([z.string(), z.number(), z.boolean()]));
@@ -153,7 +148,10 @@ export function loadConfigFromEnv(): Partial<Config> {
     client_validation: {
       enabled: process.env.CLIENT_VALIDATION_ENABLED === 'true',
       cache_ttl_seconds: parseInt(process.env.CLIENT_VALIDATION_CACHE_TTL || '604800', 10),
-      cache_ttl_error_seconds: parseInt(process.env.CLIENT_VALIDATION_CACHE_TTL_ERROR || '3600', 10),
+      cache_ttl_error_seconds: parseInt(
+        process.env.CLIENT_VALIDATION_CACHE_TTL_ERROR || '3600',
+        10
+      ),
       validation_timeout_ms: parseInt(process.env.CLIENT_VALIDATION_TIMEOUT_MS || '5000', 10),
       max_memory_entries: parseInt(process.env.CLIENT_VALIDATION_MAX_MEMORY_ENTRIES || '1000', 10),
       fail_closed: process.env.CLIENT_VALIDATION_FAIL_CLOSED === 'true',
