@@ -2,7 +2,7 @@ import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import type { SignalsRequest } from '../../models/alert.js';
 
 const signalsRoute: FastifyPluginAsync = async (fastify) => {
-  const { config, filterEngine, storage, proxyLogger: logger } = fastify;
+  const { config, filterEngine, storage, proxyLogger: logger, clientValidator } = fastify;
 
   // Shared handler for both /v2/signals and /v3/signals
   const handleSignals = async (
@@ -10,6 +10,21 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     reply: FastifyReply,
     apiVersion: 'v2' | 'v3'
   ) => {
+    // Client validation (if enabled)
+    if (config.client_validation?.enabled && clientValidator) {
+      const result = await clientValidator.validate(request.headers.authorization);
+
+      if (!result.valid) {
+        logger.warn({ reason: result.reason }, 'Rejected signals from invalid client');
+        return reply.code(401).send({
+          error: 'Unauthorized',
+          message: 'Client validation failed',
+        });
+      }
+
+      logger.debug({ reason: result.reason }, 'Client validated');
+    }
+
     const alerts = request.body;
 
     if (!Array.isArray(alerts)) {

@@ -6,6 +6,7 @@ import { FilterEngine } from './filters/index.js';
 import { createStorage } from './storage/index.js';
 import { createProxyServer } from './proxy/server.js';
 import { initGeoIP, lookupIP, closeGeoIP } from './geoip/index.js';
+import { ClientValidator } from './validation/index.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/GeoLite2-City.mmdb';
@@ -21,6 +22,7 @@ async function main() {
     storage: { ...fileConfig.storage, ...envConfig.storage },
     logging: { ...fileConfig.logging, ...envConfig.logging },
     filters: fileConfig.filters, // Filters only from file
+    client_validation: { ...fileConfig.client_validation, ...envConfig.client_validation },
   };
 
   // Initialize logger
@@ -97,12 +99,30 @@ async function main() {
     return originalStoreAlerts(alerts, filterDetails, geoipAvailable ? lookupIP : undefined);
   };
 
+  // Initialize client validator (if enabled)
+  let clientValidator: ClientValidator | undefined;
+  if (config.client_validation.enabled) {
+    clientValidator = new ClientValidator(
+      {
+        enabled: config.client_validation.enabled,
+        cacheTtlSeconds: config.client_validation.cache_ttl_seconds,
+        cacheTtlErrorSeconds: config.client_validation.cache_ttl_error_seconds,
+        validationTimeoutMs: config.client_validation.validation_timeout_ms,
+        maxMemoryEntries: config.client_validation.max_memory_entries,
+      },
+      config.proxy.capi_url,
+      logger
+    );
+    logger.info('Client validation enabled');
+  }
+
   // Create and start proxy server
   const server = await createProxyServer({
     config,
     filterEngine,
     storage,
     logger,
+    clientValidator,
   });
 
   // Graceful shutdown
@@ -138,6 +158,15 @@ async function main() {
       }
     } catch (err) {
       logger.error({ err }, 'Cleanup failed');
+    }
+
+    // Cleanup validation cache
+    if (clientValidator) {
+      try {
+        await clientValidator.cleanupExpired();
+      } catch (err) {
+        logger.error({ err }, 'Validation cache cleanup failed');
+      }
     }
   }, cleanupInterval);
 }

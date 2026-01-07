@@ -117,6 +117,19 @@ function runMigrations(sqlite: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_event_alert ON events(alert_id);
+
+    CREATE TABLE IF NOT EXISTS validated_clients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      machine_id TEXT,
+      validated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      last_accessed_at TEXT NOT NULL,
+      access_count INTEGER DEFAULT 1
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_vc_token_hash ON validated_clients(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
   `);
 }
 

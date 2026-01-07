@@ -106,6 +106,15 @@ const ConfigSchema = z.object({
       rules: z.array(FilterRuleSchema).default([]),
     })
     .default({}),
+  client_validation: z
+    .object({
+      enabled: z.boolean().default(false),
+      cache_ttl_seconds: z.number().default(604800),
+      cache_ttl_error_seconds: z.number().default(3600),
+      validation_timeout_ms: z.number().default(5000),
+      max_memory_entries: z.number().default(1000),
+    })
+    .default({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -139,6 +148,13 @@ export function loadConfigFromEnv(): Partial<Config> {
     logging: {
       level: (process.env.LOG_LEVEL as Config['logging']['level']) || 'info',
       format: (process.env.LOG_FORMAT as Config['logging']['format']) || 'json',
+    },
+    client_validation: {
+      enabled: process.env.CLIENT_VALIDATION_ENABLED === 'true',
+      cache_ttl_seconds: parseInt(process.env.CLIENT_VALIDATION_CACHE_TTL || '604800', 10),
+      cache_ttl_error_seconds: parseInt(process.env.CLIENT_VALIDATION_CACHE_TTL_ERROR || '3600', 10),
+      validation_timeout_ms: parseInt(process.env.CLIENT_VALIDATION_TIMEOUT_MS || '5000', 10),
+      max_memory_entries: parseInt(process.env.CLIENT_VALIDATION_MAX_MEMORY_ENTRIES || '1000', 10),
     },
   };
 }
