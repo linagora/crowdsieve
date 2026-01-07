@@ -1,0 +1,13 @@
+{{- if .Values.crowdsieve.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}-filters
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+data:
+  {{- range $filename, $content := .Values.crowdsieve.filters.rules }}
+  {{ $filename }}: |
+    {{- $content | nindent 4 }}
+  {{- end }}
+{{- end }}

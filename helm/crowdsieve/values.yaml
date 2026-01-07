@@ -1,0 +1,360 @@
+# Default values for crowdsieve Helm chart
+# This chart deploys CrowdSieve as a filtering proxy between CrowdSec LAPI and CAPI
+
+# -- Global settings
+global:
+  # -- Image pull secrets for private registries
+  imagePullSecrets: []
+
+# =============================================================================
+# CrowdSieve Configuration
+# =============================================================================
+crowdsieve:
+  # -- Enable CrowdSieve deployment
+  enabled: true
+
+  # -- Number of replicas (keep at 1 for SQLite backend)
+  replicaCount: 1
+
+  image:
+    # -- CrowdSieve image repository
+    repository: yadd/crowdsieve
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+    # -- Image tag (defaults to chart appVersion)
+    tag: ""
+
+  # -- Service account configuration
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  # -- Pod annotations
+  podAnnotations: {}
+
+  # -- Pod security context
+  podSecurityContext:
+    fsGroup: 1001
+
+  # -- Container security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+
+  # -- Resource requests and limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # -- Node selector
+  nodeSelector: {}
+
+  # -- Tolerations
+  tolerations: []
+
+  # -- Affinity rules
+  affinity: {}
+
+  # ---------------------------------------------------------------------------
+  # Proxy Configuration
+  # ---------------------------------------------------------------------------
+  proxy:
+    # -- Proxy listen port
+    port: 8080
+    # -- CAPI URL to forward alerts to
+    capiUrl: "https://api.crowdsec.net"
+    # -- Request timeout in milliseconds
+    timeoutMs: 30000
+    # -- Enable forwarding to CAPI
+    forwardEnabled: true
+
+  # ---------------------------------------------------------------------------
+  # Dashboard Configuration
+  # ---------------------------------------------------------------------------
+  dashboard:
+    # -- Dashboard listen port
+    port: 3000
+    # -- API key for dashboard authentication (optional, leave empty to disable)
+    apiKey: ""
+    # -- CORS origin (leave empty for restrictive mode)
+    corsOrigin: ""
+
+  # ---------------------------------------------------------------------------
+  # Logging Configuration
+  # ---------------------------------------------------------------------------
+  logging:
+    # -- Log level: debug, info, warn, error
+    level: "info"
+    # -- Log format: json, pretty
+    format: "json"
+
+  # ---------------------------------------------------------------------------
+  # Storage Configuration
+  # ---------------------------------------------------------------------------
+  storage:
+    # -- Alert retention in days
+    retentionDays: 30
+
+  # ---------------------------------------------------------------------------
+  # Rate Limiting
+  # ---------------------------------------------------------------------------
+  rateLimit:
+    # -- Maximum requests per time window
+    max: 100
+    # -- Time window in milliseconds
+    windowMs: 60000
+
+  # ---------------------------------------------------------------------------
+  # Client Validation
+  # ---------------------------------------------------------------------------
+  clientValidation:
+    # -- Enable client validation against CAPI
+    enabled: false
+    # -- Cache TTL in seconds (default: 1 week)
+    cacheTtl: 604800
+    # -- Cache TTL on CAPI errors in seconds (default: 1 hour)
+    cacheTtlError: 3600
+    # -- Validation request timeout in milliseconds
+    timeoutMs: 5000
+    # -- Max entries in memory LRU cache
+    maxMemoryEntries: 1000
+    # -- Reject requests when CAPI is unavailable
+    failClosed: false
+
+  # ---------------------------------------------------------------------------
+  # GeoIP Configuration
+  # ---------------------------------------------------------------------------
+  geoip:
+    # -- Enable GeoIP enrichment
+    enabled: false
+    # -- MaxMind license key for downloading GeoLite2-City.mmdb
+    # Get a free license key at https://www.maxmind.com/en/geolite2/signup
+    maxmindLicenseKey: ""
+
+  # ---------------------------------------------------------------------------
+  # Filters Configuration
+  # ---------------------------------------------------------------------------
+  filters:
+    # -- Filter mode: "block" (matching = filtered) or "allow" (only matching = forwarded)
+    mode: "block"
+    # -- Filter rules as YAML (will be placed in filters.d/)
+    rules:
+      # Block alerts without decisions
+      00-no-decision.yaml: |
+        name: "no-decision"
+        description: "Block alerts without decisions"
+        expression:
+          empty:
+            field: "decisions"
+
+      # Block simulated alerts
+      01-simulated.yaml: |
+        name: "simulated"
+        description: "Block simulated alerts"
+        expression:
+          eq:
+            field: "simulated"
+            value: true
+
+      # Block internal IP ranges
+      10-internal-ips.yaml: |
+        name: "internal-ips"
+        description: "Block alerts from internal IP ranges"
+        expression:
+          or:
+            - cidr:
+                field: "source.ip"
+                value: "10.0.0.0/8"
+            - cidr:
+                field: "source.ip"
+                value: "172.16.0.0/12"
+            - cidr:
+                field: "source.ip"
+                value: "192.168.0.0/16"
+            - cidr:
+                field: "source.ip"
+                value: "127.0.0.0/8"
+
+  # ---------------------------------------------------------------------------
+  # Persistence
+  # ---------------------------------------------------------------------------
+  persistence:
+    # -- Enable persistent storage for SQLite database
+    enabled: true
+    # -- Storage class (empty = default)
+    storageClassName: ""
+    # -- Access modes
+    accessModes:
+      - ReadWriteOnce
+    # -- Storage size
+    size: 1Gi
+    # -- Use existing PVC
+    existingClaim: ""
+    # -- Annotations for PVC
+    annotations: {}
+
+  # ---------------------------------------------------------------------------
+  # Service Configuration
+  # ---------------------------------------------------------------------------
+  service:
+    # -- Service type: ClusterIP, NodePort, LoadBalancer
+    type: ClusterIP
+    # -- Proxy port
+    proxyPort: 8080
+    # -- Dashboard port
+    dashboardPort: 3000
+    # -- Annotations
+    annotations: {}
+
+  # ---------------------------------------------------------------------------
+  # Ingress Configuration (for Dashboard)
+  # ---------------------------------------------------------------------------
+  ingress:
+    # -- Enable ingress for dashboard
+    enabled: false
+    # -- Ingress class name
+    className: ""
+    # -- Ingress annotations
+    annotations: {}
+    # -- Ingress hosts
+    hosts:
+      - host: crowdsieve.local
+        paths:
+          - path: /
+            pathType: Prefix
+    # -- TLS configuration
+    tls: []
+
+# =============================================================================
+# CrowdSec Configuration (from crowdsec subchart)
+# =============================================================================
+crowdsec:
+  # -- Enable CrowdSec deployment
+  enabled: true
+
+  # -- Container runtime for log acquisition
+  container_runtime: containerd
+
+  # ---------------------------------------------------------------------------
+  # LAPI Configuration
+  # ---------------------------------------------------------------------------
+  lapi:
+    # -- Enable LAPI
+    enabled: true
+    # -- Number of replicas
+    replicas: 1
+
+    # -- LAPI environment variables
+    env: []
+    # NOTE: We don't set DISABLE_ONLINE_API because we want CrowdSec to use
+    # the online_api_credentials.yaml that points to CrowdSieve
+
+    # -- Extra volume mounts for LAPI
+    # NOTE: The ConfigMap name follows pattern: <release-name>-crowdsieve-capi-credentials
+    # If you use fullnameOverride, adjust the ConfigMap name accordingly
+    extraVolumeMounts:
+      - name: online-api-credentials
+        mountPath: /etc/crowdsec/online_api_credentials.yaml
+        subPath: online_api_credentials.yaml
+        readOnly: true
+
+    # -- Extra volumes for LAPI
+    # IMPORTANT: Update the ConfigMap name to match your release name!
+    # Pattern: <release-name>-crowdsieve-capi-credentials
+    # Example: If your release is named "my-release", use "my-release-crowdsieve-capi-credentials"
+    extraVolumes: []
+    # Example (uncomment and adjust):
+    # - name: online-api-credentials
+    #   configMap:
+    #     name: my-release-crowdsieve-capi-credentials
+
+    # -- Persistent volume for LAPI data
+    persistentVolume:
+      data:
+        enabled: true
+        size: 1Gi
+      config:
+        enabled: true
+        size: 100Mi
+
+    # -- Resources for LAPI
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # -- LAPI service configuration
+    service:
+      type: ClusterIP
+
+    # -- Metrics configuration
+    metrics:
+      enabled: false
+      serviceMonitor:
+        enabled: false
+
+  # ---------------------------------------------------------------------------
+  # Agent Configuration
+  # ---------------------------------------------------------------------------
+  agent:
+    # -- Enable agent for log acquisition
+    enabled: true
+
+    # -- Agent environment variables
+    env:
+      - name: COLLECTIONS
+        value: "crowdsecurity/linux crowdsecurity/nginx"
+
+    # -- Resources for agent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # -- Acquisition configuration
+    acquisition:
+      - namespace: default
+        podName: nginx-*
+        program: nginx
+
+    # -- Metrics configuration
+    metrics:
+      enabled: false
+
+  # -- Configuration overrides
+  config:
+    # -- config.yaml.local override
+    config.yaml.local: ""
+
+# =============================================================================
+# CAPI Credentials for CrowdSec -> CrowdSieve connection
+# =============================================================================
+capiCredentials:
+  # -- Machine ID for CrowdSec enrollment
+  # Generate with: cscli machines add <name> --password <password>
+  login: ""
+  # -- Password for CrowdSec enrollment
+  password: ""
+  # -- Use existing secret instead of creating one
+  existingSecret: ""
+  # -- Key in existing secret for login
+  loginKey: "login"
+  # -- Key in existing secret for password
+  passwordKey: "password"

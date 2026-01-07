@@ -1,0 +1,185 @@
+# Example values file for CrowdSieve Helm chart
+# This example deploys CrowdSieve with CrowdSec in a namespace called "security"
+#
+# Usage:
+#   helm install crowdsieve ./helm/crowdsieve -f ./helm/crowdsieve/values-example.yaml -n security --create-namespace
+
+# CrowdSieve configuration
+crowdsieve:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: yadd/crowdsieve
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Proxy settings
+  proxy:
+    port: 8080
+    capiUrl: "https://api.crowdsec.net"
+    forwardEnabled: true
+
+  # Dashboard settings
+  dashboard:
+    port: 3000
+    # Uncomment to enable API key authentication
+    # apiKey: "your-secure-api-key-here"
+
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+
+  # Storage
+  storage:
+    retentionDays: 30
+
+  # Persistence for SQLite database
+  persistence:
+    enabled: true
+    size: 2Gi
+
+  # Enable GeoIP enrichment (requires MaxMind license)
+  geoip:
+    enabled: false
+    # Get a free license at https://www.maxmind.com/en/geolite2/signup
+    # maxmindLicenseKey: "your-maxmind-license-key"
+
+  # Custom filter rules
+  filters:
+    mode: "block"
+    rules:
+      00-no-decision.yaml: |
+        name: "no-decision"
+        description: "Block alerts without decisions"
+        expression:
+          empty:
+            field: "decisions"
+
+      01-simulated.yaml: |
+        name: "simulated"
+        description: "Block simulated alerts"
+        expression:
+          eq:
+            field: "simulated"
+            value: true
+
+      10-internal-ips.yaml: |
+        name: "internal-ips"
+        description: "Block alerts from internal IP ranges"
+        expression:
+          or:
+            - cidr:
+                field: "source.ip"
+                value: "10.0.0.0/8"
+            - cidr:
+                field: "source.ip"
+                value: "172.16.0.0/12"
+            - cidr:
+                field: "source.ip"
+                value: "192.168.0.0/16"
+            - cidr:
+                field: "source.ip"
+                value: "127.0.0.0/8"
+
+      # Custom filter: block SSH brute force from specific countries
+      20-ssh-geo-filter.yaml: |
+        name: "ssh-geo-filter"
+        description: "Block SSH brute force alerts from monitored networks"
+        expression:
+          and:
+            - contains:
+                field: "scenario"
+                value: "ssh"
+            - cidr:
+                field: "source.ip"
+                value: "192.168.1.0/24"
+
+  # Ingress for dashboard (optional)
+  ingress:
+    enabled: false
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: crowdsieve.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: crowdsieve-tls
+        hosts:
+          - crowdsieve.example.com
+
+# CrowdSec configuration
+crowdsec:
+  enabled: true
+  container_runtime: containerd
+
+  lapi:
+    enabled: true
+    replicas: 1
+
+    # Mount the online_api_credentials.yaml that points to CrowdSieve
+    extraVolumeMounts:
+      - name: online-api-credentials
+        mountPath: /etc/crowdsec/online_api_credentials.yaml
+        subPath: online_api_credentials.yaml
+        readOnly: true
+
+    # IMPORTANT: The ConfigMap name must match your release name!
+    # If helm install is: helm install crowdsieve ./helm/crowdsieve
+    # Then ConfigMap name is: crowdsieve-crowdsieve-capi-credentials
+    extraVolumes:
+      - name: online-api-credentials
+        configMap:
+          name: crowdsieve-crowdsieve-capi-credentials
+
+    persistentVolume:
+      data:
+        enabled: true
+        size: 1Gi
+      config:
+        enabled: true
+        size: 100Mi
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  agent:
+    enabled: true
+    env:
+      - name: COLLECTIONS
+        value: "crowdsecurity/linux crowdsecurity/nginx crowdsecurity/sshd"
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Configure log acquisition based on your setup
+    acquisition:
+      - namespace: default
+        podName: nginx-*
+        program: nginx
+      - namespace: default
+        podName: "*"
+        program: sshd
+
+# CAPI credentials for CrowdSec -> CrowdSieve authentication
+# These are the credentials that CrowdSec LAPI will use to authenticate with CrowdSieve
+# Generate with: cscli capi register
+capiCredentials:
+  # Your CrowdSec machine ID
+  login: "your-machine-id"
+  # Your CrowdSec password
+  password: "your-machine-password"

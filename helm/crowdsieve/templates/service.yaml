@@ -1,0 +1,27 @@
+{{- if .Values.crowdsieve.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+  {{- with .Values.crowdsieve.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.crowdsieve.service.type }}
+  ports:
+    - name: proxy
+      port: {{ .Values.crowdsieve.service.proxyPort }}
+      targetPort: proxy
+      protocol: TCP
+    - name: dashboard
+      port: {{ .Values.crowdsieve.service.dashboardPort }}
+      targetPort: dashboard
+      protocol: TCP
+  selector:
+    {{- include "crowdsieve.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+{{- end }}

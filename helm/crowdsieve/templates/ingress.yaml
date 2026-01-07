@@ -1,0 +1,41 @@
+{{- if and .Values.crowdsieve.enabled .Values.crowdsieve.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+  {{- with .Values.crowdsieve.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.crowdsieve.ingress.className }}
+  ingressClassName: {{ .Values.crowdsieve.ingress.className }}
+  {{- end }}
+  {{- if .Values.crowdsieve.ingress.tls }}
+  tls:
+    {{- range .Values.crowdsieve.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.crowdsieve.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "crowdsieve.fullname" $ }}
+                port:
+                  name: dashboard
+          {{- end }}
+    {{- end }}
+{{- end }}

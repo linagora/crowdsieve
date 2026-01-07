@@ -1,0 +1,195 @@
+{{- if .Values.crowdsieve.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: {{ .Values.crowdsieve.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "crowdsieve.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: proxy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/filters: {{ include (print $.Template.BasePath "/configmap-filters.yaml") . | sha256sum }}
+        {{- with .Values.crowdsieve.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "crowdsieve.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: proxy
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "crowdsieve.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.crowdsieve.podSecurityContext | nindent 8 }}
+      {{- if .Values.crowdsieve.geoip.enabled }}
+      initContainers:
+        - name: download-geoip
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -f /data/GeoLite2-City.mmdb ]; then
+                echo "Downloading GeoLite2-City.mmdb..."
+                curl -sL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz" | tar -xzf - --strip-components=1 -C /tmp
+                mv /tmp/GeoLite2-City.mmdb /data/
+                echo "GeoIP database downloaded successfully"
+              else
+                echo "GeoIP database already exists"
+              fi
+          env:
+            - name: MAXMIND_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crowdsieve.fullname" . }}-geoip
+                  key: license-key
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      {{- end }}
+      containers:
+        - name: crowdsieve
+          securityContext:
+            {{- toYaml .Values.crowdsieve.securityContext | nindent 12 }}
+          image: {{ include "crowdsieve.image" . }}
+          imagePullPolicy: {{ .Values.crowdsieve.image.pullPolicy }}
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.crowdsieve.proxy.port }}
+              protocol: TCP
+            - name: dashboard
+              containerPort: {{ .Values.crowdsieve.dashboard.port }}
+              protocol: TCP
+          env:
+            # Proxy configuration
+            - name: PROXY_PORT
+              value: {{ .Values.crowdsieve.proxy.port | quote }}
+            - name: CAPI_URL
+              value: {{ .Values.crowdsieve.proxy.capiUrl | quote }}
+            - name: PROXY_TIMEOUT_MS
+              value: {{ .Values.crowdsieve.proxy.timeoutMs | quote }}
+            - name: FORWARD_ENABLED
+              value: {{ .Values.crowdsieve.proxy.forwardEnabled | quote }}
+            # Dashboard configuration
+            - name: DASHBOARD_PORT
+              value: {{ .Values.crowdsieve.dashboard.port | quote }}
+            {{- if .Values.crowdsieve.dashboard.apiKey }}
+            - name: DASHBOARD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crowdsieve.fullname" . }}-dashboard
+                  key: api-key
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.corsOrigin }}
+            - name: CORS_ORIGIN
+              value: {{ .Values.crowdsieve.dashboard.corsOrigin | quote }}
+            {{- end }}
+            # Logging configuration
+            - name: LOG_LEVEL
+              value: {{ .Values.crowdsieve.logging.level | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.crowdsieve.logging.format | quote }}
+            # Storage configuration
+            - name: DATABASE_PATH
+              value: "/app/data/crowdsieve.db"
+            - name: CONFIG_PATH
+              value: "/app/config/filters.yaml"
+            - name: RETENTION_DAYS
+              value: {{ .Values.crowdsieve.storage.retentionDays | quote }}
+            # GeoIP configuration
+            {{- if .Values.crowdsieve.geoip.enabled }}
+            - name: GEOIP_DB_PATH
+              value: "/app/data/GeoLite2-City.mmdb"
+            {{- end }}
+            # Rate limiting
+            - name: RATE_LIMIT_MAX
+              value: {{ .Values.crowdsieve.rateLimit.max | quote }}
+            - name: RATE_LIMIT_WINDOW
+              value: {{ .Values.crowdsieve.rateLimit.windowMs | quote }}
+            # Client validation
+            - name: CLIENT_VALIDATION_ENABLED
+              value: {{ .Values.crowdsieve.clientValidation.enabled | quote }}
+            {{- if .Values.crowdsieve.clientValidation.enabled }}
+            - name: CLIENT_VALIDATION_CACHE_TTL
+              value: {{ .Values.crowdsieve.clientValidation.cacheTtl | quote }}
+            - name: CLIENT_VALIDATION_CACHE_TTL_ERROR
+              value: {{ .Values.crowdsieve.clientValidation.cacheTtlError | quote }}
+            - name: CLIENT_VALIDATION_TIMEOUT_MS
+              value: {{ .Values.crowdsieve.clientValidation.timeoutMs | quote }}
+            - name: CLIENT_VALIDATION_MAX_MEMORY_ENTRIES
+              value: {{ .Values.crowdsieve.clientValidation.maxMemoryEntries | quote }}
+            - name: CLIENT_VALIDATION_FAIL_CLOSED
+              value: {{ .Values.crowdsieve.clientValidation.failClosed | quote }}
+            {{- end }}
+            # Runtime
+            - name: NODE_ENV
+              value: "production"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: proxy
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: proxy
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.crowdsieve.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config/filters.yaml
+              subPath: filters.yaml
+              readOnly: true
+            - name: filters
+              mountPath: /app/config/filters.d
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "crowdsieve.fullname" . }}-config
+        - name: filters
+          configMap:
+            name: {{ include "crowdsieve.fullname" . }}-filters
+        - name: data
+          {{- if .Values.crowdsieve.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.crowdsieve.persistence.existingClaim | default (printf "%s-data" (include "crowdsieve.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.crowdsieve.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.crowdsieve.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.crowdsieve.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

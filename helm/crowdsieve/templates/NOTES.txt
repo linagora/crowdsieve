@@ -1,0 +1,64 @@
+🎉 CrowdSieve has been deployed!
+
+{{- if .Values.crowdsieve.enabled }}
+
+=== CrowdSieve Proxy ===
+
+The CrowdSieve proxy is available at:
+  - Internal: http://{{ include "crowdsieve.fullname" . }}:{{ .Values.crowdsieve.service.proxyPort }}
+
+{{- if .Values.crowdsieve.ingress.enabled }}
+
+Dashboard is accessible at:
+{{- range .Values.crowdsieve.ingress.hosts }}
+  - http{{ if $.Values.crowdsieve.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+
+{{- else }}
+
+To access the dashboard, run:
+  kubectl port-forward svc/{{ include "crowdsieve.fullname" . }} {{ .Values.crowdsieve.service.dashboardPort }}:{{ .Values.crowdsieve.service.dashboardPort }}
+
+Then open: http://localhost:{{ .Values.crowdsieve.service.dashboardPort }}
+
+{{- end }}
+{{- end }}
+
+{{- if .Values.crowdsec.enabled }}
+
+=== CrowdSec ===
+
+CrowdSec LAPI is configured to send alerts to CrowdSieve at:
+  {{ include "crowdsieve.internalUrl" . }}
+
+{{- if not (and .Values.capiCredentials.login .Values.capiCredentials.password) }}
+
+⚠️  WARNING: No CAPI credentials configured!
+
+To configure CrowdSec -> CrowdSieve authentication:
+1. Register your machine with CrowdSec:
+   cscli machines add my-machine --password my-password
+
+2. Update your values with:
+   capiCredentials:
+     login: "my-machine"
+     password: "my-password"
+
+3. Upgrade the release:
+   helm upgrade {{ .Release.Name }} ./crowdsieve -f values.yaml
+
+{{- end }}
+{{- end }}
+
+=== Useful Commands ===
+
+# View CrowdSieve logs
+kubectl logs -l app.kubernetes.io/name={{ include "crowdsieve.name" . }},app.kubernetes.io/component=proxy
+
+# Check health
+kubectl exec -it deploy/{{ include "crowdsieve.fullname" . }} -- wget -qO- http://localhost:{{ .Values.crowdsieve.proxy.port }}/health
+
+# View filtered alerts in dashboard
+kubectl port-forward svc/{{ include "crowdsieve.fullname" . }} 3000:{{ .Values.crowdsieve.service.dashboardPort }}
+
+For more information, visit: https://github.com/linagora/crowdsieve

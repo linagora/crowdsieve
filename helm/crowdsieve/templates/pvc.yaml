@@ -1,0 +1,21 @@
+{{- if and .Values.crowdsieve.enabled .Values.crowdsieve.persistence.enabled (not .Values.crowdsieve.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}-data
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+  {{- with .Values.crowdsieve.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.crowdsieve.persistence.accessModes | nindent 4 }}
+  {{- if .Values.crowdsieve.persistence.storageClassName }}
+  storageClassName: {{ .Values.crowdsieve.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.crowdsieve.persistence.size | quote }}
+{{- end }}
