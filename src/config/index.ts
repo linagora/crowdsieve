@@ -113,6 +113,7 @@ const ConfigSchema = z.object({
       cache_ttl_error_seconds: z.number().positive().default(3600),
       validation_timeout_ms: z.number().positive().default(5000),
       max_memory_entries: z.number().positive().default(1000),
+      fail_closed: z.boolean().default(false),
     })
     .default({}),
 });
@@ -155,6 +156,7 @@ export function loadConfigFromEnv(): Partial<Config> {
       cache_ttl_error_seconds: parseInt(process.env.CLIENT_VALIDATION_CACHE_TTL_ERROR || '3600', 10),
       validation_timeout_ms: parseInt(process.env.CLIENT_VALIDATION_TIMEOUT_MS || '5000', 10),
       max_memory_entries: parseInt(process.env.CLIENT_VALIDATION_MAX_MEMORY_ENTRIES || '1000', 10),
+      fail_closed: process.env.CLIENT_VALIDATION_FAIL_CLOSED === 'true',
     },
   };
 }

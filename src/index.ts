@@ -109,11 +109,15 @@ async function main() {
         cacheTtlErrorSeconds: config.client_validation.cache_ttl_error_seconds,
         validationTimeoutMs: config.client_validation.validation_timeout_ms,
         maxMemoryEntries: config.client_validation.max_memory_entries,
+        failClosed: config.client_validation.fail_closed,
       },
       config.proxy.capi_url,
       logger
     );
-    logger.info('Client validation enabled');
+    logger.info(
+      { failClosed: config.client_validation.fail_closed },
+      'Client validation enabled'
+    );
   }
 
   // Create and start proxy server

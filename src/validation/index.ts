@@ -79,7 +79,15 @@ export class ClientValidator {
         return { valid: false, reason: 'invalid_credentials' };
       }
 
-      // Other CAPI error = fail-open
+      // Other CAPI error (5xx, 429, etc.)
+      if (this.config.failClosed) {
+        this.logger.error(
+          { tokenHash: shortHash, status: response.status },
+          'CAPI returned error, rejecting request (fail-closed mode)'
+        );
+        return { valid: false, reason: 'capi_error_failclosed' };
+      }
+
       this.logger.warn(
         { tokenHash: shortHash, status: response.status },
         'CAPI returned error, allowing request (fail-open)'
@@ -87,7 +95,12 @@ export class ClientValidator {
       await this.cacheClient(tokenHash, this.config.cacheTtlErrorSeconds);
       return { valid: true, reason: 'capi_error_failopen' };
     } catch (err) {
-      // Timeout/network error = fail-open
+      // Timeout/network error
+      if (this.config.failClosed) {
+        this.logger.error({ err, tokenHash: shortHash }, 'CAPI validation failed, rejecting request (fail-closed mode)');
+        return { valid: false, reason: 'capi_error_failclosed' };
+      }
+
       this.logger.warn({ err, tokenHash: shortHash }, 'CAPI validation failed, allowing request (fail-open)');
       await this.cacheClient(tokenHash, this.config.cacheTtlErrorSeconds);
       return { valid: true, reason: 'capi_error_failopen' };

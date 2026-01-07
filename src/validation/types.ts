@@ -4,6 +4,7 @@ export interface ValidationConfig {
   cacheTtlErrorSeconds: number;
   validationTimeoutMs: number;
   maxMemoryEntries: number;
+  failClosed: boolean;
 }
 
 export type ValidationReason =
@@ -12,7 +13,8 @@ export type ValidationReason =
   | 'cached_memory'
   | 'cached_sqlite'
   | 'validated'
-  | 'capi_error_failopen';
+  | 'capi_error_failopen'
+  | 'capi_error_failclosed';
 
 export interface ValidationResult {
   valid: boolean;
