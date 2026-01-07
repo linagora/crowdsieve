@@ -109,10 +109,10 @@ const ConfigSchema = z.object({
   client_validation: z
     .object({
       enabled: z.boolean().default(false),
-      cache_ttl_seconds: z.number().default(604800),
-      cache_ttl_error_seconds: z.number().default(3600),
-      validation_timeout_ms: z.number().default(5000),
-      max_memory_entries: z.number().default(1000),
+      cache_ttl_seconds: z.number().positive().default(604800),
+      cache_ttl_error_seconds: z.number().positive().default(3600),
+      validation_timeout_ms: z.number().positive().default(5000),
+      max_memory_entries: z.number().positive().default(1000),
     })
     .default({}),
 });

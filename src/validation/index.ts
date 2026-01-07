@@ -75,7 +75,7 @@ export class ClientValidator {
 
       // 401/403 = invalid credentials
       if (response.status === 401 || response.status === 403) {
-        this.logger.warn({ tokenHash: shortHash, status: response.status }, 'Client rejected - invalid credentials');
+        this.logger.warn({ status: response.status }, 'Client rejected - invalid credentials');
         return { valid: false, reason: 'invalid_credentials' };
       }
 
