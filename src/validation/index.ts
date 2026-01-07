@@ -59,16 +59,13 @@ export class ClientValidator {
       // Continue to CAPI validation
     }
 
-    // 4. Validate with CAPI
+    // 4. Validate with CAPI using HEAD request (lightweight, no body transfer)
     try {
-      const response = await fetch(`${this.capiUrl}/v2/decisions/stream`, {
-        method: 'GET',
+      const response = await fetch(`${this.capiUrl}/v2/decisions/stream?startup=true`, {
+        method: 'HEAD',
         headers: { Authorization: authHeader },
         signal: AbortSignal.timeout(this.config.validationTimeoutMs),
       });
-
-      // Consume response body to allow connection reuse
-      await response.text().catch(() => {});
 
       if (response.ok) {
         await this.cacheClient(tokenHash, this.config.cacheTtlSeconds);
