@@ -24,14 +24,19 @@ async function main() {
   };
 
   // Initialize logger
+  const usePrettyLogs = config.logging.format === 'pretty' && process.env.NODE_ENV !== 'production';
   const logger = pino({
     level: config.logging.level,
     formatters: {
       level: (label) => ({ level: label }),
     },
     timestamp: () => `,"time":"${new Date().toISOString()}"`,
-    transport: config.logging.format === 'pretty' && process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
+    transport: usePrettyLogs ? { target: 'pino-pretty' } : undefined,
   });
+
+  if (config.logging.format === 'pretty' && process.env.NODE_ENV === 'production') {
+    logger.warn('Pretty logging is not available in production, using JSON format instead');
+  }
 
   logger.info('Starting CrowdSieve...');
   logger.info({ configPath: CONFIG_PATH }, 'Configuration loaded');
