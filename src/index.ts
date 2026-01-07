@@ -30,7 +30,7 @@ async function main() {
       level: (label) => ({ level: label }),
     },
     timestamp: () => `,"time":"${new Date().toISOString()}"`,
-    transport: config.logging.format === 'pretty' ? { target: 'pino-pretty' } : undefined,
+    transport: config.logging.format === 'pretty' && process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
   });
 
   logger.info('Starting CrowdSieve...');
