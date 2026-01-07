@@ -105,8 +105,27 @@ export const events = sqliteTable(
   })
 );
 
+export const validatedClients = sqliteTable(
+  'validated_clients',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tokenHash: text('token_hash').notNull().unique(),
+    machineId: text('machine_id'),
+    validatedAt: text('validated_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    lastAccessedAt: text('last_accessed_at').notNull(),
+    accessCount: integer('access_count').default(1),
+  },
+  (table) => ({
+    // Note: tokenHash already has implicit index from UNIQUE constraint
+    expiresAtIdx: index('idx_vc_expires_at').on(table.expiresAt),
+  })
+);
+
 // Types for inserting
 export type InsertAlert = typeof alerts.$inferInsert;
 export type SelectAlert = typeof alerts.$inferSelect;
 export type InsertDecision = typeof decisions.$inferInsert;
 export type SelectDecision = typeof decisions.$inferSelect;
+export type InsertValidatedClient = typeof validatedClients.$inferInsert;
+export type SelectValidatedClient = typeof validatedClients.$inferSelect;

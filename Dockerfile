@@ -33,18 +33,11 @@ ENV API_URL=http://localhost:8080
 # Build dashboard
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine AS runner
-
-RUN apk add --no-cache tini
+# Production dependencies stage (separate to leverage --chown)
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 crowdsec
-
-# Install production dependencies for proxy
 COPY package*.json ./
 RUN npm ci --omit=dev && \
     npm cache clean --force && \
@@ -62,21 +55,36 @@ RUN npm ci --omit=dev && \
         -name "docs" \
     \) -exec rm -rf {} + 2>/dev/null || true
 
+# Production stage
+FROM node:20-alpine AS runner
+
+RUN apk add --no-cache tini
+
+# Create non-root user first
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 crowdsec
+
+WORKDIR /app
+
+# Copy all files with correct ownership (avoids chown layer duplication)
+COPY --from=deps --chown=crowdsec:nodejs /app/node_modules ./node_modules
+COPY --chown=crowdsec:nodejs package*.json ./
+
 # Copy proxy build
-COPY --from=proxy-builder /app/dist ./dist
-COPY config ./config
+COPY --from=proxy-builder --chown=crowdsec:nodejs /app/dist ./dist
+COPY --chown=crowdsec:nodejs config ./config
 
 # Copy dashboard standalone build
-COPY --from=dashboard-builder /app/dashboard/.next/standalone ./dashboard/.next/standalone
-COPY --from=dashboard-builder /app/dashboard/.next/static ./dashboard/.next/standalone/.next/static
-COPY --from=dashboard-builder /app/dashboard/public ./dashboard/.next/standalone/public
+COPY --from=dashboard-builder --chown=crowdsec:nodejs /app/dashboard/.next/standalone ./dashboard/.next/standalone
+COPY --from=dashboard-builder --chown=crowdsec:nodejs /app/dashboard/.next/static ./dashboard/.next/standalone/.next/static
+COPY --from=dashboard-builder --chown=crowdsec:nodejs /app/dashboard/public ./dashboard/.next/standalone/public
 
 # Copy start script
-COPY scripts/start.sh ./start.sh
+COPY --chown=crowdsec:nodejs scripts/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
-# Create data directory
-RUN mkdir -p /app/data && chown -R crowdsec:nodejs /app
+# Create data directory with correct ownership
+RUN mkdir -p /app/data && chown crowdsec:nodejs /app/data
 
 # Switch to non-root user
 USER crowdsec

@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import type { Config } from '../config/index.js';
 import type { FilterEngine } from '../filters/index.js';
 import type { AlertStorage } from '../storage/index.js';
+import type { ClientValidator } from '../validation/index.js';
 import type { Logger } from 'pino';
 
 /**
@@ -30,10 +31,16 @@ export interface ProxyServerDeps {
   filterEngine: FilterEngine;
   storage: AlertStorage;
   logger: Logger;
+  clientValidator?: ClientValidator;
 }
 
 export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyInstance> {
-  const { config, filterEngine, storage, logger } = deps;
+  const { config, filterEngine, storage, logger, clientValidator } = deps;
+
+  // Validate that clientValidator is provided when enabled
+  if (config.client_validation?.enabled && !clientValidator) {
+    throw new Error('client_validation.enabled is true but clientValidator was not provided');
+  }
 
   const app = Fastify({
     logger: false, // We use our own logger
@@ -107,6 +114,7 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   app.decorate('filterEngine', filterEngine);
   app.decorate('storage', storage);
   app.decorate('proxyLogger', logger);
+  app.decorate('clientValidator', clientValidator);
 
   // Request logging
   app.addHook('onRequest', async (request) => {
@@ -245,5 +253,6 @@ declare module 'fastify' {
     filterEngine: FilterEngine;
     storage: AlertStorage;
     proxyLogger: Logger;
+    clientValidator?: ClientValidator;
   }
 }

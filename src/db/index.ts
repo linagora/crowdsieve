@@ -27,7 +27,11 @@ export function initializeDatabase(dbPath: string) {
     // On Windows, chmod may not be supported; ignore errors there.
     // On other platforms, log a warning so permission issues are visible.
     if (process.platform !== 'win32') {
-      console.warn('Warning: failed to set restrictive permissions (0600) on database file:', dbPath, err);
+      console.warn(
+        'Warning: failed to set restrictive permissions (0600) on database file:',
+        dbPath,
+        err
+      );
     }
   }
 
@@ -117,6 +121,19 @@ function runMigrations(sqlite: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_event_alert ON events(alert_id);
+
+    CREATE TABLE IF NOT EXISTS validated_clients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      machine_id TEXT,
+      validated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      last_accessed_at TEXT NOT NULL,
+      access_count INTEGER DEFAULT 1
+    );
+
+    -- Note: token_hash already has implicit index from UNIQUE constraint
+    CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
   `);
 }
 
