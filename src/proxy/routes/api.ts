@@ -41,6 +41,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       filtered?: string;
       scenario?: string;
       country?: string;
+      since?: string;
+      until?: string;
     };
   }>('/api/alerts', async (request, reply) => {
     try {
@@ -63,12 +65,32 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Scenario filter too long' });
       }
 
+      // Parse and validate date parameters
+      let since: Date | undefined;
+      let until: Date | undefined;
+
+      if (request.query.since) {
+        since = new Date(request.query.since);
+        if (isNaN(since.getTime())) {
+          return reply.code(400).send({ error: 'Invalid since date format' });
+        }
+      }
+
+      if (request.query.until) {
+        until = new Date(request.query.until);
+        if (isNaN(until.getTime())) {
+          return reply.code(400).send({ error: 'Invalid until date format' });
+        }
+      }
+
       const query = {
         limit,
         offset,
         filtered: request.query.filtered ? request.query.filtered === 'true' : undefined,
         scenario,
         sourceCountry: country,
+        since,
+        until,
       };
 
       const alerts = await storage.queryAlerts(query);
