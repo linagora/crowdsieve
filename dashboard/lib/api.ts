@@ -1,6 +1,7 @@
-import type { StoredAlert, AlertStats } from './types';
+import type { StoredAlert } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Client-side API functions - these call Next.js API routes (not the backend directly)
+// This avoids CORS issues since requests stay same-origin
 
 export async function fetchAlerts(params?: {
   limit?: number;
@@ -8,6 +9,8 @@ export async function fetchAlerts(params?: {
   filtered?: boolean;
   scenario?: string;
   country?: string;
+  since?: string;
+  until?: string;
 }): Promise<StoredAlert[]> {
   const searchParams = new URLSearchParams();
 
@@ -16,41 +19,16 @@ export async function fetchAlerts(params?: {
   if (params?.filtered !== undefined) searchParams.set('filtered', params.filtered.toString());
   if (params?.scenario) searchParams.set('scenario', params.scenario);
   if (params?.country) searchParams.set('country', params.country);
+  if (params?.since) searchParams.set('since', params.since);
+  if (params?.until) searchParams.set('until', params.until);
 
-  const res = await fetch(`${API_BASE}/api/alerts?${searchParams}`, {
+  // Calls Next.js API route which proxies to backend
+  const res = await fetch(`/api/alerts?${searchParams}`, {
     cache: 'no-store',
   });
 
   if (!res.ok) {
     throw new Error('Failed to fetch alerts');
-  }
-
-  return res.json();
-}
-
-export async function fetchStats(): Promise<AlertStats> {
-  const res = await fetch(`${API_BASE}/api/stats`, {
-    cache: 'no-store',
-  });
-
-  if (!res.ok) {
-    throw new Error('Failed to fetch stats');
-  }
-
-  return res.json();
-}
-
-export async function fetchAlertById(id: number): Promise<StoredAlert | null> {
-  const res = await fetch(`${API_BASE}/api/alerts/${id}`, {
-    cache: 'no-store',
-  });
-
-  if (res.status === 404) {
-    return null;
-  }
-
-  if (!res.ok) {
-    throw new Error('Failed to fetch alert');
   }
 
   return res.json();

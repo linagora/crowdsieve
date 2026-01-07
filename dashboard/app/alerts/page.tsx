@@ -1,5 +1,5 @@
-import { AlertsTable } from '@/components/AlertsTable';
-import type { StoredAlert } from '@/lib/types';
+import { AlertsContent } from '@/components/AlertsContent';
+import type { StoredAlert, AlertStats } from '@/lib/types';
 
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
 const API_KEY = process.env.DASHBOARD_API_KEY;
@@ -14,7 +14,7 @@ function getApiHeaders(): HeadersInit {
 
 async function getAlerts(): Promise<StoredAlert[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/alerts?limit=100`, {
+    const res = await fetch(`${API_BASE}/api/alerts?limit=200`, {
       cache: 'no-store',
       headers: getApiHeaders(),
     });
@@ -25,12 +25,23 @@ async function getAlerts(): Promise<StoredAlert[]> {
   }
 }
 
-export default async function AlertsPage() {
-  const alerts = await getAlerts();
+async function getStats(): Promise<AlertStats> {
+  try {
+    const res = await fetch(`${API_BASE}/api/stats`, {
+      cache: 'no-store',
+      headers: getApiHeaders(),
+    });
+    if (!res.ok) {
+      return { total: 0, filtered: 0, forwarded: 0, topScenarios: [], topCountries: [] };
+    }
+    return res.json();
+  } catch {
+    return { total: 0, filtered: 0, forwarded: 0, topScenarios: [], topCountries: [] };
+  }
+}
 
-  return (
-    <div className="card p-4">
-      <AlertsTable initialAlerts={alerts} />
-    </div>
-  );
+export default async function AlertsPage() {
+  const [alerts, stats] = await Promise.all([getAlerts(), getStats()]);
+
+  return <AlertsContent initialAlerts={alerts} stats={stats} />;
 }

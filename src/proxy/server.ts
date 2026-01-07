@@ -58,17 +58,40 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     referrerPolicy: { policy: 'no-referrer' },
   });
 
-  // Rate limiting - only for dashboard API routes, not CrowdSec passthrough
+  // Rate limiting - only for external requests, not internal dashboard server
   const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
   const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
+  const dashboardApiKey = process.env.DASHBOARD_API_KEY;
+  if (!dashboardApiKey) {
+    logger.warn(
+      'DASHBOARD_API_KEY is not set; internal dashboard requests will not bypass rate limiting'
+    );
+  }
   await app.register(rateLimit, {
     max: isNaN(rateLimitMax) || rateLimitMax < 1 ? 100 : rateLimitMax,
     timeWindow: isNaN(rateLimitWindow) || rateLimitWindow < 1000 ? 60000 : rateLimitWindow,
-    // Only apply to dashboard API, not CrowdSec passthrough routes
     allowList: (request) => {
       const url = request.url;
       // Exclude CrowdSec CAPI passthrough routes from rate limiting
-      return !url.startsWith('/api/') && url !== '/health';
+      if (!url.startsWith('/api/') && url !== '/health') {
+        return true;
+      }
+      // Exclude requests with valid dashboard API key (internal server-to-server)
+      if (dashboardApiKey) {
+        // HTTP headers are case-insensitive, check both forms
+        const apiKey = request.headers['x-api-key'] ?? request.headers['X-API-Key'];
+        if (apiKey === dashboardApiKey) {
+          return true;
+        }
+      }
+      // In development, exclude localhost requests based on connection IP
+      if (process.env.NODE_ENV !== 'production') {
+        const clientIp = (request.ip || '').replace('::ffff:', '');
+        if (clientIp === '127.0.0.1' || clientIp === '::1') {
+          return true;
+        }
+      }
+      return false;
     },
   });
 
