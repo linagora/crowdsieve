@@ -37,6 +37,11 @@ export interface ProxyServerDeps {
 export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyInstance> {
   const { config, filterEngine, storage, logger, clientValidator } = deps;
 
+  // Validate that clientValidator is provided when enabled
+  if (config.client_validation?.enabled && !clientValidator) {
+    throw new Error('client_validation.enabled is true but clientValidator was not provided');
+  }
+
   const app = Fastify({
     logger: false, // We use our own logger
     bodyLimit: 1048576, // 1MB max request body
