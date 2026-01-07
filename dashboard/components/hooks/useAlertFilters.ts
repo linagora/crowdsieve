@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { StoredAlert } from '@/lib/types';
 import { fetchAlerts } from '@/lib/api';
 
@@ -27,6 +27,10 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Keep a stable reference to initialAlerts to avoid unnecessary re-fetches
+  const initialAlertsRef = useRef(initialAlerts);
+  initialAlertsRef.current = initialAlerts;
+
   // Compute time bounds from initial alerts for the slider
   const timeBounds = useMemo(() => {
     if (initialAlerts.length === 0) {
@@ -46,7 +50,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
       const hasServerFilters = filters.since || filters.until || filters.scenario;
 
       if (!hasServerFilters) {
-        setAlerts(initialAlerts);
+        setAlerts(initialAlertsRef.current);
         return;
       }
 
@@ -78,7 +82,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     };
 
     fetchFiltered();
-  }, [filters.since, filters.until, filters.scenario, initialAlerts, limit]);
+  }, [filters.since, filters.until, filters.scenario, limit]);
 
   // Apply client-side status filter
   const filteredAlerts = alerts.filter((alert) => {

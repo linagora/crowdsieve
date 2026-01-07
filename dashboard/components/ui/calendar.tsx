@@ -19,6 +19,15 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn('p-3', className)}
+      labels={{
+        labelMonthDropdown: () => 'Select month',
+        labelYearDropdown: () => 'Select year',
+        labelNext: () => 'Next month',
+        labelPrevious: () => 'Previous month',
+        labelDay: (date) => date.toLocaleDateString('en-US'),
+        labelWeekday: (date) => date.toLocaleDateString('en-US', { weekday: 'long' }),
+        labelWeekNumber: (weekNumber) => `Week ${weekNumber}`,
+      }}
       classNames={{
         months: 'flex flex-col sm:flex-row gap-4',
         month: 'space-y-4',

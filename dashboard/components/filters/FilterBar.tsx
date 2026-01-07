@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { TimeRangeSlider } from './TimeRangeSlider';
 import { ScenarioFilter } from './ScenarioFilter';
 import type { FilterState } from '@/components/hooks/useAlertFilters';
-import { cn } from '@/lib/utils';
 
 interface FilterBarProps {
   filters: FilterState;
@@ -42,7 +41,7 @@ export function FilterBar({
     <div className="card p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-slate-700">Filtres</h3>
+        <h3 className="text-sm font-medium text-slate-700">Filters</h3>
         <div className="flex items-center gap-2">
           {isLoading && (
             <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
@@ -55,7 +54,7 @@ export function FilterBar({
               className="text-slate-500 hover:text-slate-700"
             >
               <RotateCcw className="h-4 w-4 mr-1" />
-              Réinitialiser
+              Reset
             </Button>
           )}
         </div>
@@ -64,7 +63,7 @@ export function FilterBar({
       {/* Time Range */}
       <div>
         <label className="text-xs font-medium text-slate-500 mb-2 block">
-          Période
+          Time Range
         </label>
         <TimeRangeSlider
           minDate={timeBounds.min}
@@ -81,7 +80,7 @@ export function FilterBar({
         {/* Scenario */}
         <div>
           <label className="text-xs font-medium text-slate-500 mb-2 block">
-            Scénario
+            Scenario
           </label>
           <ScenarioFilter
             scenarios={scenarios}
@@ -94,7 +93,7 @@ export function FilterBar({
         {/* Status */}
         <div>
           <label className="text-xs font-medium text-slate-500 mb-2 block">
-            Statut
+            Status
           </label>
           <div className="flex gap-1">
             {(['all', 'filtered', 'forwarded'] as const).map((status) => (
@@ -105,9 +104,9 @@ export function FilterBar({
                 onClick={() => handleStatusChange(status)}
                 disabled={isLoading}
               >
-                {status === 'all' && 'Tous'}
-                {status === 'filtered' && 'Filtrés'}
-                {status === 'forwarded' && 'Transmis'}
+                {status === 'all' && 'All'}
+                {status === 'filtered' && 'Filtered'}
+                {status === 'forwarded' && 'Forwarded'}
               </Button>
             ))}
           </div>

@@ -78,7 +78,8 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
       }
       // Exclude requests with valid dashboard API key (internal server-to-server)
       if (dashboardApiKey) {
-        const apiKey = request.headers['x-api-key'];
+        // HTTP headers are case-insensitive, check both forms
+        const apiKey = request.headers['x-api-key'] ?? request.headers['X-API-Key'];
         if (apiKey === dashboardApiKey) {
           return true;
         }

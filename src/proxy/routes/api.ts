@@ -69,10 +69,17 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       let since: Date | undefined;
       let until: Date | undefined;
 
+      // Reasonable date bounds: not before 2020, not more than 1 day in the future
+      const minAllowedDate = new Date('2020-01-01T00:00:00Z');
+      const maxAllowedDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
       if (request.query.since) {
         since = new Date(request.query.since);
         if (isNaN(since.getTime())) {
           return reply.code(400).send({ error: 'Invalid since date format' });
+        }
+        if (since < minAllowedDate || since > maxAllowedDate) {
+          return reply.code(400).send({ error: 'Since date out of acceptable range' });
         }
       }
 
@@ -80,6 +87,9 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         until = new Date(request.query.until);
         if (isNaN(until.getTime())) {
           return reply.code(400).send({ error: 'Invalid until date format' });
+        }
+        if (until < minAllowedDate || until > maxAllowedDate) {
+          return reply.code(400).send({ error: 'Until date out of acceptable range' });
         }
       }
 

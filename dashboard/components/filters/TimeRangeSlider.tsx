@@ -2,8 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { format, subDays, subHours, differenceInDays } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -22,9 +21,9 @@ interface TimeRangeSliderProps {
 
 const PRESETS = [
   { label: '24h', getValue: () => subHours(new Date(), 24) },
-  { label: '7j', getValue: () => subDays(new Date(), 7) },
-  { label: '30j', getValue: () => subDays(new Date(), 30) },
-  { label: 'Tout', getValue: () => null },
+  { label: '7d', getValue: () => subDays(new Date(), 7) },
+  { label: '30d', getValue: () => subDays(new Date(), 30) },
+  { label: 'All', getValue: () => null },
 ] as const;
 
 export function TimeRangeSlider({
@@ -77,7 +76,7 @@ export function TimeRangeSlider({
 
   const formatDateDisplay = (date: Date | null, fallback: string): string => {
     if (!date) return fallback;
-    return format(date, 'd MMM yyyy', { locale: fr });
+    return format(date, 'd MMM yyyy');
   };
 
   const daysDiff = differenceInDays(
@@ -93,7 +92,7 @@ export function TimeRangeSlider({
           {PRESETS.map((preset) => {
             const presetDate = preset.getValue();
             const isActive =
-              preset.label === 'Tout'
+              preset.label === 'All'
                 ? since === null && until === null
                 : since?.getTime() === presetDate?.getTime() && until === null;
 
@@ -114,7 +113,7 @@ export function TimeRangeSlider({
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm">
               <CalendarIcon className="h-4 w-4 mr-2" />
-              Calendrier
+              Calendar
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
@@ -144,12 +143,12 @@ export function TimeRangeSlider({
       <div className="flex justify-between items-center text-sm text-slate-500">
         <span>{formatDateDisplay(minDate, '')}</span>
         <span className="font-medium text-slate-700">
-          {formatDateDisplay(since, formatDateDisplay(minDate, 'Début'))}
+          {formatDateDisplay(since, formatDateDisplay(minDate, 'Start'))}
           {' — '}
-          {formatDateDisplay(until, formatDateDisplay(maxDate, 'Maintenant'))}
+          {formatDateDisplay(until, formatDateDisplay(maxDate, 'Now'))}
           {daysDiff > 0 && (
             <span className="text-slate-400 ml-2">
-              ({daysDiff} jour{daysDiff > 1 ? 's' : ''})
+              ({daysDiff} day{daysDiff > 1 ? 's' : ''})
             </span>
           )}
         </span>
