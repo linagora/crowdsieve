@@ -62,6 +62,11 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
   const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
   const dashboardApiKey = process.env.DASHBOARD_API_KEY;
+  if (!dashboardApiKey) {
+    logger.warn(
+      'DASHBOARD_API_KEY is not set; internal dashboard requests will not bypass rate limiting'
+    );
+  }
   await app.register(rateLimit, {
     max: isNaN(rateLimitMax) || rateLimitMax < 1 ? 100 : rateLimitMax,
     timeWindow: isNaN(rateLimitWindow) || rateLimitWindow < 1000 ? 60000 : rateLimitWindow,
@@ -78,10 +83,10 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
           return true;
         }
       }
-      // In development, exclude localhost requests
+      // In development, exclude localhost requests based on connection IP
       if (process.env.NODE_ENV !== 'production') {
-        const host = request.headers.host || '';
-        if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+        const clientIp = (request.ip || '').replace('::ffff:', '');
+        if (clientIp === '127.0.0.1' || clientIp === '::1') {
           return true;
         }
       }

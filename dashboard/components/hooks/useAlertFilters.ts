@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { StoredAlert } from '@/lib/types';
 import { fetchAlerts } from '@/lib/api';
 
@@ -28,7 +28,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
   const [error, setError] = useState<string | null>(null);
 
   // Compute time bounds from initial alerts for the slider
-  const timeBounds = useCallback(() => {
+  const timeBounds = useMemo(() => {
     if (initialAlerts.length === 0) {
       return { min: new Date(), max: new Date() };
     }
@@ -62,7 +62,15 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
         });
         setAlerts(result);
       } catch (err) {
-        setError('Failed to fetch filtered alerts');
+        let errorMessage = 'Failed to fetch filtered alerts';
+        if (err instanceof Error) {
+          if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+            errorMessage = 'Request timed out. Please try again.';
+          } else if (err.message.includes('fetch') || err.message.includes('network')) {
+            errorMessage = 'Network error. Please check your connection.';
+          }
+        }
+        setError(errorMessage);
         console.error('Filter fetch error:', err);
       } finally {
         setIsLoading(false);
@@ -107,6 +115,6 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     isLoading,
     error,
     hasActiveFilters,
-    timeBounds: timeBounds(),
+    timeBounds,
   };
 }
