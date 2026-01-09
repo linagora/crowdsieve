@@ -45,7 +45,7 @@ export function FilterBar({
   };
 
   return (
-    <div className="card p-4 space-y-4">
+    <div className="card p-4 space-y-4 relative z-20">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-slate-700">Filters</h3>
