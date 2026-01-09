@@ -8,6 +8,7 @@ export interface FilterState {
   since: Date | null;
   until: Date | null;
   scenario: string | null;
+  machineId: string | null;
   status: 'all' | 'filtered' | 'forwarded';
 }
 
@@ -21,6 +22,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     since: null,
     until: null,
     scenario: null,
+    machineId: null,
     status: 'all',
   });
   const [alerts, setAlerts] = useState<StoredAlert[]>(initialAlerts);
@@ -43,11 +45,24 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     };
   }, [initialAlerts]);
 
+  // Compute unique machines from initial alerts
+  const machines = useMemo(() => {
+    const machineMap = new Map<string, number>();
+    for (const alert of initialAlerts) {
+      if (alert.machineId) {
+        machineMap.set(alert.machineId, (machineMap.get(alert.machineId) || 0) + 1);
+      }
+    }
+    return Array.from(machineMap.entries())
+      .map(([machineId, count]) => ({ machineId, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [initialAlerts]);
+
   // Fetch filtered alerts when filters change (except status which is client-side)
   useEffect(() => {
     const fetchFiltered = async () => {
-      // Only fetch from server if time or scenario filters are set
-      const hasServerFilters = filters.since || filters.until || filters.scenario;
+      // Only fetch from server if time, scenario or machineId filters are set
+      const hasServerFilters = filters.since || filters.until || filters.scenario || filters.machineId;
 
       if (!hasServerFilters) {
         setAlerts(initialAlertsRef.current);
@@ -63,6 +78,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
           since: filters.since?.toISOString(),
           until: filters.until?.toISOString(),
           scenario: filters.scenario || undefined,
+          machineId: filters.machineId || undefined,
         });
         setAlerts(result);
       } catch (err) {
@@ -82,7 +98,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     };
 
     fetchFiltered();
-  }, [filters.since, filters.until, filters.scenario, limit]);
+  }, [filters.since, filters.until, filters.scenario, filters.machineId, limit]);
 
   // Apply client-side status filter
   const filteredAlerts = alerts.filter((alert) => {
@@ -100,6 +116,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
       since: null,
       until: null,
       scenario: null,
+      machineId: null,
       status: 'all',
     });
   }, []);
@@ -108,6 +125,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     filters.since !== null ||
     filters.until !== null ||
     filters.scenario !== null ||
+    filters.machineId !== null ||
     filters.status !== 'all';
 
   return {
@@ -120,5 +138,6 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
     error,
     hasActiveFilters,
     timeBounds,
+    machines,
   };
 }

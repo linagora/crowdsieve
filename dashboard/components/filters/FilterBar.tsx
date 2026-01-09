@@ -4,6 +4,7 @@ import { RotateCcw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TimeRangeSlider } from './TimeRangeSlider';
 import { ScenarioFilter } from './ScenarioFilter';
+import { ServerFilter } from './ServerFilter';
 import type { FilterState } from '@/components/hooks/useAlertFilters';
 
 interface FilterBarProps {
@@ -11,6 +12,7 @@ interface FilterBarProps {
   onFiltersChange: (updates: Partial<FilterState>) => void;
   onReset: () => void;
   scenarios: Array<{ scenario: string; count: number }>;
+  machines: Array<{ machineId: string; count: number }>;
   timeBounds: { min: Date; max: Date };
   hasActiveFilters: boolean;
   isLoading?: boolean;
@@ -21,6 +23,7 @@ export function FilterBar({
   onFiltersChange,
   onReset,
   scenarios,
+  machines,
   timeBounds,
   hasActiveFilters,
   isLoading = false,
@@ -31,6 +34,10 @@ export function FilterBar({
 
   const handleScenarioChange = (scenario: string | null) => {
     onFiltersChange({ scenario });
+  };
+
+  const handleMachineChange = (machineId: string | null) => {
+    onFiltersChange({ machineId });
   };
 
   const handleStatusChange = (status: FilterState['status']) => {
@@ -71,7 +78,7 @@ export function FilterBar({
         />
       </div>
 
-      {/* Scenario and Status filters */}
+      {/* Scenario, Server and Status filters */}
       <div className="flex flex-wrap items-center gap-4">
         {/* Scenario */}
         <div>
@@ -80,6 +87,17 @@ export function FilterBar({
             scenarios={scenarios}
             selectedScenario={filters.scenario}
             onScenarioChange={handleScenarioChange}
+            isLoading={isLoading}
+          />
+        </div>
+
+        {/* Server */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-2 block">Serveur</label>
+          <ServerFilter
+            machines={machines}
+            selectedMachineId={filters.machineId}
+            onMachineChange={handleMachineChange}
             isLoading={isLoading}
           />
         </div>

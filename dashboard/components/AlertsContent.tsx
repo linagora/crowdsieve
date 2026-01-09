@@ -13,7 +13,7 @@ interface AlertsContentProps {
 
 export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
   const router = useRouter();
-  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds } =
+  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds, machines } =
     useAlertFilters({ initialAlerts, limit: 200 });
 
   return (
@@ -24,6 +24,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
         onFiltersChange={updateFilters}
         onReset={resetFilters}
         scenarios={stats.topScenarios}
+        machines={machines}
         timeBounds={timeBounds}
         hasActiveFilters={hasActiveFilters}
         isLoading={isLoading}

@@ -41,6 +41,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       filtered?: string;
       scenario?: string;
       country?: string;
+      machineId?: string;
       since?: string;
       until?: string;
     };
@@ -99,6 +100,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         filtered: request.query.filtered ? request.query.filtered === 'true' : undefined,
         scenario,
         sourceCountry: country,
+        machineId: request.query.machineId,
         since,
         until,
       };

@@ -11,6 +11,7 @@ export async function fetchAlerts(params?: {
   country?: string;
   since?: string;
   until?: string;
+  machineId?: string;
 }): Promise<StoredAlert[]> {
   const searchParams = new URLSearchParams();
 
@@ -21,6 +22,7 @@ export async function fetchAlerts(params?: {
   if (params?.country) searchParams.set('country', params.country);
   if (params?.since) searchParams.set('since', params.since);
   if (params?.until) searchParams.set('until', params.until);
+  if (params?.machineId) searchParams.set('machineId', params.machineId);
 
   // Calls Next.js API route which proxies to backend
   const res = await fetch(`/api/alerts?${searchParams}`, {

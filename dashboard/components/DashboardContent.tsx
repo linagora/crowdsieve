@@ -15,7 +15,7 @@ interface DashboardContentProps {
 
 export function DashboardContent({ initialAlerts, stats }: DashboardContentProps) {
   const router = useRouter();
-  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds } =
+  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds, machines } =
     useAlertFilters({ initialAlerts });
 
   return (
@@ -26,6 +26,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
         onFiltersChange={updateFilters}
         onReset={resetFilters}
         scenarios={stats.topScenarios}
+        machines={machines}
         timeBounds={timeBounds}
         hasActiveFilters={hasActiveFilters}
         isLoading={isLoading}

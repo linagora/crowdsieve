@@ -16,6 +16,7 @@ export interface AlertQuery {
   scenario?: string;
   sourceCountry?: string;
   sourceIp?: string;
+  machineId?: string;
   since?: Date;
   until?: Date;
   limit?: number;
@@ -154,6 +155,9 @@ export function createStorage(): AlertStorage {
       }
       if (query.sourceIp) {
         conditions.push(eq(schema.alerts.sourceIp, query.sourceIp));
+      }
+      if (query.machineId) {
+        conditions.push(eq(schema.alerts.machineId, query.machineId));
       }
       if (query.since) {
         conditions.push(gte(schema.alerts.receivedAt, query.since.toISOString()));
