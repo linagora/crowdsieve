@@ -59,11 +59,19 @@ export class ClientValidator {
       // Continue to CAPI validation
     }
 
-    // 4. Validate with CAPI using HEAD request (lightweight, no body transfer)
+    // 4. Validate with CAPI by sending an empty signals array
+    // Note: We use /v3/signals with an empty array because:
+    // - /v2/decisions/stream is for bouncers (uses API key)
+    // - LAPI machines use JWT tokens obtained from /v3/watchers/login
+    // - Sending an empty signals array is lightweight and validates the JWT
     try {
-      const response = await fetch(`${this.capiUrl}/v2/decisions/stream?startup=true`, {
-        method: 'HEAD',
-        headers: { Authorization: authHeader },
+      const response = await fetch(`${this.capiUrl}/v3/signals`, {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: '[]',
         signal: AbortSignal.timeout(this.config.validationTimeoutMs),
       });
 
