@@ -58,7 +58,10 @@ RUN npm ci --omit=dev && \
 # Production stage
 FROM node:20-alpine AS runner
 
-RUN apk add --no-cache tini
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache tini && \
+    rm -rf /var/cache/apk/*
 
 # Create non-root user first
 RUN addgroup --system --gid 1001 nodejs && \

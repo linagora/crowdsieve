@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance, FastifyError } from 'fastify';
+import compress from '@fastify/compress';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -45,6 +46,8 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   const app = Fastify({
     logger: false, // We use our own logger
     bodyLimit: 1048576, // 1MB max request body
+    connectionTimeout: 60000, // 60s - close idle connections
+    requestTimeout: 30000, // 30s - max time to receive request body
   });
 
   // Security headers
@@ -63,6 +66,12 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
         ? { maxAge: 60 * 60 * 24 * 180, includeSubDomains: true, preload: false }
         : false,
     referrerPolicy: { policy: 'no-referrer' },
+  });
+
+  // Compression: decompress incoming requests and compress responses
+  await app.register(compress, {
+    requestEncodings: ['gzip', 'deflate'], // Decompress incoming requests
+    encodings: ['gzip', 'deflate'], // Compress responses
   });
 
   // Rate limiting - only for external requests, not internal dashboard server
@@ -208,14 +217,28 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
 
   // Global error handler
   app.setErrorHandler((error: FastifyError, request, reply) => {
-    logger.error(
-      {
-        err: error,
-        method: request.method,
-        url: request.url,
-      },
-      'Request error'
-    );
+    // Client-side errors (4xx) are logged as warnings, server errors (5xx) as errors
+    const isClientError =
+      error.statusCode && error.statusCode >= 400 && error.statusCode < 500;
+    const logData: Record<string, unknown> = {
+      err: error,
+      method: request.method,
+      url: request.url,
+      clientIp: request.ip,
+    };
+
+    // Add extra context for content-length errors
+    if (error.code === 'FST_ERR_CTP_INVALID_CONTENT_LENGTH') {
+      logData.contentLength = request.headers['content-length'];
+      logData.contentEncoding = request.headers['content-encoding'];
+      logData.transferEncoding = request.headers['transfer-encoding'];
+    }
+
+    if (isClientError) {
+      logger.warn(logData, 'Client request error');
+    } else {
+      logger.error(logData, 'Request error');
+    }
 
     // Don't expose internal errors to clients
     reply.code(error.statusCode || 500).send({

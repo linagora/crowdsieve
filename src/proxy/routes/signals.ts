@@ -91,6 +91,11 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
 
       const responseBody = await response.text();
 
+      logger.info(
+        { count: filterResult.alerts.length, status: response.status, apiVersion },
+        'Forwarded signals to CAPI'
+      );
+
       // Update storage with forwarded status
       try {
         await storage.markAlertsForwarded(
