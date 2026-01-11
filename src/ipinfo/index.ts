@@ -146,16 +146,32 @@ function parseWhoisResponse(raw: string): WhoisSummary {
 }
 
 /**
- * Detect which RIR to query based on initial IANA response
+ * Detect which RIR to query based on initial IANA response.
+ * IANA returns a "refer:" or "whois:" line pointing to the appropriate RIR.
+ * We use an allowlist of known RIR servers to avoid matching arbitrary hostnames.
  */
 function detectRir(ianaResponse: string): string | null {
-  const lower = ianaResponse.toLowerCase();
+  // Known RIR WHOIS server hostnames (exact match required)
+  const rirServers: Record<string, string> = {
+    'whois.arin.net': 'ARIN',
+    'whois.ripe.net': 'RIPE',
+    'whois.apnic.net': 'APNIC',
+    'whois.lacnic.net': 'LACNIC',
+    'whois.afrinic.net': 'AFRINIC',
+  };
 
-  if (lower.includes('whois.arin.net')) return 'ARIN';
-  if (lower.includes('whois.ripe.net')) return 'RIPE';
-  if (lower.includes('whois.apnic.net')) return 'APNIC';
-  if (lower.includes('whois.lacnic.net')) return 'LACNIC';
-  if (lower.includes('whois.afrinic.net')) return 'AFRINIC';
+  // Match "refer:" or "whois:" lines in IANA response
+  // Format: "refer:        whois.arin.net" or "whois:        whois.ripe.net"
+  const referPattern = /^(?:refer|whois):\s*(\S+)/im;
+  const match = referPattern.exec(ianaResponse);
+
+  if (match) {
+    const server = match[1].toLowerCase();
+    // Only accept exact matches from our allowlist
+    if (Object.prototype.hasOwnProperty.call(rirServers, server)) {
+      return rirServers[server];
+    }
+  }
 
   return null;
 }
