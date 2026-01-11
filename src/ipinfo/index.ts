@@ -96,19 +96,30 @@ const ipInfoCache = new LRUCache<IPInfo>(CACHE_MAX_SIZE, CACHE_TTL_MS);
  */
 export async function reverseDnsLookup(ip: string): Promise<string[]> {
   return new Promise((resolve) => {
+    let resolved = false;
+
     const timeout = setTimeout(() => {
-      resolve([]);
+      if (!resolved) {
+        resolved = true;
+        resolve([]);
+      }
     }, DNS_TIMEOUT);
 
     dns.promises
       .reverse(ip)
       .then((hostnames) => {
-        clearTimeout(timeout);
-        resolve(hostnames);
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(hostnames);
+        }
       })
       .catch(() => {
-        clearTimeout(timeout);
-        resolve([]);
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve([]);
+        }
       });
   });
 }
