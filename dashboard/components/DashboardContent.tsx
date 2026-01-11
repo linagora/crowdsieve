@@ -15,8 +15,16 @@ interface DashboardContentProps {
 
 export function DashboardContent({ initialAlerts, stats }: DashboardContentProps) {
   const router = useRouter();
-  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds, machines } =
-    useAlertFilters({ initialAlerts });
+  const {
+    filters,
+    updateFilters,
+    resetFilters,
+    alerts,
+    isLoading,
+    hasActiveFilters,
+    timeBounds,
+    machines,
+  } = useAlertFilters({ initialAlerts, statsTimeBounds: stats.timeBounds });
 
   return (
     <div className="space-y-6">

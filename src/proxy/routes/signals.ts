@@ -10,7 +10,10 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     reply: FastifyReply,
     apiVersion: 'v2' | 'v3'
   ) => {
-    logger.debug({ method: request.method, url: request.url, clientIp: request.ip }, 'Incoming request');
+    logger.debug(
+      { method: request.method, url: request.url, clientIp: request.ip },
+      'Incoming request'
+    );
 
     // Client validation (if enabled)
     if (config.client_validation?.enabled) {
@@ -22,7 +25,10 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
       const result = await clientValidator.validate(request.headers.authorization);
 
       if (!result.valid) {
-        logger.warn({ reason: result.reason, clientIp: request.ip }, 'Rejected signals from invalid client');
+        logger.warn(
+          { reason: result.reason, clientIp: request.ip },
+          'Rejected signals from invalid client'
+        );
         return reply.code(401).send({
           error: 'Unauthorized',
           message: 'Client validation failed',

@@ -15,9 +15,14 @@ export interface FilterState {
 interface UseAlertFiltersOptions {
   initialAlerts: StoredAlert[];
   limit?: number;
+  statsTimeBounds?: { min: string | null; max: string | null };
 }
 
-export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersOptions) {
+export function useAlertFilters({
+  initialAlerts,
+  limit = 100,
+  statsTimeBounds,
+}: UseAlertFiltersOptions) {
   const [filters, setFilters] = useState<FilterState>({
     since: null,
     until: null,
@@ -33,8 +38,16 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
   const initialAlertsRef = useRef(initialAlerts);
   initialAlertsRef.current = initialAlerts;
 
-  // Compute time bounds from initial alerts for the slider
+  // Compute time bounds - prefer stats bounds (covers all data) over initial alerts
   const timeBounds = useMemo(() => {
+    // Use stats time bounds if available (covers all alerts in database)
+    if (statsTimeBounds?.min && statsTimeBounds?.max) {
+      return {
+        min: new Date(statsTimeBounds.min),
+        max: new Date(statsTimeBounds.max),
+      };
+    }
+    // Fallback to initial alerts bounds
     if (initialAlerts.length === 0) {
       return { min: new Date(), max: new Date() };
     }
@@ -43,7 +56,7 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
       min: new Date(Math.min(...times)),
       max: new Date(Math.max(...times)),
     };
-  }, [initialAlerts]);
+  }, [statsTimeBounds, initialAlerts]);
 
   // Compute unique machines from initial alerts
   const machines = useMemo(() => {
@@ -62,7 +75,8 @@ export function useAlertFilters({ initialAlerts, limit = 100 }: UseAlertFiltersO
   useEffect(() => {
     const fetchFiltered = async () => {
       // Only fetch from server if time, scenario or machineId filters are set
-      const hasServerFilters = filters.since || filters.until || filters.scenario || filters.machineId;
+      const hasServerFilters =
+        filters.since || filters.until || filters.scenario || filters.machineId;
 
       if (!hasServerFilters) {
         setAlerts(initialAlertsRef.current);

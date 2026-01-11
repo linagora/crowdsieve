@@ -58,4 +58,22 @@ export interface AlertStats {
   forwarded: number;
   topScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
+  timeBounds: { min: string | null; max: string | null };
+}
+
+export interface WhoisSummary {
+  netName?: string;
+  netRange?: string;
+  cidr?: string;
+  organization?: string;
+  country?: string;
+  descr?: string;
+  abuse?: string;
+}
+
+export interface IPInfo {
+  ip: string;
+  reverseDns: string[];
+  whois: WhoisSummary | null;
+  error?: string;
 }
