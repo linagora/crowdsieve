@@ -16,7 +16,6 @@ export interface WhoisSummary {
   country?: string;
   descr?: string;
   abuse?: string;
-  raw?: string;
 }
 
 // WHOIS servers by registry
@@ -153,7 +152,7 @@ async function queryWhoisServer(server: string, query: string): Promise<string> 
  */
 function parseWhoisResponse(raw: string): WhoisSummary {
   const lines = raw.split('\n');
-  const summary: WhoisSummary = { raw };
+  const summary: WhoisSummary = {};
 
   for (const line of lines) {
     const lower = line.toLowerCase();

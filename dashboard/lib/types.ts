@@ -69,7 +69,6 @@ export interface WhoisSummary {
   country?: string;
   descr?: string;
   abuse?: string;
-  raw?: string;
 }
 
 export interface IPInfo {
