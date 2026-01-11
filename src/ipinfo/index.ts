@@ -33,6 +33,64 @@ const WHOIS_PORT = 43;
 const WHOIS_TIMEOUT = 5000;
 const DNS_TIMEOUT = 3000;
 
+// Cache configuration
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const CACHE_MAX_SIZE = 1000;
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+/**
+ * Simple LRU cache with TTL for IP info results
+ */
+class LRUCache<T> {
+  private cache = new Map<string, CacheEntry<T>>();
+  private maxSize: number;
+  private ttlMs: number;
+
+  constructor(maxSize: number, ttlMs: number) {
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
+  }
+
+  get(key: string): T | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+
+    // Check if expired
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return undefined;
+    }
+
+    // Move to end (most recently used)
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: T): void {
+    // Delete existing to update position
+    this.cache.delete(key);
+
+    // Evict oldest if at capacity
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) this.cache.delete(firstKey);
+    }
+
+    this.cache.set(key, {
+      value,
+      expiresAt: Date.now() + this.ttlMs,
+    });
+  }
+}
+
+// Global cache for IP info results
+const ipInfoCache = new LRUCache<IPInfo>(CACHE_MAX_SIZE, CACHE_TTL_MS);
+
 /**
  * Perform reverse DNS lookup for an IP address
  */
@@ -202,6 +260,7 @@ export async function whoisLookup(ip: string): Promise<WhoisSummary | null> {
 
 /**
  * Get complete IP information (reverse DNS + WHOIS)
+ * Results are cached for 1 hour to reduce load on WHOIS servers
  */
 export async function getIPInfo(ip: string): Promise<IPInfo> {
   // Validate IP address
@@ -214,12 +273,23 @@ export async function getIPInfo(ip: string): Promise<IPInfo> {
     };
   }
 
+  // Check cache first
+  const cached = ipInfoCache.get(ip);
+  if (cached) {
+    return cached;
+  }
+
   // Run lookups in parallel
   const [reverseDns, whois] = await Promise.all([reverseDnsLookup(ip), whoisLookup(ip)]);
 
-  return {
+  const result: IPInfo = {
     ip,
     reverseDns,
     whois,
   };
+
+  // Cache the result
+  ipInfoCache.set(ip, result);
+
+  return result;
 }
