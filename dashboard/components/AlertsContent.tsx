@@ -13,8 +13,16 @@ interface AlertsContentProps {
 
 export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
   const router = useRouter();
-  const { filters, updateFilters, resetFilters, alerts, isLoading, hasActiveFilters, timeBounds, machines } =
-    useAlertFilters({ initialAlerts, limit: 200 });
+  const {
+    filters,
+    updateFilters,
+    resetFilters,
+    alerts,
+    isLoading,
+    hasActiveFilters,
+    timeBounds,
+    machines,
+  } = useAlertFilters({ initialAlerts, limit: 200, statsTimeBounds: stats.timeBounds });
 
   return (
     <div className="space-y-4">

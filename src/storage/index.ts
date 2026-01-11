@@ -29,6 +29,7 @@ export interface AlertStats {
   forwarded: number;
   topScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
+  timeBounds: { min: string | null; max: string | null };
 }
 
 export interface AlertStorage {
@@ -185,12 +186,14 @@ export function createStorage(): AlertStorage {
     async getStats(since) {
       const sinceDate = since?.toISOString();
 
-      // Total counts
+      // Total counts and time bounds
       const totalResult = db
         .select({
           total: sql<number>`count(*)`,
           filtered: sql<number>`sum(case when filtered = 1 then 1 else 0 end)`,
           forwarded: sql<number>`sum(case when forwarded_to_capi = 1 then 1 else 0 end)`,
+          minTime: sql<string | null>`min(received_at)`,
+          maxTime: sql<string | null>`max(received_at)`,
         })
         .from(schema.alerts)
         .where(sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined)
@@ -239,6 +242,10 @@ export function createStorage(): AlertStorage {
           country: c.country || 'Unknown',
           count: c.count,
         })),
+        timeBounds: {
+          min: totalResult?.minTime || null,
+          max: totalResult?.maxTime || null,
+        },
       };
     },
 

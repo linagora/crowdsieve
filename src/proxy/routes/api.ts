@@ -1,5 +1,6 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { timingSafeEqual } from 'crypto';
+import { getIPInfo } from '../../ipinfo/index.js';
 
 // Constants for input validation
 const MAX_LIMIT = 1000;
@@ -146,6 +147,34 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (err) {
       logger.error({ err }, 'Failed to get stats');
       return reply.code(500).send({ error: 'Failed to get stats' });
+    }
+  });
+
+  // Get IP info (reverse DNS + WHOIS)
+  fastify.get<{
+    Params: { ip: string };
+  }>('/api/ip-info/:ip', async (request, reply) => {
+    try {
+      const { ip } = request.params;
+
+      // Basic IP format validation
+      const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+      const ipv6Regex = /^[a-fA-F0-9:]+$/;
+
+      if (!ipv4Regex.test(ip) && !ipv6Regex.test(ip)) {
+        return reply.code(400).send({ error: 'Invalid IP address format' });
+      }
+
+      const ipInfo = await getIPInfo(ip);
+
+      if (ipInfo.error) {
+        return reply.code(400).send({ error: ipInfo.error });
+      }
+
+      return reply.send(ipInfo);
+    } catch (err) {
+      logger.error({ err }, 'Failed to get IP info');
+      return reply.code(500).send({ error: 'Failed to get IP info' });
     }
   });
 };

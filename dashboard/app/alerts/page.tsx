@@ -32,11 +32,25 @@ async function getStats(): Promise<AlertStats> {
       headers: getApiHeaders(),
     });
     if (!res.ok) {
-      return { total: 0, filtered: 0, forwarded: 0, topScenarios: [], topCountries: [] };
+      return {
+        total: 0,
+        filtered: 0,
+        forwarded: 0,
+        topScenarios: [],
+        topCountries: [],
+        timeBounds: { min: null, max: null },
+      };
     }
     return res.json();
   } catch {
-    return { total: 0, filtered: 0, forwarded: 0, topScenarios: [], topCountries: [] };
+    return {
+      total: 0,
+      filtered: 0,
+      forwarded: 0,
+      topScenarios: [],
+      topCountries: [],
+      timeBounds: { min: null, max: null },
+    };
   }
 }
 

@@ -218,8 +218,7 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   // Global error handler
   app.setErrorHandler((error: FastifyError, request, reply) => {
     // Client-side errors (4xx) are logged as warnings, server errors (5xx) as errors
-    const isClientError =
-      error.statusCode && error.statusCode >= 400 && error.statusCode < 500;
+    const isClientError = error.statusCode && error.statusCode >= 400 && error.statusCode < 500;
     const logData: Record<string, unknown> = {
       err: error,
       method: request.method,

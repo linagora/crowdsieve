@@ -4,7 +4,7 @@ import { LRUCache } from './memory-cache.js';
 import { ValidationCache } from './cache.js';
 import type { ValidationConfig, ValidationResult, CacheEntry } from './types.js';
 
-export { ValidationConfig, ValidationResult } from './types.js';
+export type { ValidationConfig, ValidationResult } from './types.js';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
