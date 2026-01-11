@@ -149,8 +149,9 @@ async function queryWhoisServer(server: string, query: string): Promise<string> 
 
 /**
  * Parse WHOIS response into a summary
+ * Exported for testing
  */
-function parseWhoisResponse(raw: string): WhoisSummary {
+export function parseWhoisResponse(raw: string): WhoisSummary {
   const lines = raw.split('\n');
   const summary: WhoisSummary = {};
 
@@ -206,8 +207,9 @@ function parseWhoisResponse(raw: string): WhoisSummary {
  * Detect which RIR to query based on initial IANA response.
  * IANA returns a "refer:" or "whois:" line pointing to the appropriate RIR.
  * We use an allowlist of known RIR servers to avoid matching arbitrary hostnames.
+ * Exported for testing
  */
-function detectRir(ianaResponse: string): string | null {
+export function detectRir(ianaResponse: string): string | null {
   // Known RIR WHOIS server hostnames (exact match required)
   const rirServers: Record<string, string> = {
     'whois.arin.net': 'ARIN',
