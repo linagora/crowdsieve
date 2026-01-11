@@ -1,5 +1,6 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { timingSafeEqual } from 'crypto';
+import net from 'net';
 import { getIPInfo } from '../../ipinfo/index.js';
 
 // Constants for input validation
@@ -157,11 +158,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const { ip } = request.params;
 
-      // Basic IP format validation
-      const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      const ipv6Regex = /^[a-fA-F0-9:]+$/;
-
-      if (!ipv4Regex.test(ip) && !ipv6Regex.test(ip)) {
+      // Validate IP address using Node's net module (handles IPv4 and IPv6 correctly)
+      if (!net.isIP(ip)) {
         return reply.code(400).send({ error: 'Invalid IP address format' });
       }
 
