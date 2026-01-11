@@ -30,6 +30,7 @@ const WHOIS_SERVERS: Record<string, string> = {
 const DEFAULT_WHOIS_SERVER = 'whois.iana.org';
 const WHOIS_PORT = 43;
 const WHOIS_TIMEOUT = 5000;
+const WHOIS_MAX_RESPONSE_SIZE = 100 * 1024; // 100KB max response size
 const DNS_TIMEOUT = 3000;
 
 // Cache configuration
@@ -119,6 +120,7 @@ async function queryWhoisServer(server: string, query: string): Promise<string> 
   return new Promise((resolve, reject) => {
     const socket = net.connect(WHOIS_PORT, server);
     let data = '';
+    let dataSize = 0;
 
     const timeout = setTimeout(() => {
       socket.destroy();
@@ -132,6 +134,14 @@ async function queryWhoisServer(server: string, query: string): Promise<string> 
     });
 
     socket.on('data', (chunk) => {
+      dataSize += chunk.length;
+      // Prevent memory exhaustion from oversized responses
+      if (dataSize > WHOIS_MAX_RESPONSE_SIZE) {
+        clearTimeout(timeout);
+        socket.destroy();
+        reject(new Error('WHOIS response too large'));
+        return;
+      }
       data += chunk;
     });
 
