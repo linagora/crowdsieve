@@ -24,15 +24,8 @@ export function IPInfoPanel({ ip }: IPInfoPanelProps) {
         setLoading(true);
         setError(null);
 
-        const apiKey = process.env.NEXT_PUBLIC_API_KEY;
-        const headers: HeadersInit = {};
-        if (apiKey) {
-          headers['X-API-Key'] = apiKey;
-        }
-
-        const res = await fetch(`/api/ip-info/${encodeURIComponent(ip)}`, {
-          headers,
-        });
+        // Authentication is handled server-side by /api/ip-info/[ip]/route.ts
+        const res = await fetch(`/api/ip-info/${encodeURIComponent(ip)}`);
 
         if (!res.ok) {
           throw new Error('Failed to fetch IP info');
