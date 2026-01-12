@@ -3,6 +3,44 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
+/**
+ * Interpolate environment variables in a string
+ * Supports ${VAR_NAME} and ${VAR_NAME:-default} syntax
+ */
+function interpolateEnvVars(value: string): string {
+  return value.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, varName, defaultValue) => {
+    const envValue = process.env[varName];
+    if (envValue !== undefined) {
+      return envValue;
+    }
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+    // Return empty string if no value and no default
+    return '';
+  });
+}
+
+/**
+ * Recursively process an object and interpolate environment variables in string values
+ */
+function processEnvVars(obj: unknown): unknown {
+  if (typeof obj === 'string') {
+    return interpolateEnvVars(obj);
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(processEnvVars);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = processEnvVars(value);
+    }
+    return result;
+  }
+  return obj;
+}
+
 // Filter rule schema
 const BaseFilterSchema = z.object({
   name: z.string(),
@@ -133,7 +171,9 @@ export function loadConfig(configPath: string): Config {
   try {
     const content = readFileSync(configPath, 'utf-8');
     const parsed = parseYaml(content);
-    return ConfigSchema.parse(parsed);
+    // Interpolate environment variables in config values
+    const processed = processEnvVars(parsed);
+    return ConfigSchema.parse(processed);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       // Config file doesn't exist, use defaults

@@ -120,6 +120,28 @@ cscli machines add crowdsieve --password 'your-machine-password'
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
+### Environment Variables in Config
+
+Sensitive values like passwords and API keys can be loaded from environment variables using the `${VAR_NAME}` syntax:
+
+```yaml
+lapi_servers:
+  - name: 'server1'
+    url: 'http://localhost:8081'
+    api_key: '${LAPI_API_KEY}'
+    machine_id: '${LAPI_MACHINE_ID:-crowdsieve}'  # With default value
+    password: '${LAPI_PASSWORD}'
+```
+
+Syntax:
+- `${VAR_NAME}` - Replaced with the environment variable value (empty string if not set)
+- `${VAR_NAME:-default}` - Replaced with the env var value, or `default` if not set
+
+This is useful for:
+- Docker/Kubernetes deployments with secrets
+- Keeping sensitive data out of config files
+- CI/CD pipelines
+
 ### Decision Search
 
 The dashboard includes a **Decisions** page (accessible from the navigation) that lets you search for active decisions on any IP address across all configured LAPI servers.
