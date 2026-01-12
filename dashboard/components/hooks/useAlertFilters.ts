@@ -16,12 +16,16 @@ interface UseAlertFiltersOptions {
   initialAlerts: StoredAlert[];
   limit?: number;
   statsTimeBounds?: { min: string | null; max: string | null };
+  autoRefreshInterval?: number; // in milliseconds, 0 to disable
 }
+
+const DEFAULT_AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
 
 export function useAlertFilters({
   initialAlerts,
   limit = 100,
   statsTimeBounds,
+  autoRefreshInterval = DEFAULT_AUTO_REFRESH_INTERVAL,
 }: UseAlertFiltersOptions) {
   const [filters, setFilters] = useState<FilterState>({
     since: null,
@@ -33,6 +37,7 @@ export function useAlertFilters({
   const [alerts, setAlerts] = useState<StoredAlert[]>(initialAlerts);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
   // Keep a stable reference to initialAlerts to avoid unnecessary re-fetches
   const initialAlertsRef = useRef(initialAlerts);
@@ -71,31 +76,36 @@ export function useAlertFilters({
       .sort((a, b) => b.count - a.count);
   }, [initialAlerts]);
 
-  // Fetch filtered alerts when filters change (except status which is client-side)
-  useEffect(() => {
-    const fetchFiltered = async () => {
-      // Only fetch from server if time, scenario or machineId filters are set
-      const hasServerFilters =
-        filters.since || filters.until || filters.scenario || filters.machineId;
+  // Reusable fetch function
+  const doFetch = useCallback(async (isAutoRefresh = false) => {
+    // Only fetch from server if time, scenario or machineId filters are set
+    const hasServerFilters =
+      filters.since || filters.until || filters.scenario || filters.machineId;
 
-      if (!hasServerFilters) {
-        setAlerts(initialAlertsRef.current);
-        return;
-      }
+    if (!hasServerFilters && !isAutoRefresh) {
+      setAlerts(initialAlertsRef.current);
+      return;
+    }
 
+    // Don't show loading spinner for auto-refresh
+    if (!isAutoRefresh) {
       setIsLoading(true);
-      setError(null);
+    }
+    setError(null);
 
-      try {
-        const result = await fetchAlerts({
-          limit,
-          since: filters.since?.toISOString(),
-          until: filters.until?.toISOString(),
-          scenario: filters.scenario || undefined,
-          machineId: filters.machineId || undefined,
-        });
-        setAlerts(result);
-      } catch (err) {
+    try {
+      const result = await fetchAlerts({
+        limit,
+        since: filters.since?.toISOString(),
+        until: filters.until?.toISOString(),
+        scenario: filters.scenario || undefined,
+        machineId: filters.machineId || undefined,
+      });
+      setAlerts(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      // Don't show errors for auto-refresh failures
+      if (!isAutoRefresh) {
         let errorMessage = 'Failed to fetch filtered alerts';
         if (err instanceof Error) {
           if (err.name === 'AbortError' || err.name === 'TimeoutError') {
@@ -106,13 +116,29 @@ export function useAlertFilters({
         }
         setError(errorMessage);
         console.error('Filter fetch error:', err);
-      } finally {
+      }
+    } finally {
+      if (!isAutoRefresh) {
         setIsLoading(false);
       }
-    };
-
-    fetchFiltered();
+    }
   }, [filters.since, filters.until, filters.scenario, filters.machineId, limit]);
+
+  // Fetch filtered alerts when filters change
+  useEffect(() => {
+    doFetch(false);
+  }, [doFetch]);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (!autoRefreshInterval || autoRefreshInterval <= 0) return;
+
+    const intervalId = setInterval(() => {
+      doFetch(true);
+    }, autoRefreshInterval);
+
+    return () => clearInterval(intervalId);
+  }, [autoRefreshInterval, doFetch]);
 
   // Apply client-side status filter
   const filteredAlerts = alerts.filter((alert) => {
@@ -142,6 +168,10 @@ export function useAlertFilters({
     filters.machineId !== null ||
     filters.status !== 'all';
 
+  const refresh = useCallback(() => {
+    doFetch(false);
+  }, [doFetch]);
+
   return {
     filters,
     updateFilters,
@@ -153,5 +183,7 @@ export function useAlertFilters({
     hasActiveFilters,
     timeBounds,
     machines,
+    lastUpdated,
+    refresh,
   };
 }
