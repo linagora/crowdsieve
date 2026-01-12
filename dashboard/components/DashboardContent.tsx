@@ -59,7 +59,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Map */}
         <div className="card p-4">
-          <h2 className="text-lg font-semibold mb-4">Origines des alertes</h2>
+          <h2 className="text-lg font-semibold mb-4">Alert Origins</h2>
           <Suspense fallback={<div className="h-[400px] bg-slate-100 animate-pulse rounded-lg" />}>
             <WorldMapWrapper alerts={alerts} onLocationSelect={setSelectedLocation} />
           </Suspense>
@@ -69,18 +69,18 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
         <div className="card p-4 max-h-[500px] overflow-hidden flex flex-col">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">
-              Alertes récentes
+              Recent Alerts
               {isLoading && (
-                <span className="ml-2 text-sm font-normal text-slate-400">Chargement...</span>
+                <span className="ml-2 text-sm font-normal text-slate-400">Loading...</span>
               )}
               {selectedLocation && (
                 <span className="ml-2 text-sm font-normal text-crowdsec-primary">
-                  (filtrées par localisation)
+                  (filtered by location)
                 </span>
               )}
             </h2>
             <span className="text-sm text-slate-500">
-              {displayedAlerts.length} résultat{displayedAlerts.length > 1 ? 's' : ''}
+              {displayedAlerts.length} result{displayedAlerts.length > 1 ? 's' : ''}
             </span>
           </div>
 
@@ -95,7 +95,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
 
             {displayedAlerts.length === 0 && (
               <div className="text-center text-slate-400 py-8">
-                Aucune alerte ne correspond aux filtres
+                No alerts match the current filters
               </div>
             )}
           </div>
@@ -105,7 +105,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
       {/* Top Scenarios */}
       {stats.topScenarios.length > 0 && (
         <div className="card p-4">
-          <h2 className="text-lg font-semibold mb-4">Top Scénarios</h2>
+          <h2 className="text-lg font-semibold mb-4">Top Scenarios</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {stats.topScenarios.slice(0, 5).map((item) => (
               <div
