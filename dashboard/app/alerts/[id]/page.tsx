@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { StoredAlert } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
+import { BanIPForm } from '@/components/BanIPForm';
 
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
 const API_KEY = process.env.DASHBOARD_API_KEY;
@@ -187,9 +188,12 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
         </div>
       </div>
 
-      {/* IP Network Information (Reverse DNS + WHOIS) */}
+      {/* IP Network Information (Reverse DNS + WHOIS) and Manual Ban */}
       {(alert.sourceIp || alert.sourceValue) && (
-        <IPInfoPanel ip={alert.sourceIp || alert.sourceValue || ''} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <IPInfoPanel ip={alert.sourceIp || alert.sourceValue || ''} />
+          <BanIPForm initialIp={alert.sourceIp || alert.sourceValue || ''} />
+        </div>
       )}
 
       {/* Filter Information */}

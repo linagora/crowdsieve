@@ -9,6 +9,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Combinable conditions for complex filtering logic
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
+- **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
 - **GeoIP Enrichment**: Enrich alerts with geographic information
 - **Lightweight**: Docker image under 250MB
@@ -89,6 +90,28 @@ filters:
   mode: 'block' # "block" = matching alerts NOT forwarded; "allow" = only matching forwarded
   # Rules are loaded from config/filters.d/*.yaml
 ```
+
+### LAPI Servers (Manual Bans)
+
+To enable manual IP banning from the dashboard, configure your local CrowdSec LAPI servers:
+
+```yaml
+lapi_servers:
+  - name: 'server1'
+    url: 'http://localhost:8081'
+    api_key: 'your-lapi-api-key'
+  - name: 'server2'
+    url: 'http://192.168.1.10:8080'
+    api_key: 'another-api-key'
+```
+
+The API key must have write access to decisions on the LAPI. Generate one with:
+
+```bash
+cscli bouncers add crowdsieve-dashboard
+```
+
+When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario.
 
 ### Filter Rules
 
@@ -230,7 +253,10 @@ flowchart LR
     LAPI3 --> Proxy
     Proxy --> CAPI
     Proxy --> DB
-    Dashboard --> DB
+    Dashboard --> Proxy
+    Proxy -.->|Manual bans| LAPI1
+    Proxy -.->|Manual bans| LAPI2
+    Proxy -.->|Manual bans| LAPI3
 ```
 
 ## License

@@ -21,3 +21,14 @@ logging:
 filters:
   mode: "block"
   # Rules are loaded from filters.d/ directory
+
+# Local LAPI servers for manual decisions (bans)
+# These are CrowdSec instances where you can push manual ban decisions
+# from the dashboard. The api_key must have write access to decisions.
+# lapi_servers:
+#   - name: "server1"
+#     url: "http://localhost:8081"
+#     api_key: "your-lapi-api-key-here"
+#   - name: "server2"
+#     url: "http://192.168.1.10:8080"
+#     api_key: "another-api-key"

@@ -1,5 +1,6 @@
 import { StatsPanel } from '@/components/StatsPanel';
 import { DashboardContent } from '@/components/DashboardContent';
+import { BanIPForm } from '@/components/BanIPForm';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
 // Use internal API route which will be rewritten to proxy
@@ -67,6 +68,9 @@ export default async function DashboardPage() {
 
       {/* Dashboard Content with Filters */}
       <DashboardContent initialAlerts={alerts} stats={stats} />
+
+      {/* Manual Ban */}
+      <BanIPForm />
     </div>
   );
 }

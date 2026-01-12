@@ -77,3 +77,23 @@ export interface IPInfo {
   whois: WhoisSummary | null;
   error?: string;
 }
+
+export interface LapiServer {
+  name: string;
+  url: string;
+}
+
+export interface BanDecisionRequest {
+  server: string;
+  ip: string;
+  duration: string;
+  reason?: string;
+}
+
+export interface BanDecisionResponse {
+  success: boolean;
+  message: string;
+  server: string;
+  error?: string;
+  details?: string;
+}
