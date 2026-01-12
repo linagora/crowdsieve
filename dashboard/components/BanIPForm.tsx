@@ -102,6 +102,9 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
     }
   };
 
+  // Filter servers that can ban (have machine credentials)
+  const serversWithBan = servers.filter((s) => s.canBan);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setResult(null);
@@ -164,8 +167,6 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
       </div>
     );
   }
-
-  const serversWithBan = servers.filter((s) => s.canBan);
 
   if (servers.length === 0) {
     return (

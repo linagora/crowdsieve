@@ -22,6 +22,24 @@ interface TokenCacheEntry {
 }
 const tokenCache = new Map<string, TokenCacheEntry>();
 
+// Cleanup expired tokens periodically (every 5 minutes)
+const TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+function cleanupExpiredTokens(): void {
+  const now = Date.now();
+  for (const [key, entry] of tokenCache) {
+    if (entry.expiresAt <= now) {
+      tokenCache.delete(key);
+    }
+  }
+}
+
+// Start cleanup interval (unref to not block process exit)
+const cleanupInterval = setInterval(cleanupExpiredTokens, TOKEN_CLEANUP_INTERVAL_MS);
+if (cleanupInterval.unref) {
+  cleanupInterval.unref();
+}
+
 // Package version for scenario_version
 const CROWDSIEVE_VERSION = '1.0.0';
 

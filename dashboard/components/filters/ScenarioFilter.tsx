@@ -63,7 +63,7 @@ export function ScenarioFilter({
                 <Check
                   className={cn('mr-2 h-4 w-4', !selectedScenario ? 'opacity-100' : 'opacity-0')}
                 />
-                Tous les scénarios
+                All scenarios
               </CommandItem>
               {scenarios.map((s) => (
                 <CommandItem

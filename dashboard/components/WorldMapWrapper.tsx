@@ -26,7 +26,6 @@ function WorldMapWrapperInner({ alerts, onLocationSelect }: WorldMapWrapperProps
 // Only re-render when alerts actually change
 export const WorldMapWrapper = memo(WorldMapWrapperInner, (prevProps, nextProps) => {
   // Return true if props are equal (should NOT re-render)
-  if (prevProps.alerts.length !== nextProps.alerts.length) return false;
-  if (prevProps.alerts[0]?.id !== nextProps.alerts[0]?.id) return false;
-  return true;
+  // Use reference equality for alerts array - parent should create new array only when data changes
+  return prevProps.alerts === nextProps.alerts;
 });
