@@ -32,12 +32,16 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
   // Filter alerts by selected location (client-side)
   const displayedAlerts = useMemo(() => {
     if (!selectedLocation) return alerts;
+    // Use numeric comparison with rounding to avoid toFixed string edge cases
+    const PRECISION = 10; // 0.1° precision
+    const selectedLatRounded = Math.round(selectedLocation.lat * PRECISION);
+    const selectedLngRounded = Math.round(selectedLocation.lng * PRECISION);
     return alerts.filter((a) => {
       if (!a.geoLatitude || !a.geoLongitude) return false;
       // Same rounding as WorldMap (0.1°)
       return (
-        a.geoLatitude.toFixed(1) === selectedLocation.lat.toFixed(1) &&
-        a.geoLongitude.toFixed(1) === selectedLocation.lng.toFixed(1)
+        Math.round(a.geoLatitude * PRECISION) === selectedLatRounded &&
+        Math.round(a.geoLongitude * PRECISION) === selectedLngRounded
       );
     });
   }, [alerts, selectedLocation]);

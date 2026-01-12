@@ -115,7 +115,11 @@ cscli bouncers add crowdsieve-dashboard
 
 **Machine credentials** (optional): For manual banning from the dashboard. Register a machine with:
 ```bash
-cscli machines add crowdsieve --password 'your-machine-password'
+# Interactive (will prompt for password)
+cscli machines add crowdsieve
+
+# Or with auto-generated password (note it down for config)
+cscli machines add crowdsieve --auto
 ```
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.

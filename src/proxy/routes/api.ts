@@ -485,8 +485,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
           .send({ error: 'Invalid duration format. Use format like: 4h, 24h, 168h' });
       }
 
-      // Validate reason length if provided
-      if (reason && reason.length > MAX_REASON_LENGTH) {
+      // Validate reason length (check trimmed length for consistency)
+      if (reason && reason.trim().length > MAX_REASON_LENGTH) {
         return reply
           .code(400)
           .send({ error: `Reason too long. Maximum ${MAX_REASON_LENGTH} characters allowed` });
