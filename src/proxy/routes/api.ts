@@ -50,6 +50,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       scenario?: string;
       country?: string;
       machineId?: string;
+      ip?: string;
       since?: string;
       until?: string;
     };
@@ -72,6 +73,12 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       const scenario = request.query.scenario;
       if (scenario && scenario.length > MAX_SCENARIO_LENGTH) {
         return reply.code(400).send({ error: 'Scenario filter too long' });
+      }
+
+      // Validate IP address format if provided
+      const ip = request.query.ip;
+      if (ip && !net.isIP(ip)) {
+        return reply.code(400).send({ error: 'Invalid IP address format' });
       }
 
       // Parse and validate date parameters
@@ -108,6 +115,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         filtered: request.query.filtered ? request.query.filtered === 'true' : undefined,
         scenario,
         sourceCountry: country,
+        sourceIp: ip,
         machineId: request.query.machineId,
         since,
         until,

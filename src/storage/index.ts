@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, like, sql } from 'drizzle-orm';
+import { eq, desc, and, or, gte, lte, like, sql } from 'drizzle-orm';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
 import { getDatabase, schema } from '../db/index.js';
@@ -155,7 +155,13 @@ export function createStorage(): AlertStorage {
         conditions.push(eq(schema.alerts.geoCountryCode, query.sourceCountry));
       }
       if (query.sourceIp) {
-        conditions.push(eq(schema.alerts.sourceIp, query.sourceIp));
+        // Search in both sourceIp and sourceValue (IP can be in either field)
+        conditions.push(
+          or(
+            eq(schema.alerts.sourceIp, query.sourceIp),
+            eq(schema.alerts.sourceValue, query.sourceIp)
+          )
+        );
       }
       if (query.machineId) {
         conditions.push(eq(schema.alerts.machineId, query.machineId));
