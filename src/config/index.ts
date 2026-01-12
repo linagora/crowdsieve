@@ -80,9 +80,9 @@ export type FilterRule = z.infer<typeof FilterRuleSchema>;
 
 // LAPI server configuration for pushing decisions
 const LapiServerSchema = z.object({
-  name: z.string(),
+  name: z.string().min(1),
   url: z.string().url(),
-  api_key: z.string(),
+  api_key: z.string().min(1),
 });
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;

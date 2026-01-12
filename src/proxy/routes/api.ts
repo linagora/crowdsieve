@@ -8,8 +8,10 @@ import type { LapiServer } from '../../config/index.js';
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 100;
 const MAX_SCENARIO_LENGTH = 200;
+const MAX_REASON_LENGTH = 500;
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
 const DURATION_REGEX = /^\d+[smh]$/;
+const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * Constant-time string comparison to prevent timing attacks
@@ -372,6 +374,11 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Missing required fields: server, ip, duration' });
       }
 
+      // Validate server name format
+      if (!SERVER_NAME_REGEX.test(server)) {
+        return reply.code(400).send({ error: 'Invalid server name format' });
+      }
+
       // Validate IP address
       if (!net.isIP(ip)) {
         return reply.code(400).send({ error: 'Invalid IP address format' });
@@ -382,6 +389,13 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply
           .code(400)
           .send({ error: 'Invalid duration format. Use format like: 4h, 24h, 168h' });
+      }
+
+      // Validate reason length if provided
+      if (reason && reason.length > MAX_REASON_LENGTH) {
+        return reply
+          .code(400)
+          .send({ error: `Reason too long. Maximum ${MAX_REASON_LENGTH} characters allowed` });
       }
 
       // Find the LAPI server

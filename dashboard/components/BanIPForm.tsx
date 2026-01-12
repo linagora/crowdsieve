@@ -5,6 +5,8 @@ import { Ban, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LapiServer, BanDecisionResponse } from '@/lib/types';
 
+const DEFAULT_DURATION = '4h';
+
 const DURATION_OPTIONS = [
   { label: '1 hour', value: '1h' },
   { label: '4 hours', value: '4h' },
@@ -30,7 +32,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
   const [loadingServers, setLoadingServers] = useState(true);
   const [selectedServer, setSelectedServer] = useState('');
   const [ip, setIp] = useState(initialIp);
-  const [duration, setDuration] = useState('4h');
+  const [duration, setDuration] = useState(DEFAULT_DURATION);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BanResult | null>(null);
@@ -121,6 +123,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
         if (allSuccess) {
           setIp('');
           setReason('');
+          setDuration(DEFAULT_DURATION);
         }
       } else {
         // Ban on single server
@@ -130,6 +133,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
           setResult({ success: true, message: res.message });
           setIp('');
           setReason('');
+          setDuration(DEFAULT_DURATION);
         } else {
           setResult({ success: false, message: res.message });
         }
