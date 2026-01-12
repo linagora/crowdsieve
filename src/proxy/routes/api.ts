@@ -9,7 +9,6 @@ const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 100;
 const MAX_SCENARIO_LENGTH = 200;
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
-const MAX_DURATION = '8760h'; // 1 year max
 const DURATION_REGEX = /^\d+[smh]$/;
 
 /**
@@ -218,7 +217,9 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Validate duration format
       if (!DURATION_REGEX.test(duration)) {
-        return reply.code(400).send({ error: 'Invalid duration format. Use format like: 4h, 24h, 168h' });
+        return reply
+          .code(400)
+          .send({ error: 'Invalid duration format. Use format like: 4h, 24h, 168h' });
       }
 
       // Find the LAPI server
@@ -257,7 +258,10 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        logger.error({ status: response.status, error: errorBody, server: lapiServer.name }, 'LAPI rejected decision');
+        logger.error(
+          { status: response.status, error: errorBody, server: lapiServer.name },
+          'LAPI rejected decision'
+        );
         return reply.code(response.status).send({
           error: `LAPI returned error: ${response.status}`,
           details: errorBody,
@@ -265,7 +269,10 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const result = await response.json();
-      logger.info({ server: lapiServer.name, ip, result }, 'Manual ban decision posted successfully');
+      logger.info(
+        { server: lapiServer.name, ip, result },
+        'Manual ban decision posted successfully'
+      );
 
       return reply.send({
         success: true,

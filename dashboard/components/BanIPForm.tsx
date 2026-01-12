@@ -63,7 +63,9 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
     setIp(initialIp);
   }, [initialIp]);
 
-  const banOnServer = async (serverName: string): Promise<{ server: string; success: boolean; message: string }> => {
+  const banOnServer = async (
+    serverName: string
+  ): Promise<{ server: string; success: boolean; message: string }> => {
     try {
       const res = await fetch('/api/decisions/ban', {
         method: 'POST',
@@ -81,10 +83,18 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
       if (res.ok && data.success) {
         return { server: serverName, success: true, message: data.message };
       } else {
-        return { server: serverName, success: false, message: data.error || data.details || 'Failed' };
+        return {
+          server: serverName,
+          success: false,
+          message: data.error || data.details || 'Failed',
+        };
       }
     } catch (err) {
-      return { server: serverName, success: false, message: err instanceof Error ? err.message : 'Unknown error' };
+      return {
+        server: serverName,
+        success: false,
+        message: err instanceof Error ? err.message : 'Unknown error',
+      };
     }
   };
 
@@ -244,9 +254,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
         {result && (
           <div
             className={`p-3 rounded-lg ${
-              result.success
-                ? 'bg-green-50 text-green-800'
-                : 'bg-red-50 text-red-800'
+              result.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
             }`}
           >
             <div className="flex items-center gap-2">
