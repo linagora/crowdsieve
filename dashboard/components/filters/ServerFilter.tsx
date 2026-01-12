@@ -30,7 +30,7 @@ export function ServerFilter({
   const [open, setOpen] = useState(false);
 
   const selectedItem = machines.find((m) => m.machineId === selectedMachineId);
-  const displayName = selectedItem ? selectedItem.machineId : 'Tous les serveurs';
+  const displayName = selectedItem ? selectedItem.machineId : 'All servers';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -51,9 +51,9 @@ export function ServerFilter({
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0 z-[500]">
         <Command>
-          <CommandInput placeholder="Rechercher un serveur..." />
+          <CommandInput placeholder="Search server..." />
           <CommandList>
-            <CommandEmpty>Aucun serveur trouvé.</CommandEmpty>
+            <CommandEmpty>No server found.</CommandEmpty>
             <CommandGroup>
               <CommandItem
                 onSelect={() => {
@@ -64,7 +64,7 @@ export function ServerFilter({
                 <Check
                   className={cn('mr-2 h-4 w-4', !selectedMachineId ? 'opacity-100' : 'opacity-0')}
                 />
-                Tous les serveurs
+                All servers
               </CommandItem>
               {machines.map((m) => (
                 <CommandItem

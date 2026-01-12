@@ -30,7 +30,7 @@ export function ScenarioFilter({
   const [open, setOpen] = useState(false);
 
   const selectedItem = scenarios.find((s) => s.scenario === selectedScenario);
-  const displayName = selectedItem ? selectedItem.scenario.split('/').pop() : 'Tous les scénarios';
+  const displayName = selectedItem ? selectedItem.scenario.split('/').pop() : 'All scenarios';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -50,9 +50,9 @@ export function ScenarioFilter({
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0 z-[500]">
         <Command>
-          <CommandInput placeholder="Rechercher un scénario..." />
+          <CommandInput placeholder="Search scenario..." />
           <CommandList>
-            <CommandEmpty>Aucun scénario trouvé.</CommandEmpty>
+            <CommandEmpty>No scenario found.</CommandEmpty>
             <CommandGroup>
               <CommandItem
                 onSelect={() => {
@@ -63,7 +63,7 @@ export function ScenarioFilter({
                 <Check
                   className={cn('mr-2 h-4 w-4', !selectedScenario ? 'opacity-100' : 'opacity-0')}
                 />
-                Tous les scénarios
+                All scenarios
               </CommandItem>
               {scenarios.map((s) => (
                 <CommandItem

@@ -8,12 +8,17 @@ import type { StoredAlert } from '@/lib/types';
 interface WorldMapProps {
   alerts: StoredAlert[];
   height?: string;
+  onLocationSelect?: (location: { lat: number; lng: number } | null) => void;
 }
 
-export function WorldMap({ alerts, height = '400px' }: WorldMapProps) {
+export function WorldMap({ alerts, height = '400px', onLocationSelect }: WorldMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
+
+  // Use ref for callback to avoid re-creating markers when callback changes
+  const onLocationSelectRef = useRef(onLocationSelect);
+  onLocationSelectRef.current = onLocationSelect;
 
   // Group alerts by location
   const alertsByLocation = useMemo(() => {
@@ -101,6 +106,15 @@ export function WorldMap({ alerts, height = '400px' }: WorldMapProps) {
       `;
 
       marker.bindPopup(popupContent);
+
+      // Emit location selection on popup open/close
+      marker.on('popupopen', () => {
+        onLocationSelectRef.current?.({ lat, lng });
+      });
+      marker.on('popupclose', () => {
+        onLocationSelectRef.current?.(null);
+      });
+
       marker.addTo(markersRef.current!);
     });
   }, [alertsByLocation]);

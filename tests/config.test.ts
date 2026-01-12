@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
-import { loadFiltersFromDirectory } from '../src/config/index.js';
+import { loadFiltersFromDirectory, loadConfig } from '../src/config/index.js';
 
 const TEST_DIR = join(process.cwd(), 'tests', 'fixtures', 'filters.d');
 
@@ -313,5 +313,126 @@ filter:
     expect(result.filters).toHaveLength(1);
     expect(result.filters[0].name).toBe('complex-filter');
     expect(result.filters[0].filter).toHaveProperty('op', 'and');
+  });
+});
+
+const CONFIG_DIR = join(process.cwd(), 'tests', 'fixtures', 'config');
+
+describe('loadConfig with environment variable interpolation', () => {
+  beforeEach(() => {
+    if (existsSync(CONFIG_DIR)) {
+      rmSync(CONFIG_DIR, { recursive: true });
+    }
+    mkdirSync(CONFIG_DIR, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (existsSync(CONFIG_DIR)) {
+      rmSync(CONFIG_DIR, { recursive: true });
+    }
+    // Clean up env vars
+    delete process.env.TEST_LAPI_PASSWORD;
+    delete process.env.TEST_LAPI_API_KEY;
+    delete process.env.TEST_MACHINE_ID;
+  });
+
+  it('should interpolate environment variables in config', () => {
+    process.env.TEST_LAPI_PASSWORD = 'secret-password-123';
+    process.env.TEST_LAPI_API_KEY = 'api-key-456';
+
+    const configPath = join(CONFIG_DIR, 'config.yaml');
+    writeFileSync(
+      configPath,
+      `proxy:
+  listen_port: 8080
+  capi_url: https://api.crowdsec.net
+
+storage:
+  path: ./data/test.db
+
+lapi_servers:
+  - name: test-server
+    url: http://localhost:8081
+    api_key: "\${TEST_LAPI_API_KEY}"
+    machine_id: test-machine
+    password: "\${TEST_LAPI_PASSWORD}"
+`
+    );
+
+    const config = loadConfig(configPath);
+
+    expect(config.lapi_servers).toHaveLength(1);
+    expect(config.lapi_servers[0].api_key).toBe('api-key-456');
+    expect(config.lapi_servers[0].password).toBe('secret-password-123');
+  });
+
+  it('should use default value when env var is not set', () => {
+    const configPath = join(CONFIG_DIR, 'config.yaml');
+    writeFileSync(
+      configPath,
+      `proxy:
+  listen_port: 8080
+  capi_url: https://api.crowdsec.net
+
+storage:
+  path: ./data/test.db
+
+lapi_servers:
+  - name: test-server
+    url: http://localhost:8081
+    api_key: "\${MISSING_VAR:-default-api-key}"
+    machine_id: "\${MISSING_ID:-default-machine}"
+`
+    );
+
+    const config = loadConfig(configPath);
+
+    expect(config.lapi_servers).toHaveLength(1);
+    expect(config.lapi_servers[0].api_key).toBe('default-api-key');
+    expect(config.lapi_servers[0].machine_id).toBe('default-machine');
+  });
+
+  it('should prefer env var over default value', () => {
+    process.env.TEST_MACHINE_ID = 'from-env';
+
+    const configPath = join(CONFIG_DIR, 'config.yaml');
+    writeFileSync(
+      configPath,
+      `proxy:
+  listen_port: 8080
+  capi_url: https://api.crowdsec.net
+
+storage:
+  path: ./data/test.db
+
+lapi_servers:
+  - name: test-server
+    url: http://localhost:8081
+    api_key: test-key
+    machine_id: "\${TEST_MACHINE_ID:-default-machine}"
+`
+    );
+
+    const config = loadConfig(configPath);
+
+    expect(config.lapi_servers[0].machine_id).toBe('from-env');
+  });
+
+  it('should return empty string for missing env var without default', () => {
+    const configPath = join(CONFIG_DIR, 'config.yaml');
+    writeFileSync(
+      configPath,
+      `proxy:
+  listen_port: 8080
+  capi_url: https://api.crowdsec.net
+
+storage:
+  path: "\${MISSING_PATH:-./data/fallback.db}"
+`
+    );
+
+    const config = loadConfig(configPath);
+    // With default syntax, should use fallback value
+    expect(config.storage.path).toBe('./data/fallback.db');
   });
 });

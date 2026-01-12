@@ -92,27 +92,61 @@ filters:
   # Rules are loaded from config/filters.d/*.yaml
 ```
 
-### LAPI Servers (Manual Bans)
+### LAPI Servers (Decisions & Manual Bans)
 
-To enable manual IP banning from the dashboard, configure your local CrowdSec LAPI servers:
+To view decisions and enable manual IP banning from the dashboard, configure your local CrowdSec LAPI servers:
 
 ```yaml
 lapi_servers:
   - name: 'server1'
     url: 'http://localhost:8081'
-    api_key: 'your-lapi-api-key'
+    api_key: 'your-bouncer-api-key'      # For reading decisions
+    machine_id: 'crowdsieve'             # For manual banning (optional)
+    password: 'your-machine-password'    # For manual banning (optional)
   - name: 'server2'
     url: 'http://192.168.1.10:8080'
-    api_key: 'another-api-key'
+    api_key: 'another-bouncer-key'
 ```
 
-The API key must have write access to decisions on the LAPI. Generate one with:
-
+**Bouncer API key** (required): For querying decisions. Generate with:
 ```bash
 cscli bouncers add crowdsieve-dashboard
 ```
+See [CrowdSec bouncers documentation](https://docs.crowdsec.net/docs/cscli/cscli_bouncers_add/).
 
-When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario.
+**Machine credentials** (optional): For manual banning from the dashboard. Register a machine with:
+```bash
+# Interactive (will prompt for password)
+cscli machines add crowdsieve
+
+# Or with auto-generated password (note it down for config)
+cscli machines add crowdsieve --auto
+```
+See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli_machines_add/).
+
+When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
+
+### Environment Variables in Config
+
+Sensitive values like passwords and API keys can be loaded from environment variables using the `${VAR_NAME}` syntax:
+
+```yaml
+lapi_servers:
+  - name: 'server1'
+    url: 'http://localhost:8081'
+    api_key: '${LAPI_API_KEY}'
+    machine_id: '${LAPI_MACHINE_ID:-crowdsieve}'  # With default value
+    password: '${LAPI_PASSWORD}'
+```
+
+Syntax:
+- `${VAR_NAME}` - Replaced with the environment variable value (empty string if not set)
+- `${VAR_NAME:-default}` - Replaced with the env var value, or `default` if not set
+
+This is useful for:
+- Docker/Kubernetes deployments with secrets
+- Keeping sensitive data out of config files
+- CI/CD pipelines
 
 ### Decision Search
 

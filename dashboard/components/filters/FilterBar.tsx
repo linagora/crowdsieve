@@ -93,7 +93,7 @@ export function FilterBar({
 
         {/* Server */}
         <div>
-          <label className="text-xs font-medium text-slate-500 mb-2 block">Serveur</label>
+          <label className="text-xs font-medium text-slate-500 mb-2 block">Server</label>
           <ServerFilter
             machines={machines}
             selectedMachineId={filters.machineId}
