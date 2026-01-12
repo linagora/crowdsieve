@@ -193,6 +193,168 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // Search decisions for an IP across all LAPI servers
+  fastify.get<{
+    Querystring: { ip: string };
+  }>('/api/decisions', async (request, reply) => {
+    try {
+      const { ip } = request.query;
+
+      // Validate IP
+      if (!ip || !net.isIP(ip)) {
+        return reply.code(400).send({ error: 'Invalid or missing IP address' });
+      }
+
+      const { config } = fastify;
+      const servers = config.lapi_servers || [];
+
+      if (servers.length === 0) {
+        return reply.send({ ip, results: [], shared: [] });
+      }
+
+      // Query all LAPI servers in parallel
+      const serverResults = await Promise.all(
+        servers.map(async (server: LapiServer) => {
+          try {
+            const lapiUrl = `${server.url}/v1/decisions?ip=${encodeURIComponent(ip)}`;
+            const response = await fetch(lapiUrl, {
+              headers: {
+                'X-Api-Key': server.api_key,
+              },
+              signal: AbortSignal.timeout(config.proxy.timeout_ms),
+            });
+
+            if (!response.ok) {
+              const errorBody = await response.text();
+              logger.warn(
+                { server: server.name, status: response.status, error: errorBody },
+                'LAPI returned error when querying decisions'
+              );
+              return {
+                server: server.name,
+                decisions: [] as Array<{
+                  id: number;
+                  origin: string;
+                  type: string;
+                  scope: string;
+                  value: string;
+                  duration: string;
+                  scenario: string;
+                  until?: string;
+                }>,
+                error: `LAPI error: ${response.status}`,
+              };
+            }
+
+            const decisions = await response.json();
+            return {
+              server: server.name,
+              decisions: (decisions || []) as Array<{
+                id: number;
+                origin: string;
+                type: string;
+                scope: string;
+                value: string;
+                duration: string;
+                scenario: string;
+                until?: string;
+              }>,
+            };
+          } catch (err) {
+            logger.warn({ server: server.name, err }, 'Failed to query LAPI for decisions');
+            return {
+              server: server.name,
+              decisions: [] as Array<{
+                id: number;
+                origin: string;
+                type: string;
+                scope: string;
+                value: string;
+                duration: string;
+                scenario: string;
+                until?: string;
+              }>,
+              error: err instanceof Error ? err.message : 'Unknown error',
+            };
+          }
+        })
+      );
+
+      // Separate shared decisions (from CAPI/lists) that appear on all servers
+      // from local decisions specific to each server
+      const sharedOrigins = ['CAPI', 'capi', 'lists', 'crowdsec'];
+      const sharedDecisionKeys = new Map<
+        string,
+        { decision: (typeof serverResults)[0]['decisions'][0]; count: number }
+      >();
+      const localResults: typeof serverResults = [];
+
+      // First pass: identify potentially shared decisions
+      for (const result of serverResults) {
+        const localDecisions: typeof result.decisions = [];
+
+        for (const decision of result.decisions) {
+          // Check if this decision comes from a shared/central source
+          const isSharedOrigin = sharedOrigins.some((o) =>
+            decision.origin?.toLowerCase().includes(o.toLowerCase())
+          );
+
+          if (isSharedOrigin) {
+            // Create a unique key for this decision (scenario + type + value)
+            const key = `${decision.scenario}|${decision.type}|${decision.value}`;
+            const existing = sharedDecisionKeys.get(key);
+            if (existing) {
+              existing.count++;
+            } else {
+              sharedDecisionKeys.set(key, { decision, count: 1 });
+            }
+          } else {
+            localDecisions.push(decision);
+          }
+        }
+
+        localResults.push({
+          server: result.server,
+          decisions: localDecisions,
+          error: result.error,
+        });
+      }
+
+      // Extract decisions that appear on ALL servers (truly shared)
+      const serverCount = serverResults.filter((r) => !r.error).length;
+      const shared: Array<(typeof serverResults)[0]['decisions'][0]> = [];
+
+      for (const [key, { decision, count }] of sharedDecisionKeys) {
+        if (count >= serverCount && serverCount > 0) {
+          // This decision appears on all working servers - it's shared
+          shared.push(decision);
+        } else {
+          // This decision doesn't appear everywhere - add it back to individual servers
+          for (const result of localResults) {
+            const serverResult = serverResults.find((r) => r.server === result.server);
+            if (serverResult) {
+              const hasDecision = serverResult.decisions.some(
+                (d) => `${d.scenario}|${d.type}|${d.value}` === key
+              );
+              if (hasDecision) {
+                result.decisions.push(decision);
+              }
+            }
+          }
+        }
+      }
+
+      logger.info(
+        { ip, serverCount: servers.length, sharedCount: shared.length },
+        'Queried decisions across LAPI servers'
+      );
+      return reply.send({ ip, results: localResults, shared });
+    } catch (err) {
+      logger.error({ err }, 'Failed to search decisions');
+      return reply.code(500).send({ error: 'Failed to search decisions' });
+    }
+  });
+
   // Post a manual ban decision to a LAPI server
   fastify.post<{
     Body: {

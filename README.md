@@ -9,6 +9,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Combinable conditions for complex filtering logic
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
+- **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
 - **GeoIP Enrichment**: Enrich alerts with geographic information
@@ -112,6 +113,16 @@ cscli bouncers add crowdsieve-dashboard
 ```
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario.
+
+### Decision Search
+
+The dashboard includes a **Decisions** page (accessible from the navigation) that lets you search for active decisions on any IP address across all configured LAPI servers.
+
+Features:
+- Search by IP address (IPv4 or IPv6)
+- Results grouped by server
+- Shared decisions (from CAPI/blocklists) are deduplicated and shown separately
+- Direct link from alert details to view decisions for the source IP
 
 ### Filter Rules
 
@@ -257,6 +268,9 @@ flowchart LR
     Proxy -.->|Manual bans| LAPI1
     Proxy -.->|Manual bans| LAPI2
     Proxy -.->|Manual bans| LAPI3
+    Proxy <-.->|Decision queries| LAPI1
+    Proxy <-.->|Decision queries| LAPI2
+    Proxy <-.->|Decision queries| LAPI3
 ```
 
 ## License

@@ -86,9 +86,19 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
         <div className="card p-6">
           <h2 className="text-lg font-semibold mb-4">Source</h2>
           <dl className="space-y-3">
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <dt className="text-slate-600">IP Address</dt>
-              <dd className="font-mono">{alert.sourceValue || alert.sourceIp || 'N/A'}</dd>
+              <dd className="flex items-center gap-3">
+                <span className="font-mono">{alert.sourceValue || alert.sourceIp || 'N/A'}</span>
+                {(alert.sourceIp || alert.sourceValue) && (
+                  <Link
+                    href={`/decisions?ip=${encodeURIComponent(alert.sourceIp || alert.sourceValue || '')}`}
+                    className="text-xs px-2 py-1 bg-crowdsec-primary text-white rounded hover:bg-crowdsec-secondary transition-colors"
+                  >
+                    View decisions
+                  </Link>
+                )}
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-600">Scope</dt>
