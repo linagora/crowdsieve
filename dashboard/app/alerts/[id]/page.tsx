@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { StoredAlert } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
 import { BanIPForm } from '@/components/BanIPForm';
+import { IPAlertHistory } from '@/components/IPAlertHistory';
 
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
 const API_KEY = process.env.DASHBOARD_API_KEY;
@@ -204,6 +205,14 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
           <IPInfoPanel ip={alert.sourceIp || alert.sourceValue || ''} />
           <BanIPForm initialIp={alert.sourceIp || alert.sourceValue || ''} />
         </div>
+      )}
+
+      {/* Alert History for this IP */}
+      {(alert.sourceIp || alert.sourceValue) && (
+        <IPAlertHistory
+          ip={alert.sourceIp || alert.sourceValue || ''}
+          currentAlertId={alert.id}
+        />
       )}
 
       {/* Filter Information */}
