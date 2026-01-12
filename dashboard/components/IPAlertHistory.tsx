@@ -49,9 +49,10 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
         }
         setError(null);
 
-        // Fetch one extra to check if there are more
+        // Fetch extra items: +1 for "has more" check, +1 in case current alert is in batch
+        const fetchLimit = PAGE_SIZE + 2;
         const res = await fetch(
-          `/api/alerts?ip=${encodeURIComponent(ip)}&limit=${PAGE_SIZE + 1}&offset=${currentOffset}`
+          `/api/alerts?ip=${encodeURIComponent(ip)}&limit=${fetchLimit}&offset=${currentOffset}`
         );
 
         if (!res.ok) {
@@ -59,16 +60,23 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
         }
 
         const data: StoredAlert[] = await res.json();
+        const fetchedCount = data.length;
 
         // Filter out current alert
         const filteredData = data.filter((a) => a.id !== currentAlertId);
 
-        // Check if there are more results
-        const hasMoreResults = filteredData.length > PAGE_SIZE;
+        // Take only PAGE_SIZE items for display
+        const pageData = filteredData.slice(0, PAGE_SIZE);
+
+        // Determine if there are more results:
+        // - If we fetched fewer than fetchLimit, we've reached the end
+        // - If after filtering we still have more than PAGE_SIZE, there's more
+        const hasMoreResults = fetchedCount === fetchLimit && filteredData.length > PAGE_SIZE;
         setHasMore(hasMoreResults);
 
-        // Take only PAGE_SIZE items
-        const pageData = filteredData.slice(0, PAGE_SIZE);
+        // Update offset based on actual items fetched from API (not filtered count)
+        // This ensures pagination stays correct even when current alert is filtered
+        setOffset(currentOffset + fetchedCount);
 
         if (append) {
           setAlerts((prev) => [...prev, ...pageData]);
@@ -90,13 +98,15 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
       setLoading(false);
       return;
     }
+    // Reset pagination when IP changes
+    setOffset(0);
+    setAlerts([]);
     fetchAlerts(0);
   }, [ip, fetchAlerts]);
 
   const handleLoadMore = () => {
-    const newOffset = offset + PAGE_SIZE;
-    setOffset(newOffset);
-    fetchAlerts(newOffset, true);
+    // offset is already updated by fetchAlerts to track actual API position
+    fetchAlerts(offset, true);
   };
 
   if (loading) {
