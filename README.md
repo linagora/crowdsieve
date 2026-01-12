@@ -112,6 +112,7 @@ lapi_servers:
 ```bash
 cscli bouncers add crowdsieve-dashboard
 ```
+See [CrowdSec bouncers documentation](https://docs.crowdsec.net/docs/cscli/cscli_bouncers_add/).
 
 **Machine credentials** (optional): For manual banning from the dashboard. Register a machine with:
 ```bash
@@ -121,6 +122,7 @@ cscli machines add crowdsieve
 # Or with auto-generated password (note it down for config)
 cscli machines add crowdsieve --auto
 ```
+See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli_machines_add/).
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
