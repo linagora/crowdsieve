@@ -19,6 +19,7 @@ async function main() {
   // Merge configs (env overrides file)
   const config: Config = {
     proxy: { ...fileConfig.proxy, ...envConfig.proxy },
+    lapi_servers: fileConfig.lapi_servers, // LAPI servers only from file
     storage: { ...fileConfig.storage, ...envConfig.storage },
     logging: { ...fileConfig.logging, ...envConfig.logging },
     filters: fileConfig.filters, // Filters only from file

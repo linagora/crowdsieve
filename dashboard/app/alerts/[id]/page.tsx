@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { StoredAlert } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
+import { BanIPForm } from '@/components/BanIPForm';
 
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
 const API_KEY = process.env.DASHBOARD_API_KEY;
@@ -85,9 +86,19 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
         <div className="card p-6">
           <h2 className="text-lg font-semibold mb-4">Source</h2>
           <dl className="space-y-3">
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <dt className="text-slate-600">IP Address</dt>
-              <dd className="font-mono">{alert.sourceValue || alert.sourceIp || 'N/A'}</dd>
+              <dd className="flex items-center gap-3">
+                <span className="font-mono">{alert.sourceValue || alert.sourceIp || 'N/A'}</span>
+                {(alert.sourceIp || alert.sourceValue) && (
+                  <Link
+                    href={`/decisions?ip=${encodeURIComponent(alert.sourceIp || alert.sourceValue || '')}`}
+                    className="text-xs px-2 py-1 bg-crowdsec-primary text-white rounded hover:bg-crowdsec-secondary transition-colors"
+                  >
+                    View decisions
+                  </Link>
+                )}
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-600">Scope</dt>
@@ -187,9 +198,12 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
         </div>
       </div>
 
-      {/* IP Network Information (Reverse DNS + WHOIS) */}
+      {/* IP Network Information (Reverse DNS + WHOIS) and Manual Ban */}
       {(alert.sourceIp || alert.sourceValue) && (
-        <IPInfoPanel ip={alert.sourceIp || alert.sourceValue || ''} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <IPInfoPanel ip={alert.sourceIp || alert.sourceValue || ''} />
+          <BanIPForm initialIp={alert.sourceIp || alert.sourceValue || ''} />
+        </div>
       )}
 
       {/* Filter Information */}

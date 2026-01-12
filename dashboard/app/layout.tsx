@@ -25,6 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <a href="/alerts" className="hover:text-crowdsec-accent transition-colors">
                     Alerts
                   </a>
+                  <a href="/decisions" className="hover:text-crowdsec-accent transition-colors">
+                    Decisions
+                  </a>
                 </nav>
               </div>
             </div>

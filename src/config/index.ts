@@ -78,6 +78,15 @@ const FilterRuleSchema = BaseFilterSchema.extend({
 export type ExpressionConditionType = ExpressionCondition;
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
 
+// LAPI server configuration for pushing decisions
+const LapiServerSchema = z.object({
+  name: z.string().min(1),
+  url: z.string().url(),
+  api_key: z.string().min(1),
+});
+
+export type LapiServer = z.infer<typeof LapiServerSchema>;
+
 const ConfigSchema = z.object({
   proxy: z.object({
     listen_port: z.number().default(8080),
@@ -85,6 +94,7 @@ const ConfigSchema = z.object({
     timeout_ms: z.number().default(30000),
     forward_enabled: z.boolean().default(true),
   }),
+  lapi_servers: z.array(LapiServerSchema).default([]),
   storage: z.object({
     path: z.string().default('./data/crowdsieve.db'),
     retention_days: z.number().default(30),

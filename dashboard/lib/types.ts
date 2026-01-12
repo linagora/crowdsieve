@@ -77,3 +77,46 @@ export interface IPInfo {
   whois: WhoisSummary | null;
   error?: string;
 }
+
+export interface LapiServer {
+  name: string;
+  url: string;
+}
+
+export interface BanDecisionRequest {
+  server: string;
+  ip: string;
+  duration: string;
+  reason?: string;
+}
+
+export interface BanDecisionResponse {
+  success: boolean;
+  message: string;
+  server: string;
+  error?: string;
+  details?: string;
+}
+
+export interface Decision {
+  id: number;
+  origin: string;
+  type: string;
+  scope: string;
+  value: string;
+  duration: string;
+  scenario: string;
+  until?: string;
+}
+
+export interface ServerDecisions {
+  server: string;
+  decisions: Decision[];
+  error?: string;
+}
+
+export interface DecisionSearchResponse {
+  ip: string;
+  results: ServerDecisions[];
+  shared: Decision[]; // Decisions from CAPI/lists present on all servers
+}
