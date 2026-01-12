@@ -252,6 +252,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
             onChange={(e) => setReason(e.target.value)}
             placeholder="Manual ban from dashboard"
             className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary"
+            maxLength={500}
           />
         </div>
 

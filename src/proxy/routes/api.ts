@@ -8,10 +8,12 @@ import type { LapiServer } from '../../config/index.js';
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 100;
 const MAX_SCENARIO_LENGTH = 200;
-const MAX_REASON_LENGTH = 500;
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
-const DURATION_REGEX = /^\d+[smh]$/;
-const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+
+// Exported constants for use in tests
+export const MAX_REASON_LENGTH = 500;
+export const DURATION_REGEX = /^\d+[smh]$/;
+export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * Constant-time string comparison to prevent timing attacks
@@ -335,11 +337,12 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
           for (const result of localResults) {
             const serverResult = serverResults.find((r) => r.server === result.server);
             if (serverResult) {
-              const hasDecision = serverResult.decisions.some(
+              // Find the server-specific decision to preserve server-specific fields (id, until, etc.)
+              const serverSpecificDecision = serverResult.decisions.find(
                 (d) => `${d.scenario}|${d.type}|${d.value}` === key
               );
-              if (hasDecision) {
-                result.decisions.push(decision);
+              if (serverSpecificDecision) {
+                result.decisions.push(serverSpecificDecision);
               }
             }
           }
@@ -438,9 +441,9 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
           { status: response.status, error: errorBody, server: lapiServer.name },
           'LAPI rejected decision'
         );
+        // Don't expose raw LAPI error details to client - could contain sensitive info
         return reply.code(response.status).send({
           error: `LAPI returned error: ${response.status}`,
-          details: errorBody,
         });
       }
 

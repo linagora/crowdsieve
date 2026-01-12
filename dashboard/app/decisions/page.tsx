@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Search, Loader2, Shield, ShieldAlert, Globe, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -48,30 +48,33 @@ function DecisionSearchContent() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async (searchIp?: string) => {
-    const ipToSearch = searchIp || ip;
-    if (!ipToSearch.trim()) return;
+  const handleSearch = useCallback(
+    async (searchIp?: string) => {
+      const ipToSearch = searchIp || ip;
+      if (!ipToSearch.trim()) return;
 
-    setSearching(true);
-    setError(null);
-    setResults(null);
+      setSearching(true);
+      setError(null);
+      setResults(null);
 
-    try {
-      const res = await fetch(`/api/decisions?ip=${encodeURIComponent(ipToSearch.trim())}`);
-      const data = await res.json();
+      try {
+        const res = await fetch(`/api/decisions?ip=${encodeURIComponent(ipToSearch.trim())}`);
+        const data = await res.json();
 
-      if (!res.ok) {
-        setError(data.error || 'Failed to search decisions');
-      } else {
-        setResults(data);
+        if (!res.ok) {
+          setError(data.error || 'Failed to search decisions');
+        } else {
+          setResults(data);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setSearching(false);
+        setHasSearched(true);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setSearching(false);
-      setHasSearched(true);
-    }
-  };
+    },
+    [ip]
+  );
 
   // Auto-search if IP is provided in URL
   useEffect(() => {
@@ -79,7 +82,7 @@ function DecisionSearchContent() {
       setIp(initialIp);
       handleSearch(initialIp);
     }
-  }, [initialIp]);
+  }, [initialIp, handleSearch]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

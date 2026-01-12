@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import net from 'net';
 import { timingSafeEqual } from 'crypto';
-
-// Constants mirroring those in api.ts
-const MAX_REASON_LENGTH = 500;
-const DURATION_REGEX = /^\d+[smh]$/;
-const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+import {
+  MAX_REASON_LENGTH,
+  DURATION_REGEX,
+  SERVER_NAME_REGEX,
+} from '../src/proxy/routes/api.js';
 
 describe('Decisions API - Input Validation', () => {
   describe('IP address validation', () => {
