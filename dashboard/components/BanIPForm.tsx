@@ -42,13 +42,15 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
       try {
         const res = await fetch('/api/lapi-servers');
         if (res.ok) {
-          const data = await res.json();
+          const data: LapiServer[] = await res.json();
           setServers(data);
-          if (data.length > 1) {
-            // Default to "all servers" when multiple servers are configured
+          // Only consider servers with machine credentials for default selection
+          const banCapable = data.filter((s) => s.canBan);
+          if (banCapable.length > 1) {
+            // Default to "all servers" when multiple servers can ban
             setSelectedServer(ALL_SERVERS);
-          } else if (data.length === 1) {
-            setSelectedServer(data[0].name);
+          } else if (banCapable.length === 1) {
+            setSelectedServer(banCapable[0].name);
           }
         }
       } catch (err) {
@@ -76,7 +78,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
           server: serverName,
           ip,
           duration,
-          reason: reason || undefined,
+          reason: reason.trim(),
         }),
       });
 
@@ -107,8 +109,8 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
 
     try {
       if (selectedServer === ALL_SERVERS) {
-        // Ban on all servers in parallel
-        const results = await Promise.all(servers.map((s) => banOnServer(s.name)));
+        // Ban on all servers with machine credentials in parallel
+        const results = await Promise.all(serversWithBan.map((s) => banOnServer(s.name)));
         const successCount = results.filter((r) => r.success).length;
         const allSuccess = successCount === results.length;
 
@@ -163,6 +165,8 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
     );
   }
 
+  const serversWithBan = servers.filter((s) => s.canBan);
+
   if (servers.length === 0) {
     return (
       <div className="card p-6">
@@ -173,6 +177,24 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
         <p className="text-slate-500 text-sm">
           No LAPI servers configured. Add servers to your config to enable manual banning.
         </p>
+      </div>
+    );
+  }
+
+  if (serversWithBan.length === 0) {
+    return (
+      <div className="card p-6">
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Ban className="w-5 h-5" />
+          Manual Ban
+        </h2>
+        <div className="p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm">
+          <p className="font-medium">Machine credentials required</p>
+          <p className="mt-1 text-yellow-700">
+            Manual banning requires <code className="bg-yellow-100 px-1 rounded">machine_id</code> and{' '}
+            <code className="bg-yellow-100 px-1 rounded">password</code> to be configured for at least one LAPI server.
+          </p>
+        </div>
       </div>
     );
   }
@@ -196,10 +218,10 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
             className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary"
             required
           >
-            {servers.length > 1 && (
-              <option value={ALL_SERVERS}>All servers ({servers.length})</option>
+            {serversWithBan.length > 1 && (
+              <option value={ALL_SERVERS}>All servers ({serversWithBan.length})</option>
             )}
-            {servers.map((server) => (
+            {serversWithBan.map((server) => (
               <option key={server.name} value={server.name}>
                 {server.name}
               </option>
@@ -243,17 +265,19 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
 
         <div>
           <label htmlFor="reason" className="block text-sm font-medium text-slate-700 mb-1">
-            Reason (optional)
+            Reason
           </label>
-          <input
-            type="text"
+          <textarea
             id="reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Manual ban from dashboard"
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary"
+            placeholder="Explain the context for this ban (e.g., repeated brute-force attempts, suspicious activity pattern...)"
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary resize-none"
             maxLength={500}
+            rows={2}
+            required
           />
+          <p className="text-xs text-slate-500 mt-1">{reason.length}/500</p>
         </div>
 
         {result && (
@@ -288,7 +312,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
           </div>
         )}
 
-        <Button type="submit" disabled={submitting || !ip || !selectedServer} className="w-full">
+        <Button type="submit" disabled={submitting || !ip || !selectedServer || !reason.trim()} className="w-full">
           {submitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin mr-2" />

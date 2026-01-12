@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { useAlertFilters } from '@/components/hooks/useAlertFilters';
@@ -26,6 +26,22 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
     machines,
   } = useAlertFilters({ initialAlerts, statsTimeBounds: stats.timeBounds });
 
+  // Location filter from map marker selection
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Filter alerts by selected location (client-side)
+  const displayedAlerts = useMemo(() => {
+    if (!selectedLocation) return alerts;
+    return alerts.filter((a) => {
+      if (!a.geoLatitude || !a.geoLongitude) return false;
+      // Same rounding as WorldMap (0.1°)
+      return (
+        a.geoLatitude.toFixed(1) === selectedLocation.lat.toFixed(1) &&
+        a.geoLongitude.toFixed(1) === selectedLocation.lng.toFixed(1)
+      );
+    });
+  }, [alerts, selectedLocation]);
+
   return (
     <div className="space-y-6">
       {/* Filter Bar */}
@@ -45,7 +61,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
         <div className="card p-4">
           <h2 className="text-lg font-semibold mb-4">Origines des alertes</h2>
           <Suspense fallback={<div className="h-[400px] bg-slate-100 animate-pulse rounded-lg" />}>
-            <WorldMapWrapper alerts={alerts} />
+            <WorldMapWrapper alerts={alerts} onLocationSelect={setSelectedLocation} />
           </Suspense>
         </div>
 
@@ -57,14 +73,19 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
               {isLoading && (
                 <span className="ml-2 text-sm font-normal text-slate-400">Chargement...</span>
               )}
+              {selectedLocation && (
+                <span className="ml-2 text-sm font-normal text-crowdsec-primary">
+                  (filtrées par localisation)
+                </span>
+              )}
             </h2>
             <span className="text-sm text-slate-500">
-              {alerts.length} résultat{alerts.length > 1 ? 's' : ''}
+              {displayedAlerts.length} résultat{displayedAlerts.length > 1 ? 's' : ''}
             </span>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto">
-            {alerts.map((alert) => (
+            {displayedAlerts.map((alert) => (
               <AlertCard
                 key={alert.id}
                 alert={alert}
@@ -72,7 +93,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
               />
             ))}
 
-            {alerts.length === 0 && (
+            {displayedAlerts.length === 0 && (
               <div className="text-center text-slate-400 py-8">
                 Aucune alerte ne correspond aux filtres
               </div>

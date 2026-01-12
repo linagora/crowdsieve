@@ -81,13 +81,14 @@ export interface IPInfo {
 export interface LapiServer {
   name: string;
   url: string;
+  canBan: boolean; // True if machine credentials are configured
 }
 
 export interface BanDecisionRequest {
   server: string;
   ip: string;
   duration: string;
-  reason?: string;
+  reason: string;
 }
 
 export interface BanDecisionResponse {

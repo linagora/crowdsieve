@@ -78,11 +78,15 @@ const FilterRuleSchema = BaseFilterSchema.extend({
 export type ExpressionConditionType = ExpressionCondition;
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
 
-// LAPI server configuration for pushing decisions
+// LAPI server configuration
+// - api_key: for bouncer (read-only) operations like querying decisions
+// - machine_id + password: for machine (write) operations like posting alerts/bans
 const LapiServerSchema = z.object({
   name: z.string().min(1),
   url: z.string().url(),
-  api_key: z.string().min(1),
+  api_key: z.string().min(1), // Bouncer API key for reading decisions
+  machine_id: z.string().min(1).optional(), // Machine ID for posting alerts
+  password: z.string().min(1).optional(), // Machine password for posting alerts
 });
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;

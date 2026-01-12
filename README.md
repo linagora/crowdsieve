@@ -92,27 +92,33 @@ filters:
   # Rules are loaded from config/filters.d/*.yaml
 ```
 
-### LAPI Servers (Manual Bans)
+### LAPI Servers (Decisions & Manual Bans)
 
-To enable manual IP banning from the dashboard, configure your local CrowdSec LAPI servers:
+To view decisions and enable manual IP banning from the dashboard, configure your local CrowdSec LAPI servers:
 
 ```yaml
 lapi_servers:
   - name: 'server1'
     url: 'http://localhost:8081'
-    api_key: 'your-lapi-api-key'
+    api_key: 'your-bouncer-api-key'      # For reading decisions
+    machine_id: 'crowdsieve'             # For manual banning (optional)
+    password: 'your-machine-password'    # For manual banning (optional)
   - name: 'server2'
     url: 'http://192.168.1.10:8080'
-    api_key: 'another-api-key'
+    api_key: 'another-bouncer-key'
 ```
 
-The API key must have write access to decisions on the LAPI. Generate one with:
-
+**Bouncer API key** (required): For querying decisions. Generate with:
 ```bash
 cscli bouncers add crowdsieve-dashboard
 ```
 
-When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario.
+**Machine credentials** (optional): For manual banning from the dashboard. Register a machine with:
+```bash
+cscli machines add crowdsieve --password 'your-machine-password'
+```
+
+When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
 ### Decision Search
 
