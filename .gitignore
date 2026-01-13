@@ -43,3 +43,4 @@ drizzle/
 # Temporary
 tmp/
 temp/
+tsconfig.tsbuildinfo

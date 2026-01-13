@@ -1,11 +1,14 @@
 'use client';
 
-import { Suspense, useState, useMemo } from 'react';
+import { Suspense, useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { RefreshCw } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { useAlertFilters } from '@/components/hooks/useAlertFilters';
 import { AlertCard } from '@/components/AlertCard';
 import { WorldMapWrapper } from '@/components/WorldMapWrapper';
+import { Button } from '@/components/ui/button';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
 interface DashboardContentProps {
@@ -24,7 +27,16 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
     hasActiveFilters,
     timeBounds,
     machines,
+    lastUpdated,
+    refresh,
   } = useAlertFilters({ initialAlerts, statsTimeBounds: stats.timeBounds });
+
+  // Force re-render every minute to update relative times
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Location filter from map marker selection
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -72,20 +84,34 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
         {/* Recent Alerts */}
         <div className="card p-4 max-h-[500px] overflow-hidden flex flex-col">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">
-              Recent Alerts
-              {isLoading && (
-                <span className="ml-2 text-sm font-normal text-slate-400">Loading...</span>
-              )}
-              {selectedLocation && (
-                <span className="ml-2 text-sm font-normal text-crowdsec-primary">
-                  (filtered by location)
-                </span>
-              )}
-            </h2>
-            <span className="text-sm text-slate-500">
-              {displayedAlerts.length} result{displayedAlerts.length > 1 ? 's' : ''}
-            </span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">
+                Recent Alerts
+                {selectedLocation && (
+                  <span className="ml-2 text-sm font-normal text-crowdsec-primary">
+                    (filtered by location)
+                  </span>
+                )}
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refresh}
+                disabled={isLoading}
+                className="h-7 w-7 p-0"
+                title="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+            <div className="text-right">
+              <span className="text-sm text-slate-500">
+                {displayedAlerts.length} result{displayedAlerts.length > 1 ? 's' : ''}
+              </span>
+              <div className="text-xs text-slate-400">
+                Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto">
