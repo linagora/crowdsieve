@@ -106,8 +106,39 @@ spec:
             - name: LOG_FORMAT
               value: {{ .Values.crowdsieve.logging.format | quote }}
             # Storage configuration
+            - name: STORAGE_TYPE
+              value: {{ .Values.crowdsieve.storage.type | quote }}
+            {{- if eq .Values.crowdsieve.storage.type "sqlite" }}
             - name: DATABASE_PATH
               value: "/app/data/crowdsieve.db"
+            {{- end }}
+            {{- if eq .Values.crowdsieve.storage.type "postgres" }}
+            - name: POSTGRES_HOST
+              value: {{ .Values.crowdsieve.storage.postgres.host | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.crowdsieve.storage.postgres.port | quote }}
+            - name: POSTGRES_DATABASE
+              value: {{ .Values.crowdsieve.storage.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.crowdsieve.storage.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.crowdsieve.storage.postgres.existingSecret }}
+                  name: {{ .Values.crowdsieve.storage.postgres.existingSecret }}
+                  {{- else if .Values.crowdsieve.storage.postgres.password }}
+                  name: {{ printf "%s-postgres" (include "crowdsieve.fullname" .) }}
+                  {{- else }}
+                  {{- fail "When crowdsieve.storage.type is 'postgres', you must set either crowdsieve.storage.postgres.password or crowdsieve.storage.postgres.existingSecret." }}
+                  {{- end }}
+                  key: {{ .Values.crowdsieve.storage.postgres.passwordKey | default "password" }}
+            - name: POSTGRES_SSL
+              value: {{ .Values.crowdsieve.storage.postgres.ssl | quote }}
+            - name: POSTGRES_SSL_REJECT_UNAUTHORIZED
+              value: {{ .Values.crowdsieve.storage.postgres.sslRejectUnauthorized | quote }}
+            - name: POSTGRES_POOL_SIZE
+              value: {{ .Values.crowdsieve.storage.postgres.poolSize | quote }}
+            {{- end }}
             - name: CONFIG_PATH
               value: "/app/config/filters.yaml"
             - name: RETENTION_DAYS

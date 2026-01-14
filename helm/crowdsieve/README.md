@@ -116,7 +116,18 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.dashboard.port` | Dashboard port | `3000` |
 | `crowdsieve.dashboard.apiKey` | API key for dashboard auth | `""` |
 | `crowdsieve.logging.level` | Log level | `info` |
+| `crowdsieve.storage.type` | Storage backend: `sqlite` or `postgres` | `sqlite` |
 | `crowdsieve.storage.retentionDays` | Alert retention days | `30` |
+| `crowdsieve.storage.postgres.host` | PostgreSQL host | `""` |
+| `crowdsieve.storage.postgres.port` | PostgreSQL port | `5432` |
+| `crowdsieve.storage.postgres.database` | PostgreSQL database | `""` |
+| `crowdsieve.storage.postgres.user` | PostgreSQL user | `""` |
+| `crowdsieve.storage.postgres.password` | PostgreSQL password | `""` |
+| `crowdsieve.storage.postgres.ssl` | Enable SSL | `false` |
+| `crowdsieve.storage.postgres.sslRejectUnauthorized` | Reject unauthorized SSL certs | `true` |
+| `crowdsieve.storage.postgres.poolSize` | Connection pool size | `10` |
+| `crowdsieve.storage.postgres.existingSecret` | Use existing secret | `""` |
+| `crowdsieve.storage.postgres.passwordKey` | Key in existing secret | `password` |
 | `crowdsieve.geoip.enabled` | Enable GeoIP enrichment | `false` |
 | `crowdsieve.geoip.maxmindLicenseKey` | MaxMind license key | `""` |
 | `crowdsieve.persistence.enabled` | Enable persistence | `true` |
@@ -156,6 +167,50 @@ crowdsieve:
             - cidr:
                 field: "source.ip"
                 value: "192.168.0.0/16"
+```
+
+### PostgreSQL Backend
+
+By default, CrowdSieve uses SQLite for storage. For production deployments with multiple replicas, you can use PostgreSQL instead.
+
+#### Using PostgreSQL with password in values
+
+```yaml
+crowdsieve:
+  replicaCount: 3  # Safe to scale with PostgreSQL
+  storage:
+    type: "postgres"
+    postgres:
+      host: "postgres.database.svc.cluster.local"
+      port: 5432
+      database: "crowdsieve"
+      user: "crowdsieve"
+      password: "your-secure-password"
+      ssl: true
+      sslRejectUnauthorized: true  # Set to false for self-signed certs
+      poolSize: 10
+```
+
+#### Using PostgreSQL with existing secret
+
+```yaml
+crowdsieve:
+  storage:
+    type: "postgres"
+    postgres:
+      host: "postgres.database.svc.cluster.local"
+      database: "crowdsieve"
+      user: "crowdsieve"
+      existingSecret: "my-postgres-credentials"
+      passwordKey: "password"  # Key in the secret
+```
+
+**Note:** When using PostgreSQL, the PVC for SQLite is not needed:
+
+```yaml
+crowdsieve:
+  persistence:
+    enabled: false  # Not needed for PostgreSQL
 ```
 
 ### GeoIP Enrichment
