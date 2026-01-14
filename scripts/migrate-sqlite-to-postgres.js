@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   start_at TEXT,
   stop_at TEXT,
   created_at TEXT,
-  received_at TEXT NOT NULL DEFAULT NOW(),
+  received_at TEXT NOT NULL,
   simulated BOOLEAN DEFAULT FALSE,
   remediation BOOLEAN DEFAULT FALSE,
   has_decisions BOOLEAN DEFAULT FALSE,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS decisions (
   scenario TEXT,
   simulated BOOLEAN DEFAULT FALSE,
   until TEXT,
-  created_at TEXT DEFAULT NOW()
+  created_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_decisions_alert ON decisions(alert_id);

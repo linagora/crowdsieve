@@ -43,17 +43,22 @@ CrowdSieve will automatically create the required tables if they don't exist.
 | `POSTGRES_USER` | Database user | - |
 | `POSTGRES_PASSWORD` | Database password | - |
 | `POSTGRES_SSL` | Enable SSL connection | `false` |
+| `POSTGRES_SSL_REJECT_UNAUTHORIZED` | Reject self-signed certificates | `true` |
 | `POSTGRES_POOL_SIZE` | Connection pool size | `10` |
+
+> **Security note**: Set `POSTGRES_SSL_REJECT_UNAUTHORIZED=false` only when connecting to servers with self-signed certificates. This disables certificate validation and should not be used in production with untrusted networks.
 
 ## Manual Database Setup
 
-If your PostgreSQL user doesn't have CREATE permissions, create the tables manually:
+If your PostgreSQL user doesn't have CREATE permissions, create the tables manually.
+
+The following example uses the `psql` command-line client. If you're using a GUI tool (pgAdmin, DBeaver, etc.), create the database and then connect to it using your tool's interface before running the CREATE TABLE statements.
 
 ```sql
 -- Create database
 CREATE DATABASE crowdsieve;
 
--- Connect to the database
+-- Connect to the database (psql command - in GUI tools, use their connection dialog)
 \c crowdsieve
 
 -- Create alerts table
@@ -71,7 +76,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   start_at TEXT,
   stop_at TEXT,
   created_at TEXT,
-  received_at TEXT NOT NULL DEFAULT NOW(),
+  received_at TEXT NOT NULL,
   simulated BOOLEAN DEFAULT FALSE,
   remediation BOOLEAN DEFAULT FALSE,
   has_decisions BOOLEAN DEFAULT FALSE,
@@ -118,7 +123,7 @@ CREATE TABLE IF NOT EXISTS decisions (
   scenario TEXT,
   simulated BOOLEAN DEFAULT FALSE,
   until TEXT,
-  created_at TEXT DEFAULT NOW()
+  created_at TEXT
 );
 
 CREATE INDEX idx_decisions_alert ON decisions(alert_id);

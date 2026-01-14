@@ -167,7 +167,7 @@ export async function initializePostgres(
     database: config.database,
     user: config.user,
     password: config.password,
-    ssl: config.ssl ? { rejectUnauthorized: false } : false,
+    ssl: config.ssl ? { rejectUnauthorized: config.ssl_reject_unauthorized ?? true } : false,
     max: config.pool_size,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,

@@ -137,6 +137,7 @@ const PostgresConfigSchema = z.object({
   user: z.string().optional(),
   password: z.string().optional(),
   ssl: z.boolean().default(false),
+  ssl_reject_unauthorized: z.boolean().default(true), // Set to false only for self-signed certs
   pool_size: z.number().default(10),
 });
 
@@ -214,6 +215,7 @@ export function loadConfigFromEnv(): Partial<Config> {
         user: process.env.POSTGRES_USER,
         password: process.env.POSTGRES_PASSWORD,
         ssl: process.env.POSTGRES_SSL === 'true',
+        ssl_reject_unauthorized: process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED !== 'false', // default true
         pool_size: parseInt(process.env.POSTGRES_POOL_SIZE || '10', 10),
       }
     : undefined;
@@ -226,7 +228,7 @@ export function loadConfigFromEnv(): Partial<Config> {
       forward_enabled: process.env.FORWARD_ENABLED !== 'false',
     },
     storage: {
-      type: (process.env.DATABASE_TYPE as 'sqlite' | 'postgres') || 'sqlite',
+      type: (process.env.STORAGE_TYPE as 'sqlite' | 'postgres') || 'sqlite',
       path: process.env.DATABASE_PATH || './data/crowdsieve.db',
       retention_days: parseInt(process.env.RETENTION_DAYS || '30', 10),
       postgres: postgresConfig,
