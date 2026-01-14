@@ -15,6 +15,38 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **GeoIP Enrichment**: Enrich alerts with geographic information
 - **Lightweight**: Docker image under 250MB
 
+## Why Crowdsieve?
+
+### A Paradigm Shift in Alert Management
+
+Traditional CrowdSec architecture embeds intelligence in each scenario to determine which alerts are "significant enough" to be sent to the Central API (CAPI). This means:
+- Local filtering happens at the scenario level
+- Only high-confidence alerts reach the central console
+- Internal IPs or minor events are typically discarded before you can see them
+
+**Crowdsieve changes this approach:**
+
+| Traditional CrowdSec | With Crowdsieve |
+|---------------------|-----------------|
+| Filtering in scenarios | Filtering in proxy |
+| Limited local visibility | Full local visibility |
+| All alerts go to CAPI | Selective CAPI forwarding |
+| Internal IPs discarded | Internal IPs visible locally |
+
+### Key Benefits
+
+1. **Complete Local Visibility**: See ALL alerts in your dashboard, including minor events and internal IPs, without polluting the central CrowdSec console
+
+2. **Decoupled Filtering**: Generate less aggressive alerts at the scenario level, then filter what goes to CAPI at the proxy level - giving you full control
+
+3. **Internal Network Monitoring**: Monitor internal IP activity (10.x, 172.16.x, 192.168.x) locally without sending them to the central console
+
+4. **Flexible Export Control**: Keep sensitive or noisy data local while still contributing meaningful threat intelligence to the community
+
+### Roadmap
+
+- **Local Scenario Analysis**: Future versions may support creating CrowdSec scenarios that analyze patterns from alerts received in Crowdsieve, enabling local correlation and detection rules based on your aggregated alert data
+
 ## Quick Start
 
 ### Using Docker
