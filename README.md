@@ -325,24 +325,18 @@ npm run lint
 
 ```mermaid
 flowchart LR
-    subgraph Clients
-        LAPI1[CrowdSec LAPI]
-        LAPI2[CrowdSec LAPI]
-    end
+    LAPI1[CrowdSec LAPI] --> Proxy
+    LAPI2[CrowdSec LAPI] --> Proxy
+    Proxy --> CAPI[CrowdSec CAPI<br/>api.crowdsec.net]
 
     subgraph CrowdSieve
-        Proxy[Fastify Proxy<br/>:8080]
+        Proxy[Proxy :8080]
         DB[(SQLite/PostgreSQL)]
-        Dashboard[Next.js Dashboard<br/>:3000]
+        Dashboard[Dashboard :3000]
+        Proxy --> DB
+        Dashboard --> Proxy
     end
 
-    CAPI[CrowdSec CAPI<br/>api.crowdsec.net]
-
-    LAPI1 --> Proxy
-    LAPI2 --> Proxy
-    Proxy --> CAPI
-    Proxy --> DB
-    Dashboard --> Proxy
     Proxy <-.->|Decisions & Bans| LAPI1
     Proxy <-.->|Decisions & Bans| LAPI2
 ```
