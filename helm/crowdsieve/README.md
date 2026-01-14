@@ -124,7 +124,10 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.storage.postgres.user` | PostgreSQL user | `""` |
 | `crowdsieve.storage.postgres.password` | PostgreSQL password | `""` |
 | `crowdsieve.storage.postgres.ssl` | Enable SSL | `false` |
+| `crowdsieve.storage.postgres.sslRejectUnauthorized` | Reject unauthorized SSL certs | `true` |
+| `crowdsieve.storage.postgres.poolSize` | Connection pool size | `10` |
 | `crowdsieve.storage.postgres.existingSecret` | Use existing secret | `""` |
+| `crowdsieve.storage.postgres.passwordKey` | Key in existing secret | `password` |
 | `crowdsieve.geoip.enabled` | Enable GeoIP enrichment | `false` |
 | `crowdsieve.geoip.maxmindLicenseKey` | MaxMind license key | `""` |
 | `crowdsieve.persistence.enabled` | Enable persistence | `true` |

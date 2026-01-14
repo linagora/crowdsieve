@@ -124,7 +124,13 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.crowdsieve.storage.postgres.existingSecret | default (printf "%s-postgres" (include "crowdsieve.fullname" .)) }}
+                  {{- if .Values.crowdsieve.storage.postgres.existingSecret }}
+                  name: {{ .Values.crowdsieve.storage.postgres.existingSecret }}
+                  {{- else if .Values.crowdsieve.storage.postgres.password }}
+                  name: {{ printf "%s-postgres" (include "crowdsieve.fullname" .) }}
+                  {{- else }}
+                  {{- fail "When crowdsieve.storage.type is 'postgres', you must set either crowdsieve.storage.postgres.password or crowdsieve.storage.postgres.existingSecret." }}
+                  {{- end }}
                   key: {{ .Values.crowdsieve.storage.postgres.passwordKey | default "password" }}
             - name: POSTGRES_SSL
               value: {{ .Values.crowdsieve.storage.postgres.ssl | quote }}
@@ -137,10 +143,6 @@ spec:
               value: "/app/config/filters.yaml"
             - name: RETENTION_DAYS
               value: {{ .Values.crowdsieve.storage.retentionDays | quote }}
-            - name: CLEANUP_ENABLED
-              value: {{ .Values.crowdsieve.storage.cleanupEnabled | quote }}
-            - name: CLEANUP_INTERVAL_HOURS
-              value: {{ .Values.crowdsieve.storage.cleanupIntervalHours | quote }}
             # GeoIP configuration
             {{- if .Values.crowdsieve.geoip.enabled }}
             - name: GEOIP_DB_PATH

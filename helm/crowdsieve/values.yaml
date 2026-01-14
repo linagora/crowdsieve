@@ -110,10 +110,6 @@ crowdsieve:
     type: "sqlite"
     # -- Alert retention in days
     retentionDays: 30
-    # -- Cleanup enabled (automatic deletion of old alerts)
-    cleanupEnabled: true
-    # -- Cleanup interval in hours
-    cleanupIntervalHours: 24
 
     # -- PostgreSQL configuration (only used when type=postgres)
     postgres:
