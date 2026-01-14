@@ -66,7 +66,10 @@ async function getMachineToken(
   try {
     const response = await fetch(`${server.url}/v1/watchers/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': `crowdsieve/${CROWDSIEVE_VERSION}`,
+      },
       body: JSON.stringify({
         machine_id: server.machine_id,
         password: server.password,
@@ -314,6 +317,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
             const response = await fetch(lapiUrl, {
               headers: {
                 'X-Api-Key': server.api_key,
+                'User-Agent': `crowdsieve/${CROWDSIEVE_VERSION}`,
               },
               signal: AbortSignal.timeout(config.proxy.timeout_ms),
             });
@@ -569,6 +573,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'User-Agent': `crowdsieve/${CROWDSIEVE_VERSION}`,
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(alertPayload),
