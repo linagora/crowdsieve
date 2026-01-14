@@ -148,6 +148,16 @@ export async function initializePostgres(
   config: PostgresConfig,
   logger: Logger
 ): Promise<PostgresDb> {
+  // Validate required configuration fields
+  const missingFields: string[] = [];
+  if (!config.database) missingFields.push('POSTGRES_DATABASE');
+  if (!config.user) missingFields.push('POSTGRES_USER');
+  if (missingFields.length > 0) {
+    throw new Error(
+      `PostgreSQL configuration incomplete. Missing required fields: ${missingFields.join(', ')}`
+    );
+  }
+
   // Dynamically import pg (optional dependency)
   let pg: typeof import('pg');
   try {
@@ -156,12 +166,12 @@ export async function initializePostgres(
     throw new Error(
       'PostgreSQL support requires the "pg" package.\n' +
         'Install it with: npm install pg\n' +
-        'Or use SQLite (default) by setting DATABASE_TYPE=sqlite'
+        'Or use SQLite (default) by setting STORAGE_TYPE=sqlite'
     );
   }
 
   // Create connection pool
-  pool = new pg.default.Pool({
+  pool = new pg.Pool({
     host: config.host,
     port: config.port,
     database: config.database,

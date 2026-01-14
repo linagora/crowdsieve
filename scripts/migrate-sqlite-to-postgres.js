@@ -30,7 +30,9 @@ const pgConfig = {
   database: process.env.POSTGRES_DATABASE,
   user: process.env.POSTGRES_USER,
   password: process.env.POSTGRES_PASSWORD,
-  ssl: process.env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.POSTGRES_SSL === 'true'
+    ? { rejectUnauthorized: process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED !== 'false' }
+    : false,
 };
 
 if (!pgConfig.database || !pgConfig.user) {
@@ -81,12 +83,12 @@ CREATE TABLE IF NOT EXISTS alerts (
   raw_json TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_alerts_scenario ON alerts(scenario);
-CREATE INDEX IF NOT EXISTS idx_alerts_source_ip ON alerts(source_ip);
-CREATE INDEX IF NOT EXISTS idx_alerts_received_at ON alerts(received_at);
-CREATE INDEX IF NOT EXISTS idx_alerts_country_code ON alerts(geo_country_code);
-CREATE INDEX IF NOT EXISTS idx_alerts_filtered ON alerts(filtered);
-CREATE INDEX IF NOT EXISTS idx_alerts_machine_id ON alerts(machine_id);
+CREATE INDEX IF NOT EXISTS idx_scenario ON alerts(scenario);
+CREATE INDEX IF NOT EXISTS idx_source_ip ON alerts(source_ip);
+CREATE INDEX IF NOT EXISTS idx_received_at ON alerts(received_at);
+CREATE INDEX IF NOT EXISTS idx_country_code ON alerts(geo_country_code);
+CREATE INDEX IF NOT EXISTS idx_filtered ON alerts(filtered);
+CREATE INDEX IF NOT EXISTS idx_machine_id ON alerts(machine_id);
 
 CREATE TABLE IF NOT EXISTS decisions (
   id SERIAL PRIMARY KEY,
@@ -103,9 +105,9 @@ CREATE TABLE IF NOT EXISTS decisions (
   created_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_decisions_alert ON decisions(alert_id);
-CREATE INDEX IF NOT EXISTS idx_decisions_value ON decisions(value);
-CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(type);
+CREATE INDEX IF NOT EXISTS idx_decision_alert ON decisions(alert_id);
+CREATE INDEX IF NOT EXISTS idx_decision_value ON decisions(value);
+CREATE INDEX IF NOT EXISTS idx_decision_type ON decisions(type);
 
 CREATE TABLE IF NOT EXISTS events (
   id SERIAL PRIMARY KEY,
@@ -114,7 +116,7 @@ CREATE TABLE IF NOT EXISTS events (
   meta TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_alert ON events(alert_id);
+CREATE INDEX IF NOT EXISTS idx_event_alert ON events(alert_id);
 
 CREATE TABLE IF NOT EXISTS validated_clients (
   id SERIAL PRIMARY KEY,

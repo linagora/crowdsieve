@@ -103,12 +103,12 @@ CREATE TABLE IF NOT EXISTS alerts (
   raw_json TEXT
 );
 
-CREATE INDEX idx_alerts_scenario ON alerts(scenario);
-CREATE INDEX idx_alerts_source_ip ON alerts(source_ip);
-CREATE INDEX idx_alerts_received_at ON alerts(received_at);
-CREATE INDEX idx_alerts_country_code ON alerts(geo_country_code);
-CREATE INDEX idx_alerts_filtered ON alerts(filtered);
-CREATE INDEX idx_alerts_machine_id ON alerts(machine_id);
+CREATE INDEX idx_scenario ON alerts(scenario);
+CREATE INDEX idx_source_ip ON alerts(source_ip);
+CREATE INDEX idx_received_at ON alerts(received_at);
+CREATE INDEX idx_country_code ON alerts(geo_country_code);
+CREATE INDEX idx_filtered ON alerts(filtered);
+CREATE INDEX idx_machine_id ON alerts(machine_id);
 
 -- Create decisions table
 CREATE TABLE IF NOT EXISTS decisions (
@@ -126,9 +126,9 @@ CREATE TABLE IF NOT EXISTS decisions (
   created_at TEXT
 );
 
-CREATE INDEX idx_decisions_alert ON decisions(alert_id);
-CREATE INDEX idx_decisions_value ON decisions(value);
-CREATE INDEX idx_decisions_type ON decisions(type);
+CREATE INDEX idx_decision_alert ON decisions(alert_id);
+CREATE INDEX idx_decision_value ON decisions(value);
+CREATE INDEX idx_decision_type ON decisions(type);
 
 -- Create events table
 CREATE TABLE IF NOT EXISTS events (
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS events (
   meta TEXT
 );
 
-CREATE INDEX idx_events_alert ON events(alert_id);
+CREATE INDEX idx_event_alert ON events(alert_id);
 
 -- Create validated_clients table (for client validation feature)
 CREATE TABLE IF NOT EXISTS validated_clients (
