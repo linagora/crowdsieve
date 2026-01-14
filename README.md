@@ -328,12 +328,11 @@ flowchart LR
     subgraph Clients
         LAPI1[CrowdSec LAPI]
         LAPI2[CrowdSec LAPI]
-        LAPI3[CrowdSec LAPI]
     end
 
     subgraph CrowdSieve
         Proxy[Fastify Proxy<br/>:8080]
-        DB[(SQLite DB)]
+        DB[(SQLite/PostgreSQL)]
         Dashboard[Next.js Dashboard<br/>:3000]
     end
 
@@ -341,16 +340,11 @@ flowchart LR
 
     LAPI1 --> Proxy
     LAPI2 --> Proxy
-    LAPI3 --> Proxy
     Proxy --> CAPI
     Proxy --> DB
     Dashboard --> Proxy
-    Proxy -.->|Manual bans| LAPI1
-    Proxy -.->|Manual bans| LAPI2
-    Proxy -.->|Manual bans| LAPI3
-    Proxy <-.->|Decision queries| LAPI1
-    Proxy <-.->|Decision queries| LAPI2
-    Proxy <-.->|Decision queries| LAPI3
+    Proxy <-.->|Decisions & Bans| LAPI1
+    Proxy <-.->|Decisions & Bans| LAPI2
 ```
 
 ## License
