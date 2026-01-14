@@ -117,14 +117,10 @@ describePostgres('PostgreSQL Integration', () => {
     });
 
     it('should have initialized tables', async () => {
-      const { db } = getDatabaseContext();
-      // Query to check if alerts table exists
-      const result = await db.execute({
-        sql: `SELECT table_name FROM information_schema.tables
-              WHERE table_schema = 'public' AND table_name = 'alerts'`,
-        params: [],
-      });
-      expect(result).toBeDefined();
+      const { db, schema } = getDatabaseContext();
+      // Query alerts table to verify it exists
+      const result = await db.select().from(schema.alerts).limit(1);
+      expect(Array.isArray(result)).toBe(true);
     });
   });
 

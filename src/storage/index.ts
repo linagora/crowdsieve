@@ -316,17 +316,18 @@ export function createStorage(): AlertStorage {
         ).all();
       }
 
+      // PostgreSQL returns bigint as string, ensure we return numbers
       return {
-        total: totalResult?.total || 0,
-        filtered: totalResult?.filtered || 0,
-        forwarded: totalResult?.forwarded || 0,
+        total: Number(totalResult?.total) || 0,
+        filtered: Number(totalResult?.filtered) || 0,
+        forwarded: Number(totalResult?.forwarded) || 0,
         topScenarios: topScenarios.map((s) => ({
           scenario: s.scenario,
-          count: s.count,
+          count: Number(s.count),
         })),
         topCountries: topCountries.map((c) => ({
           country: c.country || 'Unknown',
-          count: c.count,
+          count: Number(c.count),
         })),
         timeBounds: {
           min: totalResult?.minTime || null,
