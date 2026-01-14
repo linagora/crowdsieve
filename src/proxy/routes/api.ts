@@ -469,7 +469,9 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Validate required fields
       if (!server || !ip || !duration || !reason?.trim()) {
-        return reply.code(400).send({ error: 'Missing required fields: server, ip, duration, reason' });
+        return reply
+          .code(400)
+          .send({ error: 'Missing required fields: server, ip, duration, reason' });
       }
 
       // Validate server name format
@@ -506,7 +508,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       // Check if machine credentials are configured
       if (!lapiServer.machine_id || !lapiServer.password) {
         return reply.code(400).send({
-          error: 'Machine credentials not configured for this server. Manual banning requires machine_id and password.',
+          error:
+            'Machine credentials not configured for this server. Manual banning requires machine_id and password.',
         });
       }
 
@@ -593,10 +596,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const result = await response.json();
-      logger.info(
-        { server: lapiServer.name, ip, result },
-        'Manual ban alert posted successfully'
-      );
+      logger.info({ server: lapiServer.name, ip, result }, 'Manual ban alert posted successfully');
 
       return reply.send({
         success: true,

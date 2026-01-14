@@ -59,10 +59,52 @@ jobs:
           files: ./coverage/coverage-final.json
           fail_ci_if_error: false
 
+  test-postgres:
+    name: Test PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crowdsieve
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: crowdsieve_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pg (optional dependency)
+        run: npm install pg
+
+      - name: Run PostgreSQL tests
+        run: npm run test:postgres
+        env:
+          STORAGE_TYPE: postgres
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DATABASE: crowdsieve_test
+          POSTGRES_USER: crowdsieve
+          POSTGRES_PASSWORD: testpassword
+
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, test-postgres]
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +123,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, test-postgres]
     steps:
       - uses: actions/checkout@v4
 

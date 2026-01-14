@@ -1,7 +1,7 @@
 import { eq, desc, and, or, gte, lte, like, sql } from 'drizzle-orm';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
-import { getDatabase, schema } from '../db/index.js';
+import { getDatabaseContext } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
 
 /**
@@ -32,6 +32,9 @@ export interface AlertStats {
   timeBounds: { min: string | null; max: string | null };
 }
 
+// Import schema types - use SQLite schema types as canonical (they're compatible)
+import type { SelectAlert } from '../db/schema.js';
+
 export interface AlertStorage {
   storeAlerts(
     alerts: Alert[],
@@ -39,18 +42,18 @@ export interface AlertStorage {
     geoipLookup?: (ip: string) => GeoIPInfo | null
   ): Promise<void>;
   markAlertsForwarded(indices: number[]): Promise<void>;
-  queryAlerts(query: AlertQuery): Promise<schema.SelectAlert[]>;
-  getAlertById(id: number): Promise<schema.SelectAlert | null>;
+  queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
+  getAlertById(id: number): Promise<SelectAlert | null>;
   getStats(since?: Date): Promise<AlertStats>;
   cleanup(retentionDays: number): Promise<number>;
 }
 
 export function createStorage(): AlertStorage {
-  const db = getDatabase();
   let lastInsertedIds: number[] = [];
 
   return {
     async storeAlerts(alerts, filterDetails, geoipLookup) {
+      const { db, schema, isPostgres } = getDatabaseContext();
       lastInsertedIds = [];
 
       for (let i = 0; i < alerts.length; i++) {
@@ -58,7 +61,7 @@ export function createStorage(): AlertStorage {
         const detail = filterDetails[i];
         const geoip = geoipLookup?.(alert.source.ip || alert.source.value || '') || null;
 
-        const result = db
+        const insertQuery = db
           .insert(schema.alerts)
           .values({
             uuid: alert.uuid,
@@ -98,9 +101,17 @@ export function createStorage(): AlertStorage {
                 ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
                 : null,
             rawJson: JSON.stringify(alert),
-          })
-          .returning({ id: schema.alerts.id })
-          .get();
+          } as typeof schema.alerts.$inferInsert)
+          .returning({ id: schema.alerts.id });
+
+        // Handle SQLite vs PostgreSQL result format
+        let result: { id: number } | undefined;
+        if (isPostgres) {
+          const rows = await insertQuery;
+          result = rows[0];
+        } else {
+          result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+        }
 
         if (result) {
           lastInsertedIds.push(result.id);
@@ -108,20 +119,24 @@ export function createStorage(): AlertStorage {
           // Store decisions
           if (alert.decisions && alert.decisions.length > 0) {
             for (const decision of alert.decisions) {
-              db.insert(schema.decisions)
-                .values({
-                  alertId: result.id,
-                  uuid: decision.uuid,
-                  origin: decision.origin,
-                  type: decision.type,
-                  scope: decision.scope,
-                  value: decision.value,
-                  duration: decision.duration,
-                  scenario: decision.scenario,
-                  simulated: decision.simulated,
-                  until: decision.until,
-                })
-                .run();
+              const decisionInsert = db.insert(schema.decisions).values({
+                alertId: result.id,
+                uuid: decision.uuid,
+                origin: decision.origin,
+                type: decision.type,
+                scope: decision.scope,
+                value: decision.value,
+                duration: decision.duration,
+                scenario: decision.scenario,
+                simulated: decision.simulated,
+                until: decision.until,
+              } as typeof schema.decisions.$inferInsert);
+
+              if (isPostgres) {
+                await decisionInsert;
+              } else {
+                (decisionInsert as unknown as { run(): void }).run();
+              }
             }
           }
         }
@@ -129,19 +144,28 @@ export function createStorage(): AlertStorage {
     },
 
     async markAlertsForwarded(indices) {
+      const { db, schema, isPostgres } = getDatabaseContext();
       const now = new Date().toISOString();
+
       for (const index of indices) {
         const id = lastInsertedIds[index];
         if (id) {
-          db.update(schema.alerts)
+          const updateQuery = db
+            .update(schema.alerts)
             .set({ forwardedToCapi: true, forwardedAt: now })
-            .where(eq(schema.alerts.id, id))
-            .run();
+            .where(eq(schema.alerts.id, id));
+
+          if (isPostgres) {
+            await updateQuery;
+          } else {
+            (updateQuery as unknown as { run(): void }).run();
+          }
         }
       }
     },
 
     async queryAlerts(query) {
+      const { db, schema, isPostgres } = getDatabaseContext();
       const conditions = [];
 
       if (query.filtered !== undefined) {
@@ -177,36 +201,76 @@ export function createStorage(): AlertStorage {
       const withConditions =
         conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
 
-      return withConditions
+      const finalQuery = withConditions
         .orderBy(desc(schema.alerts.receivedAt))
         .limit(query.limit || 100)
-        .offset(query.offset || 0)
-        .all();
+        .offset(query.offset || 0);
+
+      if (isPostgres) {
+        return (await finalQuery) as SelectAlert[];
+      } else {
+        return (finalQuery as unknown as { all(): SelectAlert[] }).all();
+      }
     },
 
     async getAlertById(id) {
-      const result = db.select().from(schema.alerts).where(eq(schema.alerts.id, id)).get();
-      return result || null;
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const query = db.select().from(schema.alerts).where(eq(schema.alerts.id, id));
+
+      if (isPostgres) {
+        const rows = await query;
+        return (rows[0] as SelectAlert) || null;
+      } else {
+        const result = (query as unknown as { get(): SelectAlert | undefined }).get();
+        return result || null;
+      }
     },
 
     async getStats(since) {
+      const { db, schema, isPostgres } = getDatabaseContext();
       const sinceDate = since?.toISOString();
+      const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
+
+      // Use Drizzle's sql template with schema column references
+      // This lets Drizzle handle the boolean representation for each database
+      const filteredCondition = sql<number>`sum(case when ${schema.alerts.filtered} then 1 else 0 end)`;
+      const forwardedCondition = sql<number>`sum(case when ${schema.alerts.forwardedToCapi} then 1 else 0 end)`;
 
       // Total counts and time bounds
-      const totalResult = db
+      const totalQuery = db
         .select({
           total: sql<number>`count(*)`,
-          filtered: sql<number>`sum(case when filtered = 1 then 1 else 0 end)`,
-          forwarded: sql<number>`sum(case when forwarded_to_capi = 1 then 1 else 0 end)`,
-          minTime: sql<string | null>`min(received_at)`,
-          maxTime: sql<string | null>`max(received_at)`,
+          filtered: filteredCondition,
+          forwarded: forwardedCondition,
+          minTime: sql<string | null>`min(${schema.alerts.receivedAt})`,
+          maxTime: sql<string | null>`max(${schema.alerts.receivedAt})`,
         })
         .from(schema.alerts)
-        .where(sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined)
-        .get();
+        .where(sinceCondition);
+
+      let totalResult:
+        | {
+            total: number;
+            filtered: number;
+            forwarded: number;
+            minTime: string | null;
+            maxTime: string | null;
+          }
+        | undefined;
+
+      if (isPostgres) {
+        const rows = await totalQuery;
+        totalResult = rows[0];
+      } else {
+        totalResult = (
+          totalQuery as unknown as {
+            get(): typeof totalResult;
+          }
+        ).get();
+      }
 
       // Top scenarios
-      const topScenarios = db
+      const scenariosQuery = db
         .select({
           scenario: schema.alerts.scenario,
           count: sql<number>`count(*) as count`,
@@ -215,11 +279,19 @@ export function createStorage(): AlertStorage {
         .where(sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined)
         .groupBy(schema.alerts.scenario)
         .orderBy(sql`count desc`)
-        .limit(10)
-        .all();
+        .limit(10);
+
+      let topScenarios: Array<{ scenario: string; count: number }>;
+      if (isPostgres) {
+        topScenarios = await scenariosQuery;
+      } else {
+        topScenarios = (
+          scenariosQuery as unknown as { all(): Array<{ scenario: string; count: number }> }
+        ).all();
+      }
 
       // Top countries
-      const topCountries = db
+      const countriesQuery = db
         .select({
           country: schema.alerts.geoCountryCode,
           count: sql<number>`count(*) as count`,
@@ -233,20 +305,29 @@ export function createStorage(): AlertStorage {
         )
         .groupBy(schema.alerts.geoCountryCode)
         .orderBy(sql`count desc`)
-        .limit(10)
-        .all();
+        .limit(10);
 
+      let topCountries: Array<{ country: string | null; count: number }>;
+      if (isPostgres) {
+        topCountries = await countriesQuery;
+      } else {
+        topCountries = (
+          countriesQuery as unknown as { all(): Array<{ country: string | null; count: number }> }
+        ).all();
+      }
+
+      // PostgreSQL returns bigint as string, ensure we return numbers
       return {
-        total: totalResult?.total || 0,
-        filtered: totalResult?.filtered || 0,
-        forwarded: totalResult?.forwarded || 0,
+        total: Number(totalResult?.total) || 0,
+        filtered: Number(totalResult?.filtered) || 0,
+        forwarded: Number(totalResult?.forwarded) || 0,
         topScenarios: topScenarios.map((s) => ({
           scenario: s.scenario,
-          count: s.count,
+          count: Number(s.count),
         })),
         topCountries: topCountries.map((c) => ({
           country: c.country || 'Unknown',
-          count: c.count,
+          count: Number(c.count),
         })),
         timeBounds: {
           min: totalResult?.minTime || null,
@@ -256,15 +337,22 @@ export function createStorage(): AlertStorage {
     },
 
     async cleanup(retentionDays) {
+      const { db, schema, isPostgres } = getDatabaseContext();
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - retentionDays);
 
-      const result = db
+      const deleteQuery = db
         .delete(schema.alerts)
-        .where(lte(schema.alerts.receivedAt, cutoff.toISOString()))
-        .run();
+        .where(lte(schema.alerts.receivedAt, cutoff.toISOString()));
 
-      return result.changes;
+      if (isPostgres) {
+        const result = await deleteQuery;
+        // PostgreSQL returns { rowCount: number }
+        return (result as unknown as { rowCount: number }).rowCount || 0;
+      } else {
+        const result = (deleteQuery as unknown as { run(): { changes: number } }).run();
+        return result.changes;
+      }
     },
   };
 }

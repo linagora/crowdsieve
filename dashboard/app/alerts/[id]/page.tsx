@@ -209,10 +209,7 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
 
       {/* Alert History for this IP */}
       {(alert.sourceIp || alert.sourceValue) && (
-        <IPAlertHistory
-          ip={alert.sourceIp || alert.sourceValue || ''}
-          currentAlertId={alert.id}
-        />
+        <IPAlertHistory ip={alert.sourceIp || alert.sourceValue || ''} currentAlertId={alert.id} />
       )}
 
       {/* Filter Information */}

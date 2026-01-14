@@ -77,52 +77,55 @@ export function useAlertFilters({
   }, [initialAlerts]);
 
   // Reusable fetch function
-  const doFetch = useCallback(async (isAutoRefresh = false) => {
-    // Only fetch from server if time, scenario or machineId filters are set
-    const hasServerFilters =
-      filters.since || filters.until || filters.scenario || filters.machineId;
+  const doFetch = useCallback(
+    async (isAutoRefresh = false) => {
+      // Only fetch from server if time, scenario or machineId filters are set
+      const hasServerFilters =
+        filters.since || filters.until || filters.scenario || filters.machineId;
 
-    if (!hasServerFilters && !isAutoRefresh) {
-      setAlerts(initialAlertsRef.current);
-      return;
-    }
+      if (!hasServerFilters && !isAutoRefresh) {
+        setAlerts(initialAlertsRef.current);
+        return;
+      }
 
-    // Don't show loading spinner for auto-refresh
-    if (!isAutoRefresh) {
-      setIsLoading(true);
-    }
-    setError(null);
-
-    try {
-      const result = await fetchAlerts({
-        limit,
-        since: filters.since?.toISOString(),
-        until: filters.until?.toISOString(),
-        scenario: filters.scenario || undefined,
-        machineId: filters.machineId || undefined,
-      });
-      setAlerts(result);
-      setLastUpdated(new Date());
-    } catch (err) {
-      // Don't show errors for auto-refresh failures
+      // Don't show loading spinner for auto-refresh
       if (!isAutoRefresh) {
-        let errorMessage = 'Failed to fetch filtered alerts';
-        if (err instanceof Error) {
-          if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-            errorMessage = 'Request timed out. Please try again.';
-          } else if (err.message.includes('fetch') || err.message.includes('network')) {
-            errorMessage = 'Network error. Please check your connection.';
+        setIsLoading(true);
+      }
+      setError(null);
+
+      try {
+        const result = await fetchAlerts({
+          limit,
+          since: filters.since?.toISOString(),
+          until: filters.until?.toISOString(),
+          scenario: filters.scenario || undefined,
+          machineId: filters.machineId || undefined,
+        });
+        setAlerts(result);
+        setLastUpdated(new Date());
+      } catch (err) {
+        // Don't show errors for auto-refresh failures
+        if (!isAutoRefresh) {
+          let errorMessage = 'Failed to fetch filtered alerts';
+          if (err instanceof Error) {
+            if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+              errorMessage = 'Request timed out. Please try again.';
+            } else if (err.message.includes('fetch') || err.message.includes('network')) {
+              errorMessage = 'Network error. Please check your connection.';
+            }
           }
+          setError(errorMessage);
+          console.error('Filter fetch error:', err);
         }
-        setError(errorMessage);
-        console.error('Filter fetch error:', err);
+      } finally {
+        if (!isAutoRefresh) {
+          setIsLoading(false);
+        }
       }
-    } finally {
-      if (!isAutoRefresh) {
-        setIsLoading(false);
-      }
-    }
-  }, [filters.since, filters.until, filters.scenario, filters.machineId, limit]);
+    },
+    [filters.since, filters.until, filters.scenario, filters.machineId, limit]
+  );
 
   // Fetch filtered alerts when filters change
   useEffect(() => {

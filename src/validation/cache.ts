@@ -1,13 +1,13 @@
 import { eq, lt, sql } from 'drizzle-orm';
-import { getDatabase, schema } from '../db/index.js';
+import { getDatabaseContext } from '../db/index.js';
 import type { CacheEntry } from './types.js';
 
 export class ValidationCache {
   async lookup(tokenHash: string): Promise<CacheEntry | null> {
-    const db = getDatabase();
+    const { db, schema, isPostgres } = getDatabaseContext();
 
     // Update last accessed time and access count atomically
-    await db
+    const updateQuery = db
       .update(schema.validatedClients)
       .set({
         lastAccessedAt: new Date().toISOString(),
@@ -15,12 +15,27 @@ export class ValidationCache {
       })
       .where(eq(schema.validatedClients.tokenHash, tokenHash));
 
+    if (isPostgres) {
+      await updateQuery;
+    } else {
+      (updateQuery as unknown as { run(): void }).run();
+    }
+
     // Then fetch the row
-    const result = await db
+    const selectQuery = db
       .select()
       .from(schema.validatedClients)
       .where(eq(schema.validatedClients.tokenHash, tokenHash))
       .limit(1);
+
+    let result: Array<typeof schema.validatedClients.$inferSelect>;
+    if (isPostgres) {
+      result = await selectQuery;
+    } else {
+      result = (
+        selectQuery as unknown as { all(): Array<typeof schema.validatedClients.$inferSelect> }
+      ).all();
+    }
 
     if (result.length === 0) {
       return null;
@@ -35,11 +50,11 @@ export class ValidationCache {
   }
 
   async store(tokenHash: string, ttlSeconds: number, machineId?: string): Promise<void> {
-    const db = getDatabase();
+    const { db, schema, isPostgres } = getDatabaseContext();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
-    await db
+    const insertQuery = db
       .insert(schema.validatedClients)
       .values({
         tokenHash,
@@ -48,7 +63,7 @@ export class ValidationCache {
         expiresAt: expiresAt.toISOString(),
         lastAccessedAt: now.toISOString(),
         accessCount: 1,
-      })
+      } as typeof schema.validatedClients.$inferInsert)
       .onConflictDoUpdate({
         target: schema.validatedClients.tokenHash,
         set: {
@@ -58,16 +73,28 @@ export class ValidationCache {
           accessCount: sql`${schema.validatedClients.accessCount} + 1`,
         },
       });
+
+    if (isPostgres) {
+      await insertQuery;
+    } else {
+      (insertQuery as unknown as { run(): void }).run();
+    }
   }
 
   async cleanupExpired(): Promise<number> {
-    const db = getDatabase();
+    const { db, schema, isPostgres } = getDatabaseContext();
     const now = new Date().toISOString();
 
-    const result = await db
+    const deleteQuery = db
       .delete(schema.validatedClients)
       .where(lt(schema.validatedClients.expiresAt, now));
 
-    return result.changes;
+    if (isPostgres) {
+      const result = await deleteQuery;
+      return (result as unknown as { rowCount: number }).rowCount || 0;
+    } else {
+      const result = (deleteQuery as unknown as { run(): { changes: number } }).run();
+      return result.changes;
+    }
   }
 }

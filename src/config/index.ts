@@ -129,6 +129,20 @@ const LapiServerSchema = z.object({
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;
 
+// PostgreSQL configuration schema
+const PostgresConfigSchema = z.object({
+  host: z.string().default('localhost'),
+  port: z.number().default(5432),
+  database: z.string().optional(),
+  user: z.string().optional(),
+  password: z.string().optional(),
+  ssl: z.boolean().default(false),
+  ssl_reject_unauthorized: z.boolean().default(true), // Set to false only for self-signed certs
+  pool_size: z.number().default(10),
+});
+
+export type PostgresConfig = z.infer<typeof PostgresConfigSchema>;
+
 const ConfigSchema = z.object({
   proxy: z.object({
     listen_port: z.number().default(8080),
@@ -138,8 +152,10 @@ const ConfigSchema = z.object({
   }),
   lapi_servers: z.array(LapiServerSchema).default([]),
   storage: z.object({
+    type: z.enum(['sqlite', 'postgres']).default('sqlite'),
     path: z.string().default('./data/crowdsieve.db'),
     retention_days: z.number().default(30),
+    postgres: PostgresConfigSchema.optional(),
   }),
   logging: z
     .object({
@@ -184,6 +200,26 @@ export function loadConfig(configPath: string): Config {
 }
 
 export function loadConfigFromEnv(): Partial<Config> {
+  // Build PostgreSQL config only if any POSTGRES_* env vars are set
+  const hasPostgresConfig =
+    process.env.POSTGRES_HOST ||
+    process.env.POSTGRES_DATABASE ||
+    process.env.POSTGRES_USER ||
+    process.env.POSTGRES_PASSWORD;
+
+  const postgresConfig = hasPostgresConfig
+    ? {
+        host: process.env.POSTGRES_HOST || 'localhost',
+        port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
+        database: process.env.POSTGRES_DATABASE,
+        user: process.env.POSTGRES_USER,
+        password: process.env.POSTGRES_PASSWORD,
+        ssl: process.env.POSTGRES_SSL === 'true',
+        ssl_reject_unauthorized: process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED !== 'false', // default true
+        pool_size: parseInt(process.env.POSTGRES_POOL_SIZE || '10', 10),
+      }
+    : undefined;
+
   return {
     proxy: {
       listen_port: parseInt(process.env.PROXY_PORT || '8080', 10),
@@ -192,8 +228,10 @@ export function loadConfigFromEnv(): Partial<Config> {
       forward_enabled: process.env.FORWARD_ENABLED !== 'false',
     },
     storage: {
+      type: (process.env.STORAGE_TYPE as 'sqlite' | 'postgres') || 'sqlite',
       path: process.env.DATABASE_PATH || './data/crowdsieve.db',
       retention_days: parseInt(process.env.RETENTION_DAYS || '30', 10),
+      postgres: postgresConfig,
     },
     logging: {
       level: (process.env.LOG_LEVEL as Config['logging']['level']) || 'info',

@@ -45,8 +45,13 @@ async function main() {
   logger.info({ configPath: CONFIG_PATH }, 'Configuration loaded');
 
   // Initialize database
-  logger.info({ dbPath: config.storage.path }, 'Initializing database');
-  initializeDatabase(config.storage.path);
+  const dbType = config.storage.type;
+  if (dbType === 'postgres') {
+    logger.info('Initializing database: PostgreSQL');
+  } else {
+    logger.info({ dbPath: config.storage.path }, 'Initializing database: SQLite');
+  }
+  await initializeDatabase(config, logger);
 
   // Initialize GeoIP
   logger.info({ geoipPath: GEOIP_DB_PATH }, 'Initializing GeoIP');
@@ -135,7 +140,7 @@ async function main() {
     logger.info('HTTP server closed');
 
     closeGeoIP();
-    closeDatabase();
+    await closeDatabase();
     logger.info('Resources cleaned up');
 
     process.exit(0);
