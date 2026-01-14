@@ -1,13 +1,38 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Shield, Globe, Filter, Send } from 'lucide-react';
 import type { AlertStats } from '@/lib/types';
+import { fetchStats } from '@/lib/api';
 
 interface StatsPanelProps {
   stats: AlertStats;
+  autoRefreshInterval?: number;
 }
 
-export function StatsPanel({ stats }: StatsPanelProps) {
+const DEFAULT_AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+
+export function StatsPanel({
+  stats: initialStats,
+  autoRefreshInterval = DEFAULT_AUTO_REFRESH_INTERVAL,
+}: StatsPanelProps) {
+  const [stats, setStats] = useState<AlertStats>(initialStats);
+
+  // Auto-refresh stats
+  useEffect(() => {
+    if (!autoRefreshInterval || autoRefreshInterval <= 0) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const newStats = await fetchStats();
+        setStats(newStats);
+      } catch {
+        // Silently ignore auto-refresh errors
+      }
+    }, autoRefreshInterval);
+
+    return () => clearInterval(intervalId);
+  }, [autoRefreshInterval]);
   const cards = [
     {
       title: 'Total Alerts',

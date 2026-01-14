@@ -1,4 +1,4 @@
-import type { StoredAlert } from './types';
+import type { StoredAlert, AlertStats } from './types';
 
 // Client-side API functions - these call Next.js API routes (not the backend directly)
 // This avoids CORS issues since requests stay same-origin
@@ -31,6 +31,18 @@ export async function fetchAlerts(params?: {
 
   if (!res.ok) {
     throw new Error('Failed to fetch alerts');
+  }
+
+  return res.json();
+}
+
+export async function fetchStats(): Promise<AlertStats> {
+  const res = await fetch('/api/stats', {
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch stats');
   }
 
   return res.json();
