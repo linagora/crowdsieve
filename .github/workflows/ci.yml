@@ -101,10 +101,59 @@ jobs:
           POSTGRES_USER: crowdsieve
           POSTGRES_PASSWORD: testpassword
 
+  helm:
+    name: Helm Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Update Helm dependencies
+        run: helm dependency update ./helm/crowdsieve
+
+      - name: Lint Helm chart
+        run: helm lint ./helm/crowdsieve
+
+      - name: Test template (SQLite default)
+        run: |
+          helm template test ./helm/crowdsieve > /dev/null
+          echo "SQLite template OK"
+
+      - name: Test template (PostgreSQL)
+        run: |
+          helm template test ./helm/crowdsieve \
+            --set crowdsieve.storage.type=postgres \
+            --set crowdsieve.storage.postgres.host=postgres.local \
+            --set crowdsieve.storage.postgres.database=crowdsieve \
+            --set crowdsieve.storage.postgres.user=crowdsieve \
+            --set crowdsieve.storage.postgres.password=testpass > /dev/null
+          echo "PostgreSQL template OK"
+
+      - name: Test template (with GeoIP)
+        run: |
+          helm template test ./helm/crowdsieve \
+            --set crowdsieve.geoip.enabled=true \
+            --set crowdsieve.geoip.maxmindLicenseKey=test-key > /dev/null
+          echo "GeoIP template OK"
+
+      - name: Verify PostgreSQL env vars present
+        run: |
+          helm template test ./helm/crowdsieve \
+            --set crowdsieve.storage.type=postgres \
+            --set crowdsieve.storage.postgres.host=pg.local \
+            --set crowdsieve.storage.postgres.database=mydb \
+            --set crowdsieve.storage.postgres.user=user \
+            --set crowdsieve.storage.postgres.password=pass | \
+            grep -q "POSTGRES_HOST" && echo "PostgreSQL env vars OK"
+
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [test, test-postgres]
+    needs: [test, test-postgres, helm]
     steps:
       - uses: actions/checkout@v4
 
@@ -123,7 +172,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [test, test-postgres]
+    needs: [test, test-postgres, helm]
     steps:
       - uses: actions/checkout@v4
 
