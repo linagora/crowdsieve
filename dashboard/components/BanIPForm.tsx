@@ -192,8 +192,9 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
         <div className="p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm">
           <p className="font-medium">Machine credentials required</p>
           <p className="mt-1 text-yellow-700">
-            Manual banning requires <code className="bg-yellow-100 px-1 rounded">machine_id</code> and{' '}
-            <code className="bg-yellow-100 px-1 rounded">password</code> to be configured for at least one LAPI server.
+            Manual banning requires <code className="bg-yellow-100 px-1 rounded">machine_id</code>{' '}
+            and <code className="bg-yellow-100 px-1 rounded">password</code> to be configured for at
+            least one LAPI server.
           </p>
         </div>
       </div>
@@ -313,7 +314,11 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
           </div>
         )}
 
-        <Button type="submit" disabled={submitting || !ip || !selectedServer || !reason.trim()} className="w-full">
+        <Button
+          type="submit"
+          disabled={submitting || !ip || !selectedServer || !reason.trim()}
+          className="w-full"
+        >
           {submitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin mr-2" />

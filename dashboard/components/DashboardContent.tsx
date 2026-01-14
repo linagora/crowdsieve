@@ -39,7 +39,9 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
   }, []);
 
   // Location filter from map marker selection
-  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
 
   // Filter alerts by selected location (client-side)
   const displayedAlerts = useMemo(() => {
