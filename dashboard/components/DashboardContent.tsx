@@ -115,9 +115,9 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto">
-            {displayedAlerts.map((alert) => (
+            {displayedAlerts.map((alert, index) => (
               <AlertCard
-                key={alert.id}
+                key={`${alert.id}-${selectedLocation?.lat ?? 'all'}-${index}`}
                 alert={alert}
                 onClick={() => router.push(`/alerts/${alert.id}`)}
               />
