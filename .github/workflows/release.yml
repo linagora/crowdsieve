@@ -98,6 +98,11 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Add Helm repositories
+        run: |
+          helm repo add crowdsec https://crowdsecurity.github.io/helm-charts
+          helm repo update
+
       - name: Update Helm dependencies
         run: helm dependency update ./helm/crowdsieve
 
