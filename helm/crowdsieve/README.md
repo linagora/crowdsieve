@@ -36,12 +36,17 @@ CrowdSieve is a filtering proxy that sits between CrowdSec LAPI instances and th
 ### Add the Helm repository
 
 ```bash
-# If using a Helm repository
-helm repo add crowdsieve https://your-helm-repo.example.com
+helm repo add crowdsieve https://linagora.github.io/crowdsieve
 helm repo update
 ```
 
-### Install from local chart
+### Install the chart
+
+```bash
+helm install crowdsieve crowdsieve/crowdsieve -n security --create-namespace
+```
+
+### Install from local chart (development)
 
 ```bash
 # Clone the repository
