@@ -52,21 +52,35 @@ Traditional CrowdSec architecture embeds intelligence in each scenario to determ
 ### Using Docker
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/crowdsieve.git
+# Pull and run the image
+docker run -d -p 8080:8080 -p 3000:3000 yadd/crowdsieve:latest
+
+# Or use docker compose
+git clone https://github.com/linagora/crowdsieve.git
 cd crowdsieve
-
-# Start the services (proxy + dashboard)
 docker compose up -d
-
-# View logs
-docker compose logs -f
 ```
 
 The container runs both services:
 
 - **Proxy**: http://localhost:8080 (for CrowdSec LAPI)
 - **Dashboard**: http://localhost:3000 (web interface)
+
+### Using Helm (Kubernetes)
+
+```bash
+# Add the Helm repository
+helm repo add crowdsieve https://linagora.github.io/crowdsieve
+helm repo update
+
+# Install CrowdSieve with CrowdSec
+helm install crowdsieve crowdsieve/crowdsieve -n security --create-namespace
+
+# Or with custom values
+helm install crowdsieve crowdsieve/crowdsieve -f values.yaml -n security --create-namespace
+```
+
+The Helm chart includes CrowdSec as a dependency. See the [Helm chart documentation](./helm/crowdsieve/README.md) for configuration options including PostgreSQL backend, GeoIP enrichment, and filter rules.
 
 ### Manual Installation
 
