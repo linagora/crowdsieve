@@ -14,10 +14,9 @@ crowdsieve:
   enabled: true
 
   # -- Number of replicas
-  # NOTE: CrowdSieve uses a SQLite backend by default.
-  #       When using SQLite, you MUST keep replicaCount set to 1 to avoid
-  #       data corruption and inconsistent behavior. Scale beyond 1 only
-  #       if you switch to a shared, concurrency-safe database backend.
+  # NOTE: When using SQLite (default), you MUST keep replicaCount set to 1
+  #       to avoid data corruption. With PostgreSQL (storage.type=postgres),
+  #       you can safely scale to multiple replicas.
   replicaCount: 1
 
   image:
@@ -107,8 +106,37 @@ crowdsieve:
   # Storage Configuration
   # ---------------------------------------------------------------------------
   storage:
+    # -- Storage type: sqlite or postgres
+    type: "sqlite"
     # -- Alert retention in days
     retentionDays: 30
+    # -- Cleanup enabled (automatic deletion of old alerts)
+    cleanupEnabled: true
+    # -- Cleanup interval in hours
+    cleanupIntervalHours: 24
+
+    # -- PostgreSQL configuration (only used when type=postgres)
+    postgres:
+      # -- PostgreSQL host
+      host: ""
+      # -- PostgreSQL port
+      port: 5432
+      # -- PostgreSQL database name
+      database: ""
+      # -- PostgreSQL user
+      user: ""
+      # -- PostgreSQL password (stored in Secret)
+      password: ""
+      # -- Enable SSL connection
+      ssl: false
+      # -- Reject unauthorized SSL certificates (set to false for self-signed certs)
+      sslRejectUnauthorized: true
+      # -- Connection pool size
+      poolSize: 10
+      # -- Use existing secret for PostgreSQL credentials
+      existingSecret: ""
+      # -- Key in existing secret for password
+      passwordKey: "password"
 
   # ---------------------------------------------------------------------------
   # Rate Limiting
