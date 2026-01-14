@@ -1,7 +1,7 @@
 import { eq, desc, and, or, gte, lte, like, sql } from 'drizzle-orm';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
-import { getDatabase, getSchema, getDatabaseType } from '../db/index.js';
+import { getDatabaseContext } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
 
 /**
@@ -53,12 +53,7 @@ export function createStorage(): AlertStorage {
 
   return {
     async storeAlerts(alerts, filterDetails, geoipLookup) {
-      // Cast to any to avoid TypeScript union type issues between SQLite and PostgreSQL
-      // Runtime behavior is handled correctly via isPostgres checks
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = getDatabase() as any;
-      const schema = getSchema();
-      const isPostgres = getDatabaseType() === 'postgres';
+      const { db, schema, isPostgres } = getDatabaseContext();
       lastInsertedIds = [];
 
       for (let i = 0; i < alerts.length; i++) {
@@ -149,10 +144,7 @@ export function createStorage(): AlertStorage {
     },
 
     async markAlertsForwarded(indices) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = getDatabase() as any;
-      const schema = getSchema();
-      const isPostgres = getDatabaseType() === 'postgres';
+      const { db, schema, isPostgres } = getDatabaseContext();
       const now = new Date().toISOString();
 
       for (const index of indices) {
@@ -173,10 +165,7 @@ export function createStorage(): AlertStorage {
     },
 
     async queryAlerts(query) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = getDatabase() as any;
-      const schema = getSchema();
-      const isPostgres = getDatabaseType() === 'postgres';
+      const { db, schema, isPostgres } = getDatabaseContext();
       const conditions = [];
 
       if (query.filtered !== undefined) {
@@ -225,11 +214,7 @@ export function createStorage(): AlertStorage {
     },
 
     async getAlertById(id) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = getDatabase() as any;
-      const schema = getSchema();
-      const isPostgres = getDatabaseType() === 'postgres';
-
+      const { db, schema, isPostgres } = getDatabaseContext();
       const query = db.select().from(schema.alerts).where(eq(schema.alerts.id, id));
 
       if (isPostgres) {
@@ -242,20 +227,14 @@ export function createStorage(): AlertStorage {
     },
 
     async getStats(since) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = getDatabase() as any;
-      const schema = getSchema();
-      const isPostgres = getDatabaseType() === 'postgres';
+      const { db, schema, isPostgres } = getDatabaseContext();
       const sinceDate = since?.toISOString();
+      const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
 
-      // Use database-appropriate boolean comparison
-      // SQLite: filtered = 1, PostgreSQL: filtered = true
-      const filteredCondition = isPostgres
-        ? sql<number>`sum(case when filtered = true then 1 else 0 end)`
-        : sql<number>`sum(case when filtered = 1 then 1 else 0 end)`;
-      const forwardedCondition = isPostgres
-        ? sql<number>`sum(case when forwarded_to_capi = true then 1 else 0 end)`
-        : sql<number>`sum(case when forwarded_to_capi = 1 then 1 else 0 end)`;
+      // Use Drizzle's sql template with schema column references
+      // This lets Drizzle handle the boolean representation for each database
+      const filteredCondition = sql<number>`sum(case when ${schema.alerts.filtered} then 1 else 0 end)`;
+      const forwardedCondition = sql<number>`sum(case when ${schema.alerts.forwardedToCapi} then 1 else 0 end)`;
 
       // Total counts and time bounds
       const totalQuery = db
@@ -263,11 +242,11 @@ export function createStorage(): AlertStorage {
           total: sql<number>`count(*)`,
           filtered: filteredCondition,
           forwarded: forwardedCondition,
-          minTime: sql<string | null>`min(received_at)`,
-          maxTime: sql<string | null>`max(received_at)`,
+          minTime: sql<string | null>`min(${schema.alerts.receivedAt})`,
+          maxTime: sql<string | null>`max(${schema.alerts.receivedAt})`,
         })
         .from(schema.alerts)
-        .where(sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined);
+        .where(sinceCondition);
 
       let totalResult:
         | {
@@ -357,10 +336,7 @@ export function createStorage(): AlertStorage {
     },
 
     async cleanup(retentionDays) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = getDatabase() as any;
-      const schema = getSchema();
-      const isPostgres = getDatabaseType() === 'postgres';
+      const { db, schema, isPostgres } = getDatabaseContext();
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - retentionDays);
 

@@ -237,6 +237,21 @@ export function getSchema() {
 }
 
 /**
+ * Helper to get database instance, schema, and type check in one call.
+ * Reduces boilerplate in storage/cache code that needs all three.
+ * The db and schema are cast to `any` to work around TypeScript union type issues
+ * between SQLite and PostgreSQL Drizzle instances.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getDatabaseContext(): { db: any; schema: any; isPostgres: boolean } {
+  return {
+    db: getDatabase(),
+    schema: getSchema(),
+    isPostgres: currentType === 'postgres',
+  };
+}
+
+/**
  * Close the database connection.
  */
 export async function closeDatabase(): Promise<void> {

@@ -1,15 +1,10 @@
 import { eq, lt, sql } from 'drizzle-orm';
-import { getDatabase, getSchema, getDatabaseType } from '../db/index.js';
+import { getDatabaseContext } from '../db/index.js';
 import type { CacheEntry } from './types.js';
 
 export class ValidationCache {
   async lookup(tokenHash: string): Promise<CacheEntry | null> {
-    // Cast to any to avoid TypeScript union type issues between SQLite and PostgreSQL
-    // Runtime behavior is handled correctly via isPostgres checks
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = getDatabase() as any;
-    const schema = getSchema();
-    const isPostgres = getDatabaseType() === 'postgres';
+    const { db, schema, isPostgres } = getDatabaseContext();
 
     // Update last accessed time and access count atomically
     const updateQuery = db
@@ -55,10 +50,7 @@ export class ValidationCache {
   }
 
   async store(tokenHash: string, ttlSeconds: number, machineId?: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = getDatabase() as any;
-    const schema = getSchema();
-    const isPostgres = getDatabaseType() === 'postgres';
+    const { db, schema, isPostgres } = getDatabaseContext();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
@@ -90,10 +82,7 @@ export class ValidationCache {
   }
 
   async cleanupExpired(): Promise<number> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = getDatabase() as any;
-    const schema = getSchema();
-    const isPostgres = getDatabaseType() === 'postgres';
+    const { db, schema, isPostgres } = getDatabaseContext();
     const now = new Date().toISOString();
 
     const deleteQuery = db
