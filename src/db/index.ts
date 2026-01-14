@@ -3,7 +3,8 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as sqliteSchema from './schema.js';
 import * as postgresSchema from './schema.postgres.js';
 import { setAdapter, getAdapter, type DatabaseAdapter, type DatabaseType } from './adapter.js';
-import { initializePostgres, closePostgres, type PostgresDb } from './postgres.js';
+// PostgreSQL module is loaded dynamically to avoid requiring 'pg' when using SQLite
+import type { PostgresDb } from './postgres.js';
 import type { Config } from '../config/index.js';
 import type { Logger } from 'pino';
 import fs from 'fs';
@@ -40,6 +41,8 @@ class PostgresAdapter implements DatabaseAdapter {
   readonly type: DatabaseType = 'postgres';
 
   async close(): Promise<void> {
+    // Dynamic import to avoid loading 'pg' when using SQLite
+    const { closePostgres } = await import('./postgres.js');
     await closePostgres();
     db = null;
   }
@@ -196,6 +199,8 @@ export async function initializeDatabase(config: Config, logger: Logger): Promis
         'PostgreSQL configuration missing. Set POSTGRES_HOST, POSTGRES_DATABASE, etc.'
       );
     }
+    // Dynamic import to avoid loading 'pg' when using SQLite
+    const { initializePostgres } = await import('./postgres.js');
     db = await initializePostgres(config.storage.postgres, logger);
     setAdapter(new PostgresAdapter());
     logger.info('Database initialized: PostgreSQL');
