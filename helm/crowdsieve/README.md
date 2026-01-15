@@ -150,6 +150,7 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsec.lapi.database.postgres.existingSecret` | Use existing secret | `""` |
 | `crowdsec.lapi.database.postgres.passwordKey` | Key in existing secret | `password` |
 | `crowdsec.lapi.bouncers` | List of bouncers to pre-register | `[]` |
+| `crowdsec.lapi.machines` | List of machines to pre-register | `[]` |
 | `crowdsec.lapi.credentials.username` | Agent username | `""` |
 | `crowdsec.lapi.credentials.password` | Agent password | `""` |
 | `crowdsec.lapi.credentials.existingSecret` | Use existing secret for credentials | `""` |
@@ -357,6 +358,81 @@ crowdsec:
 The bouncers will be automatically registered when LAPI starts and can connect using their respective keys.
 
 > **Note:** The `BOUNCER_KEY_<name>` environment variables are a convention supported by the official CrowdSec Docker image. The CrowdSec container reads these variables at startup and automatically registers the bouncers. This works with the CrowdSec Helm subchart because it uses the official Docker image.
+
+### Pre-registering Machines
+
+You can pre-register machines (agents/watchers) with credentials that will be created when CrowdSec LAPI starts. This is useful for multi-server setups where remote agents need to connect to the central LAPI.
+
+Unlike bouncers, machines require a registration script because CrowdSec Docker doesn't natively support `MACHINE_*` environment variables. This chart provides a registration script that runs via a `postStart` lifecycle hook.
+
+#### Step 1: Define machines in values
+
+```yaml
+crowdsec:
+  lapi:
+    machines:
+      - name: "server-1"
+        password: "secure-password-for-server-1"
+      - name: "server-2"
+        password: "secure-password-for-server-2"
+```
+
+#### Step 2: Configure volumes, mounts, env, and lifecycle
+
+Add the registration script volume, password environment variables, and lifecycle hook. Replace `my-release` with your actual Helm release name:
+
+```yaml
+crowdsec:
+  lapi:
+    env:
+      - name: MACHINE_SERVER_1_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-machines
+            key: machine-server-1-password
+      - name: MACHINE_SERVER_2_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-machines
+            key: machine-server-2-password
+
+    extraVolumes:
+      - name: online-api-credentials
+        configMap:
+          name: my-release-crowdsieve-capi-credentials
+      - name: machines-script
+        configMap:
+          name: my-release-crowdsieve-crowdsec-machines
+          defaultMode: 0755
+
+    extraVolumeMounts:
+      - name: online-api-credentials
+        mountPath: /etc/crowdsec/online_api_credentials.yaml
+        subPath: online_api_credentials.yaml
+        readOnly: true
+      - name: machines-script
+        mountPath: /scripts/register-machines.sh
+        subPath: register-machines.sh
+        readOnly: true
+
+    lifecycle:
+      postStart:
+        exec:
+          command: ["/bin/sh", "-c", "nohup /scripts/register-machines.sh > /tmp/machines.log 2>&1 &"]
+```
+
+#### Step 3: Connect remote agents
+
+On your remote servers, configure the CrowdSec agent to connect to LAPI using the registered credentials:
+
+```yaml
+# On remote server: /etc/crowdsec/local_api_credentials.yaml
+url: http://<lapi-service>:8080
+login: server-1
+password: secure-password-for-server-1
+```
+
+> **Note:** The machine names defined in `machines` become the login usernames for connecting agents. The passwords are stored in a Kubernetes Secret and injected as environment variables with the pattern `MACHINE_<NAME>_PASSWORD` (name is uppercased with `-` replaced by `_`).
 
 ### Agent Credentials
 

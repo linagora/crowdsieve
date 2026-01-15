@@ -1,0 +1,49 @@
+{{- if and .Values.crowdsec.enabled .Values.crowdsec.lapi.machines }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}-crowdsec-machines
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+data:
+  register-machines.sh: |
+    #!/bin/sh
+    set -e
+
+    # Wait for LAPI to be ready
+    echo "Waiting for LAPI to be ready..."
+    MAX_RETRIES=30
+    RETRY_INTERVAL=2
+    RETRIES=0
+
+    while [ $RETRIES -lt $MAX_RETRIES ]; do
+      if cscli machines list >/dev/null 2>&1; then
+        echo "LAPI is ready"
+        break
+      fi
+      RETRIES=$((RETRIES + 1))
+      echo "LAPI not ready yet, retrying in ${RETRY_INTERVAL}s... ($RETRIES/$MAX_RETRIES)"
+      sleep $RETRY_INTERVAL
+    done
+
+    if [ $RETRIES -eq $MAX_RETRIES ]; then
+      echo "ERROR: LAPI did not become ready in time"
+      exit 1
+    fi
+
+    # Register each machine
+    {{- range .Values.crowdsec.lapi.machines }}
+    {{- $safeName := regexReplaceAll "[^A-Za-z0-9-_.]" .name "-" }}
+    echo "Registering machine: {{ .name }}"
+    if cscli machines list | grep -q "{{ .name }}"; then
+      echo "Machine {{ .name }} already exists, skipping..."
+    else
+      cscli machines add "{{ .name }}" \
+        --password "$MACHINE_{{ $safeName | upper | replace "-" "_" }}_PASSWORD" \
+        --force
+      echo "Machine {{ .name }} registered successfully"
+    fi
+    {{- end }}
+
+    echo "All machines registered successfully"
+{{- end }}

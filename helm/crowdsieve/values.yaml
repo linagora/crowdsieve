@@ -364,6 +364,27 @@ crowdsec:
     # - name: "traefik"
     #   key: "<your-bouncer-key>"
 
+    # -- Pre-register machines (agents/watchers) with credentials
+    # Machines are registered via a postStart lifecycle hook after LAPI starts.
+    # The credentials are stored in a Kubernetes Secret.
+    #
+    # IMPORTANT: When using machines, you MUST also configure:
+    # 1. extraVolumes to mount the registration script
+    # 2. extraVolumeMounts to make it available in the container
+    # 3. lifecycle.postStart to run the script
+    # 4. env to inject machine passwords
+    #
+    # See the README for complete configuration examples.
+    #
+    # WARNING: Same security considerations as bouncers above - avoid committing
+    # credentials to version control. Use existingSecret for production deployments.
+    machines: []
+    # Example:
+    # - name: "server-1"
+    #   password: "<secure-password>"
+    # - name: "server-2"
+    #   password: "<secure-password>"
+
     # -- Agent credentials for LAPI authentication
     # These will be available as AGENT_USERNAME and AGENT_PASSWORD environment variables
     # WARNING: Same security considerations as bouncers above - avoid committing
