@@ -35,7 +35,7 @@ data:
     {{- range .Values.crowdsec.lapi.machines }}
     {{- $safeName := regexReplaceAll "[^A-Za-z0-9-_.]" .name "-" }}
     echo "Registering machine: {{ .name }}"
-    if cscli machines list | grep -q "{{ .name }}"; then
+    if cscli machines list | grep -q "^{{ .name }} "; then
       echo "Machine {{ .name }} already exists, skipping..."
     else
       cscli machines add "{{ .name }}" \
