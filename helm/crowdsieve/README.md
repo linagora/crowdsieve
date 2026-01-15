@@ -237,6 +237,8 @@ crowdsieve:
 
 By default, CrowdSec LAPI uses SQLite for its internal database. For High Availability (HA) deployments with multiple LAPI replicas, you can configure CrowdSec to use PostgreSQL.
 
+> **Tip:** For a complete ready-to-use PostgreSQL configuration (both CrowdSieve and CrowdSec), see [`values-postgres.yaml`](values-postgres.yaml). Copy it and update the connection details and release name.
+
 #### Step 1: Configure the database settings
 
 ```yaml

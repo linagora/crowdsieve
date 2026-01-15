@@ -124,6 +124,26 @@ Validate CrowdSec LAPI configuration
 {{- if and (not $pg.password) (not $pg.existingSecret) }}
 {{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.password or crowdsec.lapi.database.postgres.existingSecret is required when using PostgreSQL." }}
 {{- end }}
+{{- /* Check that DB_PASSWORD env var is configured */ -}}
+{{- $hasDbPassword := false }}
+{{- range .Values.crowdsec.lapi.env }}
+{{- if eq .name "DB_PASSWORD" }}
+{{- $hasDbPassword = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasDbPassword }}
+{{- fail "CrowdSec LAPI: when using PostgreSQL, you must configure DB_PASSWORD in crowdsec.lapi.env. See values-postgres.yaml for a complete example." }}
+{{- end }}
+{{- /* Check that db-config volume mount is configured */ -}}
+{{- $hasDbConfigMount := false }}
+{{- range .Values.crowdsec.lapi.extraVolumeMounts }}
+{{- if eq .mountPath "/etc/crowdsec/config.yaml.local" }}
+{{- $hasDbConfigMount = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasDbConfigMount }}
+{{- fail "CrowdSec LAPI: when using PostgreSQL, you must configure extraVolumeMounts to mount db-config at /etc/crowdsec/config.yaml.local. See values-postgres.yaml for a complete example." }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
