@@ -75,3 +75,21 @@ CrowdSieve internal service URL (for CrowdSec LAPI to connect to)
 {{- define "crowdsieve.internalUrl" -}}
 {{- printf "http://%s:%d/" (include "crowdsieve.fullname" .) (int .Values.crowdsieve.service.proxyPort) }}
 {{- end }}
+
+{{/*
+Validate CrowdSieve configuration
+*/}}
+{{- define "crowdsieve.validateConfig" -}}
+{{- if and .Values.crowdsieve.enabled (gt (int .Values.crowdsieve.replicaCount) 1) (ne .Values.crowdsieve.storage.type "postgres") }}
+{{- fail "CrowdSieve: replicaCount > 1 requires PostgreSQL. Set crowdsieve.storage.type=postgres or use replicaCount=1 with SQLite." }}
+{{- end }}
+{{- end }}
+
+{{/*
+Validate CrowdSec LAPI configuration
+*/}}
+{{- define "crowdsieve.validateCrowdsecConfig" -}}
+{{- if and .Values.crowdsec.enabled .Values.crowdsec.lapi.enabled (gt (int .Values.crowdsec.lapi.replicas) 1) (ne (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres") }}
+{{- fail "CrowdSec LAPI: replicas > 1 requires PostgreSQL. Set crowdsec.lapi.database.type=postgres or use replicas=1 with SQLite." }}
+{{- end }}
+{{- end }}
