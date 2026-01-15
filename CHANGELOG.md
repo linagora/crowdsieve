@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2025-01-15
+
+### Added
+
+#### Helm Chart
+
+- **Dashboard LAPI integration**: Configure connections to CrowdSec LAPI servers for dashboard features:
+  - View active decisions from LAPI
+  - Create manual IP bans from the dashboard
+  - Auto-configure local LAPI connection using first bouncer and machine credentials (`lapiServers.autoConfigureLocal`)
+
 ## [0.1.2] - 2025-01-15
 
 ### Added
