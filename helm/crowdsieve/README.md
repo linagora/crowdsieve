@@ -140,6 +140,15 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.filters.mode` | Filter mode: `block` or `allow` | `block` |
 | `crowdsieve.filters.rules` | Filter rules | See values.yaml |
 | `crowdsec.enabled` | Enable CrowdSec subchart | `true` |
+| `crowdsec.lapi.database.type` | CrowdSec LAPI storage backend: `sqlite` or `postgres` | `sqlite` |
+| `crowdsec.lapi.database.postgres.host` | CrowdSec PostgreSQL host | `""` |
+| `crowdsec.lapi.database.postgres.port` | CrowdSec PostgreSQL port | `5432` |
+| `crowdsec.lapi.database.postgres.database` | CrowdSec PostgreSQL database | `crowdsec` |
+| `crowdsec.lapi.database.postgres.user` | CrowdSec PostgreSQL user | `crowdsec` |
+| `crowdsec.lapi.database.postgres.password` | CrowdSec PostgreSQL password | `""` |
+| `crowdsec.lapi.database.postgres.sslmode` | CrowdSec PostgreSQL SSL mode | `disable` |
+| `crowdsec.lapi.database.postgres.existingSecret` | Use existing secret | `""` |
+| `crowdsec.lapi.database.postgres.passwordKey` | Key in existing secret | `password` |
 | `capiCredentials.login` | CrowdSec machine ID | `""` |
 | `capiCredentials.password` | CrowdSec password | `""` |
 
@@ -216,6 +225,85 @@ crowdsieve:
 crowdsieve:
   persistence:
     enabled: false  # Not needed for PostgreSQL
+```
+
+### CrowdSec LAPI PostgreSQL Backend
+
+By default, CrowdSec LAPI uses SQLite for its internal database. For High Availability (HA) deployments with multiple LAPI replicas, you can configure CrowdSec to use PostgreSQL.
+
+#### Step 1: Configure the database settings
+
+```yaml
+crowdsec:
+  lapi:
+    replicas: 2  # Safe to scale with PostgreSQL
+    database:
+      type: "postgres"
+      postgres:
+        host: "postgres.database.svc.cluster.local"
+        port: 5432
+        database: "crowdsec"
+        user: "crowdsec"
+        password: "your-secure-password"
+        sslmode: "disable"  # or: require, verify-ca, verify-full
+```
+
+#### Step 2: Configure extraVolumes, extraVolumeMounts and env
+
+Update your values to mount the database configuration and inject the password. Replace `my-release` with your actual Helm release name:
+
+```yaml
+crowdsec:
+  lapi:
+    # Add DB_PASSWORD environment variable
+    env:
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-postgres  # <release-name>-crowdsieve-crowdsec-postgres
+            key: password
+
+    extraVolumeMounts:
+      - name: online-api-credentials
+        mountPath: /etc/crowdsec/online_api_credentials.yaml
+        subPath: online_api_credentials.yaml
+        readOnly: true
+      # Add the db-config volume mount for PostgreSQL
+      - name: db-config
+        mountPath: /etc/crowdsec/config.yaml.local
+        subPath: config.yaml.local
+        readOnly: true
+
+    extraVolumes:
+      - name: online-api-credentials
+        configMap:
+          name: my-release-crowdsieve-capi-credentials  # <release-name>-crowdsieve-capi-credentials
+      # Add the db-config volume for PostgreSQL
+      - name: db-config
+        configMap:
+          name: my-release-crowdsieve-crowdsec-db-config  # <release-name>-crowdsieve-crowdsec-db-config
+```
+
+#### Using an existing secret for CrowdSec PostgreSQL
+
+```yaml
+crowdsec:
+  lapi:
+    database:
+      type: "postgres"
+      postgres:
+        host: "postgres.database.svc.cluster.local"
+        database: "crowdsec"
+        user: "crowdsec"
+        existingSecret: "my-crowdsec-db-credentials"
+        passwordKey: "password"
+
+    env:
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-crowdsec-db-credentials
+            key: password
 ```
 
 ### GeoIP Enrichment

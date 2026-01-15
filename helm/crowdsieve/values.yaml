@@ -288,7 +288,44 @@ crowdsec:
     replicas: 1
 
     # -- LAPI environment variables
+    # When using PostgreSQL (database.type=postgres), add the DB_PASSWORD env var:
+    # Example for PostgreSQL with inline password (adjust release name):
+    #   - name: DB_PASSWORD
+    #     valueFrom:
+    #       secretKeyRef:
+    #         name: my-release-crowdsieve-crowdsec-postgres
+    #         key: password
+    # Example for PostgreSQL with existing secret:
+    #   - name: DB_PASSWORD
+    #     valueFrom:
+    #       secretKeyRef:
+    #         name: my-existing-secret
+    #         key: postgres-password
     env: []
+
+    # -- Database configuration for LAPI
+    # By default, CrowdSec uses SQLite. Configure this section to use PostgreSQL.
+    database:
+      # -- Database type: sqlite or postgres
+      type: "sqlite"
+      # -- PostgreSQL configuration (only used when type=postgres)
+      postgres:
+        # -- PostgreSQL host
+        host: ""
+        # -- PostgreSQL port
+        port: 5432
+        # -- PostgreSQL database name
+        database: "crowdsec"
+        # -- PostgreSQL user
+        user: "crowdsec"
+        # -- PostgreSQL password (stored in Secret)
+        password: ""
+        # -- SSL mode: disable, require, verify-ca, verify-full
+        sslmode: "disable"
+        # -- Use existing secret for PostgreSQL credentials
+        existingSecret: ""
+        # -- Key in existing secret for password
+        passwordKey: "password"
     # NOTE: We intentionally do NOT set DISABLE_ONLINE_API here.
     # Setting DISABLE_ONLINE_API=true would prevent CrowdSec from using the
     # online API (CAPI). In this chart, LAPI is configured to read
@@ -299,23 +336,35 @@ crowdsec:
     # will be effectively disabled.
 
     # -- Extra volume mounts for LAPI
-    # NOTE: The ConfigMap name follows pattern: <release-name>-crowdsieve-capi-credentials
-    # If you use fullnameOverride, adjust the ConfigMap name accordingly
+    # NOTE: The ConfigMap names follow pattern: <release-name>-crowdsieve-<suffix>
+    # If you use fullnameOverride, adjust the ConfigMap names accordingly
     extraVolumeMounts:
       - name: online-api-credentials
         mountPath: /etc/crowdsec/online_api_credentials.yaml
         subPath: online_api_credentials.yaml
         readOnly: true
+      # Uncomment for PostgreSQL (when database.type=postgres):
+      # - name: db-config
+      #   mountPath: /etc/crowdsec/config.yaml.local
+      #   subPath: config.yaml.local
+      #   readOnly: true
 
     # -- Extra volumes for LAPI
-    # IMPORTANT: Update the ConfigMap name to match your release name!
-    # Pattern: <release-name>-crowdsieve-capi-credentials
-    # Example: If your release is named "my-release", use "my-release-crowdsieve-capi-credentials"
+    # IMPORTANT: Update the ConfigMap names to match your release name!
+    # Pattern: <release-name>-crowdsieve-<suffix>
+    # Example: If your release is named "my-release":
+    #   - CAPI credentials: my-release-crowdsieve-capi-credentials
+    #   - DB config (PostgreSQL): my-release-crowdsieve-crowdsec-db-config
     extraVolumes: []
-    # Example (uncomment and adjust):
+    # Example (uncomment and adjust for your release name):
     # - name: online-api-credentials
     #   configMap:
     #     name: my-release-crowdsieve-capi-credentials
+    # # For PostgreSQL (when database.type=postgres):
+    # - name: db-config
+    #   configMap:
+    #     name: my-release-crowdsieve-crowdsec-db-config
+
 
     # -- Persistent volume for LAPI data
     persistentVolume:
