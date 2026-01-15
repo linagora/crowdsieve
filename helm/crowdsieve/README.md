@@ -149,6 +149,10 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsec.lapi.database.postgres.sslmode` | CrowdSec PostgreSQL SSL mode | `disable` |
 | `crowdsec.lapi.database.postgres.existingSecret` | Use existing secret | `""` |
 | `crowdsec.lapi.database.postgres.passwordKey` | Key in existing secret | `password` |
+| `crowdsec.lapi.bouncers` | List of bouncers to pre-register | `[]` |
+| `crowdsec.lapi.credentials.username` | Agent username | `""` |
+| `crowdsec.lapi.credentials.password` | Agent password | `""` |
+| `crowdsec.lapi.credentials.existingSecret` | Use existing secret for credentials | `""` |
 | `capiCredentials.login` | CrowdSec machine ID | `""` |
 | `capiCredentials.password` | CrowdSec password | `""` |
 
@@ -303,6 +307,99 @@ crowdsec:
         valueFrom:
           secretKeyRef:
             name: my-crowdsec-db-credentials
+            key: password
+```
+
+### Pre-registering Bouncers
+
+You can pre-register bouncers with API keys that will be available when CrowdSec LAPI starts. This is useful for automated deployments where bouncers need to connect immediately.
+
+#### Step 1: Define bouncers in values
+
+```yaml
+crowdsec:
+  lapi:
+    bouncers:
+      - name: "nginx"
+        key: "my-secret-bouncer-key-123"
+      - name: "traefik"
+        key: "another-bouncer-key-456"
+```
+
+#### Step 2: Configure environment variables
+
+Add the `BOUNCER_KEY_<name>` environment variables to reference the secret. Replace `my-release` with your actual Helm release name:
+
+```yaml
+crowdsec:
+  lapi:
+    env:
+      - name: BOUNCER_KEY_nginx
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-bouncers
+            key: bouncer-key-nginx
+      - name: BOUNCER_KEY_traefik
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-bouncers
+            key: bouncer-key-traefik
+```
+
+The bouncers will be automatically registered when LAPI starts and can connect using their respective keys.
+
+### Agent Credentials
+
+You can configure custom credentials for agents (watchers) connecting to LAPI instead of using auto-generated ones.
+
+#### Step 1: Define credentials in values
+
+```yaml
+crowdsec:
+  lapi:
+    credentials:
+      username: "my-agent"
+      password: "my-secure-password"
+```
+
+#### Step 2: Configure environment variables
+
+```yaml
+crowdsec:
+  lapi:
+    env:
+      - name: AGENT_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-credentials
+            key: username
+      - name: AGENT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-credentials
+            key: password
+```
+
+#### Using an existing secret for credentials
+
+```yaml
+crowdsec:
+  lapi:
+    credentials:
+      existingSecret: "my-agent-credentials"
+      usernameKey: "username"
+      passwordKey: "password"
+
+    env:
+      - name: AGENT_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: my-agent-credentials
+            key: username
+      - name: AGENT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-agent-credentials
             key: password
 ```
 
