@@ -140,6 +140,21 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.filters.mode` | Filter mode: `block` or `allow` | `block` |
 | `crowdsieve.filters.rules` | Filter rules | See values.yaml |
 | `crowdsec.enabled` | Enable CrowdSec subchart | `true` |
+| `crowdsec.lapi.database.type` | CrowdSec LAPI storage backend: `sqlite` or `postgres` | `sqlite` |
+| `crowdsec.lapi.database.postgres.host` | CrowdSec PostgreSQL host | `""` |
+| `crowdsec.lapi.database.postgres.port` | CrowdSec PostgreSQL port | `5432` |
+| `crowdsec.lapi.database.postgres.database` | CrowdSec PostgreSQL database | `crowdsec` |
+| `crowdsec.lapi.database.postgres.user` | CrowdSec PostgreSQL user | `crowdsec` |
+| `crowdsec.lapi.database.postgres.password` | CrowdSec PostgreSQL password | `""` |
+| `crowdsec.lapi.database.postgres.sslmode` | CrowdSec PostgreSQL SSL mode | `disable` |
+| `crowdsec.lapi.database.postgres.existingSecret` | Use existing secret | `""` |
+| `crowdsec.lapi.database.postgres.passwordKey` | Key in existing secret | `password` |
+| `crowdsec.lapi.bouncers` | List of bouncers to pre-register | `[]` |
+| `crowdsec.lapi.credentials.username` | Agent username | `""` |
+| `crowdsec.lapi.credentials.password` | Agent password | `""` |
+| `crowdsec.lapi.credentials.existingSecret` | Use existing secret for credentials | `""` |
+| `crowdsec.lapi.credentials.usernameKey` | Username key in existing secret | `username` |
+| `crowdsec.lapi.credentials.passwordKey` | Password key in existing secret | `password` |
 | `capiCredentials.login` | CrowdSec machine ID | `""` |
 | `capiCredentials.password` | CrowdSec password | `""` |
 
@@ -217,6 +232,188 @@ crowdsieve:
   persistence:
     enabled: false  # Not needed for PostgreSQL
 ```
+
+### CrowdSec LAPI PostgreSQL Backend
+
+By default, CrowdSec LAPI uses SQLite for its internal database. For High Availability (HA) deployments with multiple LAPI replicas, you can configure CrowdSec to use PostgreSQL.
+
+> **Tip:** For a complete ready-to-use PostgreSQL configuration (both CrowdSieve and CrowdSec), see [`values-postgres.yaml`](values-postgres.yaml). Copy it and update the connection details and release name.
+
+#### Step 1: Configure the database settings
+
+```yaml
+crowdsec:
+  lapi:
+    replicas: 2  # Safe to scale with PostgreSQL
+    database:
+      type: "postgres"
+      postgres:
+        host: "postgres.database.svc.cluster.local"
+        port: 5432
+        database: "crowdsec"
+        user: "crowdsec"
+        password: "your-secure-password"
+        sslmode: "disable"  # or: require, verify-ca, verify-full
+```
+
+#### Step 2: Configure extraVolumes, extraVolumeMounts and env
+
+> **Important:** This step is **mandatory** for PostgreSQL to work. The chart creates a ConfigMap with the database configuration, but you must manually configure the volume mounts and environment variables to inject them into the CrowdSec LAPI pod.
+
+> **Warning:** If you also configure `crowdsec.config.config.yaml.local` in your values, there will be a conflict. The volume mount takes precedence and will override any `config.yaml.local` content set via the subchart's config mechanism. Choose one method or the other.
+
+Update your values to mount the database configuration and inject the password. Replace `my-release` with your actual Helm release name:
+
+```yaml
+crowdsec:
+  lapi:
+    # Add DB_PASSWORD environment variable
+    env:
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-postgres  # <release-name>-crowdsieve-crowdsec-postgres
+            key: password
+
+    extraVolumeMounts:
+      - name: online-api-credentials
+        mountPath: /etc/crowdsec/online_api_credentials.yaml
+        subPath: online_api_credentials.yaml
+        readOnly: true
+      # Add the db-config volume mount for PostgreSQL
+      - name: db-config
+        mountPath: /etc/crowdsec/config.yaml.local
+        subPath: config.yaml.local
+        readOnly: true
+
+    extraVolumes:
+      - name: online-api-credentials
+        configMap:
+          name: my-release-crowdsieve-capi-credentials  # <release-name>-crowdsieve-capi-credentials
+      # Add the db-config volume for PostgreSQL
+      - name: db-config
+        configMap:
+          name: my-release-crowdsieve-crowdsec-db-config  # <release-name>-crowdsieve-crowdsec-db-config
+```
+
+#### Using an existing secret for CrowdSec PostgreSQL
+
+```yaml
+crowdsec:
+  lapi:
+    database:
+      type: "postgres"
+      postgres:
+        host: "postgres.database.svc.cluster.local"
+        database: "crowdsec"
+        user: "crowdsec"
+        existingSecret: "my-crowdsec-db-credentials"
+        passwordKey: "password"
+
+    env:
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-crowdsec-db-credentials
+            key: password
+```
+
+### Pre-registering Bouncers
+
+You can pre-register bouncers with API keys that will be available when CrowdSec LAPI starts. This is useful for automated deployments where bouncers need to connect immediately.
+
+#### Step 1: Define bouncers in values
+
+```yaml
+crowdsec:
+  lapi:
+    bouncers:
+      - name: "nginx"
+        key: "my-secret-bouncer-key-123"
+      - name: "traefik"
+        key: "another-bouncer-key-456"
+```
+
+#### Step 2: Configure environment variables
+
+Add the `BOUNCER_KEY_<name>` environment variables to reference the secret. Replace `my-release` with your actual Helm release name:
+
+```yaml
+crowdsec:
+  lapi:
+    env:
+      - name: BOUNCER_KEY_nginx
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-bouncers
+            key: bouncer-key-nginx
+      - name: BOUNCER_KEY_traefik
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-bouncers
+            key: bouncer-key-traefik
+```
+
+The bouncers will be automatically registered when LAPI starts and can connect using their respective keys.
+
+> **Note:** The `BOUNCER_KEY_<name>` environment variables are a convention supported by the official CrowdSec Docker image. The CrowdSec container reads these variables at startup and automatically registers the bouncers. This works with the CrowdSec Helm subchart because it uses the official Docker image.
+
+### Agent Credentials
+
+You can configure custom credentials for agents (watchers) connecting to LAPI instead of using auto-generated ones.
+
+#### Step 1: Define credentials in values
+
+```yaml
+crowdsec:
+  lapi:
+    credentials:
+      username: "my-agent"
+      password: "my-secure-password"
+```
+
+#### Step 2: Configure environment variables
+
+```yaml
+crowdsec:
+  lapi:
+    env:
+      - name: AGENT_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-credentials
+            key: username
+      - name: AGENT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-credentials
+            key: password
+```
+
+#### Using an existing secret for credentials
+
+```yaml
+crowdsec:
+  lapi:
+    credentials:
+      existingSecret: "my-agent-credentials"
+      usernameKey: "username"
+      passwordKey: "password"
+
+    env:
+      - name: AGENT_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: my-agent-credentials
+            key: username
+      - name: AGENT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-agent-credentials
+            key: password
+```
+
+> **Note:** The `AGENT_USERNAME` and `AGENT_PASSWORD` environment variables are conventions supported by the official CrowdSec Docker image for configuring agent authentication credentials.
 
 ### GeoIP Enrichment
 

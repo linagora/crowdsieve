@@ -1,0 +1,19 @@
+{{- include "crowdsieve.validateCrowdsecConfig" . }}
+{{- if and .Values.crowdsec.enabled (eq (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crowdsieve.fullname" . }}-crowdsec-db-config
+  labels:
+    {{- include "crowdsieve.labels" . | nindent 4 }}
+data:
+  config.yaml.local: |
+    db_config:
+      type: postgres
+      host: {{ .Values.crowdsec.lapi.database.postgres.host | quote }}
+      port: {{ .Values.crowdsec.lapi.database.postgres.port }}
+      db_name: {{ .Values.crowdsec.lapi.database.postgres.database | quote }}
+      user: {{ .Values.crowdsec.lapi.database.postgres.user | quote }}
+      password: "${DB_PASSWORD}"
+      sslmode: {{ .Values.crowdsec.lapi.database.postgres.sslmode | quote }}
+{{- end }}

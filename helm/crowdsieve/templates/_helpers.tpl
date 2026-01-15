@@ -75,3 +75,75 @@ CrowdSieve internal service URL (for CrowdSec LAPI to connect to)
 {{- define "crowdsieve.internalUrl" -}}
 {{- printf "http://%s:%d/" (include "crowdsieve.fullname" .) (int .Values.crowdsieve.service.proxyPort) }}
 {{- end }}
+
+{{/*
+Validate CrowdSieve configuration
+*/}}
+{{- define "crowdsieve.validateConfig" -}}
+{{- if .Values.crowdsieve.enabled }}
+{{- if and (gt (int .Values.crowdsieve.replicaCount) 1) (ne .Values.crowdsieve.storage.type "postgres") }}
+{{- fail "CrowdSieve: replicaCount > 1 requires PostgreSQL. Set crowdsieve.storage.type=postgres or use replicaCount=1 with SQLite." }}
+{{- end }}
+{{- if eq .Values.crowdsieve.storage.type "postgres" }}
+{{- $pg := .Values.crowdsieve.storage.postgres }}
+{{- if not $pg.host }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.host is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.database }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.database is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.user }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.user is required when using PostgreSQL." }}
+{{- end }}
+{{- if and (not $pg.password) (not $pg.existingSecret) }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.password or crowdsieve.storage.postgres.existingSecret is required when using PostgreSQL." }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Validate CrowdSec LAPI configuration
+*/}}
+{{- define "crowdsieve.validateCrowdsecConfig" -}}
+{{- if and .Values.crowdsec.enabled .Values.crowdsec.lapi.enabled }}
+{{- if and (gt (int .Values.crowdsec.lapi.replicas) 1) (ne (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres") }}
+{{- fail "CrowdSec LAPI: replicas > 1 requires PostgreSQL. Set crowdsec.lapi.database.type=postgres or use replicas=1 with SQLite." }}
+{{- end }}
+{{- if eq (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres" }}
+{{- $pg := .Values.crowdsec.lapi.database.postgres }}
+{{- if not $pg.host }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.host is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.database }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.database is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.user }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.user is required when using PostgreSQL." }}
+{{- end }}
+{{- if and (not $pg.password) (not $pg.existingSecret) }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.password or crowdsec.lapi.database.postgres.existingSecret is required when using PostgreSQL." }}
+{{- end }}
+{{- /* Check that DB_PASSWORD env var is configured */ -}}
+{{- $hasDbPassword := false }}
+{{- range .Values.crowdsec.lapi.env }}
+{{- if eq .name "DB_PASSWORD" }}
+{{- $hasDbPassword = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasDbPassword }}
+{{- fail "CrowdSec LAPI: when using PostgreSQL, you must configure DB_PASSWORD in crowdsec.lapi.env. See values-postgres.yaml for a complete example." }}
+{{- end }}
+{{- /* Check that db-config volume mount is configured */ -}}
+{{- $hasDbConfigMount := false }}
+{{- range .Values.crowdsec.lapi.extraVolumeMounts }}
+{{- if eq .mountPath "/etc/crowdsec/config.yaml.local" }}
+{{- $hasDbConfigMount = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasDbConfigMount }}
+{{- fail "CrowdSec LAPI: when using PostgreSQL, you must configure extraVolumeMounts to mount db-config at /etc/crowdsec/config.yaml.local. See values-postgres.yaml for a complete example." }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

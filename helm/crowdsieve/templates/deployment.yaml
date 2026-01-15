@@ -1,3 +1,5 @@
+{{- include "crowdsieve.validateConfig" . }}
+{{- include "crowdsieve.validateCrowdsecConfig" . }}
 {{- if .Values.crowdsieve.enabled }}
 apiVersion: apps/v1
 kind: Deployment

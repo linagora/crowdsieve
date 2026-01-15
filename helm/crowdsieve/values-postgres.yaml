@@ -1,0 +1,196 @@
+# Example values file for CrowdSieve with PostgreSQL backend
+# This example configures both CrowdSieve AND CrowdSec LAPI to use PostgreSQL,
+# enabling High Availability with multiple replicas.
+#
+# Prerequisites:
+#   - A PostgreSQL server accessible from the cluster
+#   - Two databases created: one for CrowdSieve, one for CrowdSec
+#
+# Usage:
+#   # First, update this file with your PostgreSQL connection details and release name
+#   # Then install with:
+#   helm install my-release ./helm/crowdsieve -f ./helm/crowdsieve/values-postgres.yaml -n security --create-namespace
+#
+# IMPORTANT: Replace "my-release" below with your actual Helm release name!
+
+# =============================================================================
+# CrowdSieve Configuration with PostgreSQL
+# =============================================================================
+crowdsieve:
+  enabled: true
+  # Safe to scale with PostgreSQL
+  replicaCount: 2
+
+  image:
+    repository: yadd/crowdsieve
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  proxy:
+    port: 8080
+    capiUrl: "https://api.crowdsec.net"
+    forwardEnabled: true
+
+  dashboard:
+    port: 3000
+    # apiKey: "your-secure-api-key"
+
+  logging:
+    level: "info"
+    format: "json"
+
+  # PostgreSQL storage for CrowdSieve
+  storage:
+    type: "postgres"
+    retentionDays: 30
+    postgres:
+      host: "postgres.database.svc.cluster.local"  # UPDATE THIS
+      port: 5432
+      database: "crowdsieve"                        # UPDATE THIS
+      user: "crowdsieve"                            # UPDATE THIS
+      password: "your-crowdsieve-password"          # UPDATE THIS (or use existingSecret)
+      ssl: false
+      sslRejectUnauthorized: true
+      poolSize: 10
+      # For production, use an existing secret instead of inline password:
+      # existingSecret: "crowdsieve-postgres-credentials"
+      # passwordKey: "password"
+
+  # Disable SQLite persistence (not needed with PostgreSQL)
+  persistence:
+    enabled: false
+
+  filters:
+    mode: "block"
+    rules:
+      00-no-decision.yaml: |
+        name: "no-decision"
+        description: "Block alerts without decisions"
+        expression:
+          empty:
+            field: "decisions"
+
+      01-simulated.yaml: |
+        name: "simulated"
+        description: "Block simulated alerts"
+        expression:
+          eq:
+            field: "simulated"
+            value: true
+
+      10-internal-ips.yaml: |
+        name: "internal-ips"
+        description: "Block alerts from internal IP ranges"
+        expression:
+          or:
+            - cidr:
+                field: "source.ip"
+                value: "10.0.0.0/8"
+            - cidr:
+                field: "source.ip"
+                value: "172.16.0.0/12"
+            - cidr:
+                field: "source.ip"
+                value: "192.168.0.0/16"
+
+# =============================================================================
+# CrowdSec Configuration with PostgreSQL
+# =============================================================================
+crowdsec:
+  enabled: true
+  container_runtime: containerd
+
+  lapi:
+    enabled: true
+    # Safe to scale with PostgreSQL
+    replicas: 2
+
+    # PostgreSQL database configuration for CrowdSec LAPI
+    database:
+      type: "postgres"
+      postgres:
+        host: "postgres.database.svc.cluster.local"  # UPDATE THIS
+        port: 5432
+        database: "crowdsec"                          # UPDATE THIS
+        user: "crowdsec"                              # UPDATE THIS
+        password: "your-crowdsec-password"            # UPDATE THIS (or use existingSecret)
+        sslmode: "disable"
+        # For production, use an existing secret:
+        # existingSecret: "crowdsec-postgres-credentials"
+        # passwordKey: "password"
+
+    # Environment variables for CrowdSec LAPI
+    # IMPORTANT: Update "my-release" to match your Helm release name!
+    env:
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-release-crowdsieve-crowdsec-postgres  # UPDATE: <release-name>-crowdsieve-crowdsec-postgres
+            key: password
+
+    # Volume mounts for CrowdSec LAPI
+    extraVolumeMounts:
+      # Mount CAPI credentials (points to CrowdSieve proxy)
+      - name: online-api-credentials
+        mountPath: /etc/crowdsec/online_api_credentials.yaml
+        subPath: online_api_credentials.yaml
+        readOnly: true
+      # Mount PostgreSQL database configuration
+      - name: db-config
+        mountPath: /etc/crowdsec/config.yaml.local
+        subPath: config.yaml.local
+        readOnly: true
+
+    # Volumes for CrowdSec LAPI
+    # IMPORTANT: Update "my-release" to match your Helm release name!
+    extraVolumes:
+      - name: online-api-credentials
+        configMap:
+          name: my-release-crowdsieve-capi-credentials       # UPDATE: <release-name>-crowdsieve-capi-credentials
+      - name: db-config
+        configMap:
+          name: my-release-crowdsieve-crowdsec-db-config     # UPDATE: <release-name>-crowdsieve-crowdsec-db-config
+
+    # Persistent volumes (data PVC not needed with PostgreSQL, but config still useful)
+    persistentVolume:
+      data:
+        enabled: false  # Not needed with PostgreSQL
+      config:
+        enabled: true
+        size: 100Mi
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  agent:
+    enabled: true
+    env:
+      - name: COLLECTIONS
+        value: "crowdsecurity/linux crowdsecurity/nginx"
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    acquisition:
+      - namespace: default
+        podName: nginx-*
+        program: nginx
+
+# =============================================================================
+# CAPI Credentials
+# =============================================================================
+# These credentials allow CrowdSec LAPI to authenticate with CrowdSieve
+# Generate with: cscli capi register
+capiCredentials:
+  login: "your-machine-id"        # UPDATE THIS
+  password: "your-machine-password"  # UPDATE THIS
