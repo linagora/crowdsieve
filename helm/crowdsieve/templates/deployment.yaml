@@ -170,6 +170,37 @@ spec:
             - name: CLIENT_VALIDATION_FAIL_CLOSED
               value: {{ .Values.crowdsieve.clientValidation.failClosed | quote }}
             {{- end }}
+            # LAPI servers credentials (for dashboard features)
+            {{- if and .Values.crowdsieve.lapiServers.autoConfigureLocal .Values.crowdsec.enabled }}
+            {{- $hasBouncers := gt (len (default (list) .Values.crowdsec.lapi.bouncers)) 0 }}
+            {{- $hasMachines := gt (len (default (list) .Values.crowdsec.lapi.machines)) 0 }}
+            {{- if $hasBouncers }}
+            {{- $firstBouncer := index .Values.crowdsec.lapi.bouncers 0 }}
+            - name: LAPI_LOCAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crowdsieve.fullname" . }}-crowdsec-bouncers
+                  key: bouncer-key-{{ regexReplaceAll "[^A-Za-z0-9-_.]" $firstBouncer.name "-" }}
+            {{- end }}
+            {{- if $hasMachines }}
+            {{- $firstMachine := index .Values.crowdsec.lapi.machines 0 }}
+            - name: LAPI_LOCAL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crowdsieve.fullname" . }}-crowdsec-machines
+                  key: machine-{{ regexReplaceAll "[^A-Za-z0-9-_.]" $firstMachine.name "-" }}-password
+            {{- end }}
+            {{- end }}
+            {{- range $i, $server := .Values.crowdsieve.lapiServers.servers }}
+            {{- if $server.apiKey }}
+            - name: LAPI_SERVER_{{ $i }}_API_KEY
+              value: {{ $server.apiKey | quote }}
+            {{- end }}
+            {{- if $server.password }}
+            - name: LAPI_SERVER_{{ $i }}_PASSWORD
+              value: {{ $server.password | quote }}
+            {{- end }}
+            {{- end }}
             # Runtime
             - name: NODE_ENV
               value: "production"

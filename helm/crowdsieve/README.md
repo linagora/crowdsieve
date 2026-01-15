@@ -139,6 +139,8 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.persistence.size` | PVC size | `1Gi` |
 | `crowdsieve.filters.mode` | Filter mode: `block` or `allow` | `block` |
 | `crowdsieve.filters.rules` | Filter rules | See values.yaml |
+| `crowdsieve.lapiServers.autoConfigureLocal` | Auto-configure connection to local LAPI | `true` |
+| `crowdsieve.lapiServers.servers` | Additional LAPI servers to connect to | `[]` |
 | `crowdsec.enabled` | Enable CrowdSec subchart | `true` |
 | `crowdsec.lapi.database.type` | CrowdSec LAPI storage backend: `sqlite` or `postgres` | `sqlite` |
 | `crowdsec.lapi.database.postgres.host` | CrowdSec PostgreSQL host | `""` |
@@ -507,6 +509,51 @@ crowdsieve:
 ```
 
 The GeoIP database will be downloaded automatically during pod initialization.
+
+### Dashboard LAPI Integration
+
+The CrowdSieve dashboard can connect to CrowdSec LAPI servers for advanced features:
+
+- **View active decisions**: See current bans and other decisions
+- **Manual IP banning**: Create manual bans from the dashboard
+
+#### Automatic Configuration
+
+By default (`lapiServers.autoConfigureLocal: true`), the chart automatically configures a connection to the local CrowdSec LAPI when you have bouncers and/or machines configured:
+
+```yaml
+crowdsec:
+  lapi:
+    bouncers:
+      - name: "dashboard"
+        key: "my-bouncer-key"    # Used for reading decisions
+    machines:
+      - name: "crowdsieve"
+        password: "my-password"  # Used for creating bans
+```
+
+This will automatically:
+1. Configure CrowdSieve to connect to the local LAPI
+2. Use the first bouncer's API key for reading decisions
+3. Use the first machine's credentials for creating manual bans
+
+#### Manual Configuration
+
+To connect to additional or external LAPI servers:
+
+```yaml
+crowdsieve:
+  lapiServers:
+    autoConfigureLocal: true  # Keep local LAPI connection
+    servers:
+      - name: "remote-lapi"
+        url: "https://remote-lapi.example.com:8080"
+        apiKey: "bouncer-key-for-reading"
+        machineId: "crowdsieve-remote"
+        password: "machine-password"
+```
+
+> **Note:** For the dashboard to show decisions and enable manual banning, you need both a bouncer key (for reading) and machine credentials (for writing). Without machine credentials, only decision viewing is available.
 
 ### Ingress
 

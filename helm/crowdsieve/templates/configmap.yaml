@@ -23,4 +23,35 @@ data:
 
     filters:
       mode: {{ .Values.crowdsieve.filters.mode | quote }}
+
+    {{- if or .Values.crowdsieve.lapiServers.autoConfigureLocal .Values.crowdsieve.lapiServers.servers }}
+    lapi_servers:
+      {{- if and .Values.crowdsieve.lapiServers.autoConfigureLocal .Values.crowdsec.enabled }}
+      {{- $hasBouncers := gt (len (default (list) .Values.crowdsec.lapi.bouncers)) 0 }}
+      {{- $hasMachines := gt (len (default (list) .Values.crowdsec.lapi.machines)) 0 }}
+      {{- if or $hasBouncers $hasMachines }}
+      - name: "local"
+        url: "http://{{ .Release.Name }}-crowdsec-lapi:8080"
+        {{- if $hasBouncers }}
+        api_key: "${LAPI_LOCAL_API_KEY}"
+        {{- end }}
+        {{- if $hasMachines }}
+        {{- $firstMachine := index .Values.crowdsec.lapi.machines 0 }}
+        machine_id: {{ $firstMachine.name | quote }}
+        password: "${LAPI_LOCAL_PASSWORD}"
+        {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- range $i, $server := .Values.crowdsieve.lapiServers.servers }}
+      - name: {{ $server.name | quote }}
+        url: {{ $server.url | quote }}
+        {{- if $server.apiKey }}
+        api_key: "${LAPI_SERVER_{{ $i }}_API_KEY}"
+        {{- end }}
+        {{- if $server.machineId }}
+        machine_id: {{ $server.machineId | quote }}
+        password: "${LAPI_SERVER_{{ $i }}_PASSWORD}"
+        {{- end }}
+      {{- end }}
+    {{- end }}
 {{- end }}

@@ -94,6 +94,31 @@ crowdsieve:
     corsOrigin: ""
 
   # ---------------------------------------------------------------------------
+  # LAPI Servers Configuration (for dashboard features)
+  # ---------------------------------------------------------------------------
+  # Configure connections to CrowdSec LAPI servers for:
+  # - Reading active decisions (requires api_key - bouncer key)
+  # - Creating manual bans (requires machine_id + password)
+  #
+  # If autoConfigureLocal is true, a connection to the CrowdSec LAPI deployed
+  # by this chart will be automatically configured using the first bouncer
+  # and first machine from crowdsec.lapi.bouncers and crowdsec.lapi.machines.
+  lapiServers:
+    # -- Auto-configure connection to local CrowdSec LAPI
+    # Uses the first bouncer key and first machine credentials from the chart
+    autoConfigureLocal: true
+    # -- Additional LAPI servers to connect to
+    # WARNING: Avoid putting credentials in values.yaml committed to git.
+    # Use existingSecret or environment variable references instead.
+    servers: []
+    # Example:
+    # - name: "remote-lapi"
+    #   url: "https://remote-lapi.example.com:8080"
+    #   apiKey: ""           # Bouncer API key for reading decisions
+    #   machineId: ""        # Machine ID for creating bans (optional)
+    #   password: ""         # Machine password for creating bans (optional)
+
+  # ---------------------------------------------------------------------------
   # Logging Configuration
   # ---------------------------------------------------------------------------
   logging:
