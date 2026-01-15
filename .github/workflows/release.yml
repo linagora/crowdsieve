@@ -77,6 +77,15 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
 
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: yadd/crowdsieve
+          short-description: "Filtering proxy for CrowdSec - filter alerts before sending to CAPI"
+          readme-filepath: ./README.md
+
   # Release Helm chart
   helm:
     name: Release Helm Chart
