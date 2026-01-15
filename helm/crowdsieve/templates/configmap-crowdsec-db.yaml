@@ -1,3 +1,4 @@
+{{- include "crowdsieve.validateCrowdsecConfig" . }}
 {{- if and .Values.crowdsec.enabled (eq (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres") }}
 apiVersion: v1
 kind: ConfigMap

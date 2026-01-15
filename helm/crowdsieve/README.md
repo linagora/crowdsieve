@@ -153,6 +153,8 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsec.lapi.credentials.username` | Agent username | `""` |
 | `crowdsec.lapi.credentials.password` | Agent password | `""` |
 | `crowdsec.lapi.credentials.existingSecret` | Use existing secret for credentials | `""` |
+| `crowdsec.lapi.credentials.usernameKey` | Username key in existing secret | `username` |
+| `crowdsec.lapi.credentials.passwordKey` | Password key in existing secret | `password` |
 | `capiCredentials.login` | CrowdSec machine ID | `""` |
 | `capiCredentials.password` | CrowdSec password | `""` |
 
@@ -254,6 +256,10 @@ crowdsec:
 
 #### Step 2: Configure extraVolumes, extraVolumeMounts and env
 
+> **Important:** This step is **mandatory** for PostgreSQL to work. The chart creates a ConfigMap with the database configuration, but you must manually configure the volume mounts and environment variables to inject them into the CrowdSec LAPI pod.
+
+> **Warning:** If you also configure `crowdsec.config.config.yaml.local` in your values, there will be a conflict. The volume mount takes precedence and will override any `config.yaml.local` content set via the subchart's config mechanism. Choose one method or the other.
+
 Update your values to mount the database configuration and inject the password. Replace `my-release` with your actual Helm release name:
 
 ```yaml
@@ -348,6 +354,8 @@ crowdsec:
 
 The bouncers will be automatically registered when LAPI starts and can connect using their respective keys.
 
+> **Note:** The `BOUNCER_KEY_<name>` environment variables are a convention supported by the official CrowdSec Docker image. The CrowdSec container reads these variables at startup and automatically registers the bouncers. This works with the CrowdSec Helm subchart because it uses the official Docker image.
+
 ### Agent Credentials
 
 You can configure custom credentials for agents (watchers) connecting to LAPI instead of using auto-generated ones.
@@ -402,6 +410,8 @@ crowdsec:
             name: my-agent-credentials
             key: password
 ```
+
+> **Note:** The `AGENT_USERNAME` and `AGENT_PASSWORD` environment variables are conventions supported by the official CrowdSec Docker image for configuring agent authentication credentials.
 
 ### GeoIP Enrichment
 

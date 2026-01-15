@@ -80,8 +80,25 @@ CrowdSieve internal service URL (for CrowdSec LAPI to connect to)
 Validate CrowdSieve configuration
 */}}
 {{- define "crowdsieve.validateConfig" -}}
-{{- if and .Values.crowdsieve.enabled (gt (int .Values.crowdsieve.replicaCount) 1) (ne .Values.crowdsieve.storage.type "postgres") }}
+{{- if .Values.crowdsieve.enabled }}
+{{- if and (gt (int .Values.crowdsieve.replicaCount) 1) (ne .Values.crowdsieve.storage.type "postgres") }}
 {{- fail "CrowdSieve: replicaCount > 1 requires PostgreSQL. Set crowdsieve.storage.type=postgres or use replicaCount=1 with SQLite." }}
+{{- end }}
+{{- if eq .Values.crowdsieve.storage.type "postgres" }}
+{{- $pg := .Values.crowdsieve.storage.postgres }}
+{{- if not $pg.host }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.host is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.database }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.database is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.user }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.user is required when using PostgreSQL." }}
+{{- end }}
+{{- if and (not $pg.password) (not $pg.existingSecret) }}
+{{- fail "CrowdSieve: crowdsieve.storage.postgres.password or crowdsieve.storage.postgres.existingSecret is required when using PostgreSQL." }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 
@@ -89,7 +106,24 @@ Validate CrowdSieve configuration
 Validate CrowdSec LAPI configuration
 */}}
 {{- define "crowdsieve.validateCrowdsecConfig" -}}
-{{- if and .Values.crowdsec.enabled .Values.crowdsec.lapi.enabled (gt (int .Values.crowdsec.lapi.replicas) 1) (ne (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres") }}
+{{- if and .Values.crowdsec.enabled .Values.crowdsec.lapi.enabled }}
+{{- if and (gt (int .Values.crowdsec.lapi.replicas) 1) (ne (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres") }}
 {{- fail "CrowdSec LAPI: replicas > 1 requires PostgreSQL. Set crowdsec.lapi.database.type=postgres or use replicas=1 with SQLite." }}
+{{- end }}
+{{- if eq (default "sqlite" .Values.crowdsec.lapi.database.type) "postgres" }}
+{{- $pg := .Values.crowdsec.lapi.database.postgres }}
+{{- if not $pg.host }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.host is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.database }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.database is required when using PostgreSQL." }}
+{{- end }}
+{{- if not $pg.user }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.user is required when using PostgreSQL." }}
+{{- end }}
+{{- if and (not $pg.password) (not $pg.existingSecret) }}
+{{- fail "CrowdSec LAPI: crowdsec.lapi.database.postgres.password or crowdsec.lapi.database.postgres.existingSecret is required when using PostgreSQL." }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
