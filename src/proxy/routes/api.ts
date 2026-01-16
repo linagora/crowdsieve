@@ -670,6 +670,99 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({ error: 'Failed to post ban alert' });
     }
   });
+
+  // Delete a decision from a LAPI server using machine credentials
+  fastify.delete<{
+    Params: { id: string };
+    Querystring: { server: string };
+  }>('/api/decisions/:id', async (request, reply) => {
+    try {
+      // CSRF protection: require and verify Origin header matches expected hosts
+      const origin = request.headers.origin;
+      const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+      if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
+        logger.warn({ origin, allowedOrigins }, 'Rejected delete request from unauthorized or missing origin');
+        return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
+      }
+
+      const { id } = request.params;
+      const { server } = request.query;
+
+      // Validate required fields
+      if (!server || !id) {
+        return reply.code(400).send({ error: 'Missing required fields: server, id' });
+      }
+
+      // Validate server name format
+      if (!SERVER_NAME_REGEX.test(server)) {
+        return reply.code(400).send({ error: 'Invalid server name format' });
+      }
+
+      // Validate decision ID (should be a positive integer)
+      const decisionId = parseInt(id, 10);
+      if (isNaN(decisionId) || decisionId <= 0) {
+        return reply.code(400).send({ error: 'Invalid decision ID' });
+      }
+
+      // Find the LAPI server
+      const { config } = fastify;
+      const lapiServer = (config.lapi_servers || []).find((s: LapiServer) => s.name === server);
+      if (!lapiServer) {
+        return reply.code(404).send({ error: 'LAPI server not found' });
+      }
+
+      // Check if machine credentials are configured
+      if (!lapiServer.machine_id || !lapiServer.password) {
+        return reply.code(400).send({
+          error:
+            'Machine credentials not configured for this server. Deleting decisions requires machine_id and password.',
+        });
+      }
+
+      // Get machine token
+      const token = await getMachineToken(lapiServer, config.proxy.timeout_ms, logger);
+      if (!token) {
+        return reply.code(500).send({ error: 'Failed to authenticate with LAPI' });
+      }
+
+      // Delete the decision via LAPI
+      const deleteUrl = `${lapiServer.url}/v1/decisions/${decisionId}`;
+      logger.info({ server: lapiServer.name, decisionId, url: deleteUrl }, 'Deleting decision from LAPI');
+
+      const response = await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: AbortSignal.timeout(config.proxy.timeout_ms),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        logger.error(
+          { status: response.status, error: errorBody, server: lapiServer.name },
+          'LAPI rejected delete request'
+        );
+        if (response.status === 404) {
+          return reply.code(404).send({ error: 'Decision not found' });
+        }
+        return reply.code(response.status).send({
+          error: `LAPI returned error: ${response.status}`,
+        });
+      }
+
+      logger.info({ server: lapiServer.name, decisionId }, 'Decision deleted successfully');
+
+      return reply.send({
+        success: true,
+        message: `Decision ${decisionId} deleted`,
+        server: lapiServer.name,
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to delete decision');
+      return reply.code(500).send({ error: 'Failed to delete decision' });
+    }
+  });
 };
 
 export default apiRoutes;
