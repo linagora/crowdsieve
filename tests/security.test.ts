@@ -282,3 +282,87 @@ describe('Security - CSRF Origin Validation', () => {
     expect(shouldReject).toBe(true);
   });
 });
+
+describe('Security - DELETE Decision CSRF Protection', () => {
+  /**
+   * Simulates the CSRF validation logic from the DELETE /api/decisions/:id endpoint
+   */
+  function validateDeleteOrigin(
+    origin: string | undefined | null,
+    allowedOrigins: string[]
+  ): { allowed: boolean; error?: string } {
+    if (!origin) {
+      return { allowed: false, error: 'Forbidden: Invalid or missing origin' };
+    }
+    const isAllowed = allowedOrigins.some((allowed) => origin === allowed.trim());
+    if (!isAllowed) {
+      return { allowed: false, error: 'Forbidden: Invalid or missing origin' };
+    }
+    return { allowed: true };
+  }
+
+  it('should accept valid dashboard origin', () => {
+    const allowedOrigins = ['http://localhost:3000', 'https://dashboard.example.com'];
+    const result = validateDeleteOrigin('http://localhost:3000', allowedOrigins);
+    expect(result.allowed).toBe(true);
+  });
+
+  it('should accept CORS_ORIGIN configured origins', () => {
+    // Simulate CORS_ORIGIN env var
+    const corsOrigin = 'https://prod.example.com,https://staging.example.com';
+    const allowedOrigins = corsOrigin.split(',');
+
+    expect(validateDeleteOrigin('https://prod.example.com', allowedOrigins).allowed).toBe(true);
+    expect(validateDeleteOrigin('https://staging.example.com', allowedOrigins).allowed).toBe(true);
+  });
+
+  it('should reject requests from unauthorized origins', () => {
+    const allowedOrigins = ['http://localhost:3000'];
+    const unauthorizedOrigins = [
+      'https://evil.com',
+      'http://localhost:3001',
+      'http://attacker.example.com',
+      'file://',
+    ];
+
+    for (const origin of unauthorizedOrigins) {
+      const result = validateDeleteOrigin(origin, allowedOrigins);
+      expect(result.allowed).toBe(false);
+      expect(result.error).toContain('Forbidden');
+    }
+  });
+
+  it('should reject requests without Origin header', () => {
+    const allowedOrigins = ['http://localhost:3000'];
+    const result = validateDeleteOrigin(undefined, allowedOrigins);
+    expect(result.allowed).toBe(false);
+    expect(result.error).toContain('missing origin');
+  });
+
+  it('should reject requests with null Origin', () => {
+    const allowedOrigins = ['http://localhost:3000'];
+    const result = validateDeleteOrigin(null, allowedOrigins);
+    expect(result.allowed).toBe(false);
+    expect(result.error).toContain('missing origin');
+  });
+
+  it('should reject requests with empty Origin', () => {
+    const allowedOrigins = ['http://localhost:3000'];
+    const result = validateDeleteOrigin('', allowedOrigins);
+    expect(result.allowed).toBe(false);
+  });
+
+  it('should handle whitespace in allowed origins', () => {
+    // Simulate CORS_ORIGIN with whitespace: "http://localhost:3000, https://prod.example.com"
+    const allowedOrigins = ['http://localhost:3000', ' https://prod.example.com'];
+    const result = validateDeleteOrigin('https://prod.example.com', allowedOrigins);
+    expect(result.allowed).toBe(true);
+  });
+
+  it('should be case-sensitive for origin matching', () => {
+    const allowedOrigins = ['http://localhost:3000'];
+    // Origins are case-sensitive per RFC 6454
+    expect(validateDeleteOrigin('HTTP://LOCALHOST:3000', allowedOrigins).allowed).toBe(false);
+    expect(validateDeleteOrigin('http://LOCALHOST:3000', allowedOrigins).allowed).toBe(false);
+  });
+});
