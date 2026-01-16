@@ -8,7 +8,9 @@ import type { LapiServer } from '../../config/index.js';
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 100;
 const MAX_SCENARIO_LENGTH = 200;
+const MAX_MACHINE_ID_LENGTH = 255;
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
+const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
 
 // Exported constants for use in tests
 export const MAX_REASON_LENGTH = 500;
@@ -166,6 +168,17 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Invalid IP address format' });
       }
 
+      // Validate machineId format if provided
+      const machineId = request.query.machineId;
+      if (machineId) {
+        if (machineId.length > MAX_MACHINE_ID_LENGTH) {
+          return reply.code(400).send({ error: 'Machine ID too long' });
+        }
+        if (!MACHINE_ID_REGEX.test(machineId)) {
+          return reply.code(400).send({ error: 'Invalid machine ID format' });
+        }
+      }
+
       // Parse and validate date parameters
       let since: Date | undefined;
       let until: Date | undefined;
@@ -204,7 +217,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         scenario,
         sourceCountry: country,
         sourceIp: ip,
-        machineId: request.query.machineId,
+        machineId,
         since,
         until,
       };
