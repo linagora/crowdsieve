@@ -8,14 +8,14 @@ import type { LapiServer } from '../../config/index.js';
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 100;
 const MAX_SCENARIO_LENGTH = 200;
-const MAX_MACHINE_ID_LENGTH = 255;
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
-const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
 
 // Exported constants for use in tests
 export const MAX_REASON_LENGTH = 500;
+export const MAX_MACHINE_ID_LENGTH = 255;
 export const DURATION_REGEX = /^\d+[smh]$/;
 export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
 
 // JWT token cache for machine authentication
 interface TokenCacheEntry {
