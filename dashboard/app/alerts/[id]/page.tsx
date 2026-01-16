@@ -25,7 +25,11 @@ function getApiHeaders(): HeadersInit {
 
 type ApiResult<T> =
   | { success: true; data: T }
-  | { success: false; error: 'no_api_key' | 'unauthorized' | 'connection_error' | 'not_found'; details?: string };
+  | {
+      success: false;
+      error: 'no_api_key' | 'unauthorized' | 'connection_error' | 'not_found';
+      details?: string;
+    };
 
 async function getAlert(id: string): Promise<ApiResult<StoredAlert>> {
   const { apiBase, apiKey } = getApiConfig();
@@ -82,7 +86,12 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
     if (result.error === 'not_found') {
       notFound();
     }
-    return <ApiError type={result.error as 'no_api_key' | 'unauthorized' | 'connection_error'} details={result.details} />;
+    return (
+      <ApiError
+        type={result.error as 'no_api_key' | 'unauthorized' | 'connection_error'}
+        details={result.details}
+      />
+    );
   }
 
   const alert = result.data;

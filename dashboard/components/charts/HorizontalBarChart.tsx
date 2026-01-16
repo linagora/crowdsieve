@@ -4,11 +4,22 @@ interface HorizontalBarChartProps {
   data: Array<{ label: string; value: number; flag?: string }>;
   title: string;
   maxBars?: number;
+  colorClass?: string;
 }
 
-export function HorizontalBarChart({ data, title, maxBars = 10 }: HorizontalBarChartProps) {
+export function HorizontalBarChart({
+  data,
+  title,
+  maxBars = 10,
+  colorClass,
+}: HorizontalBarChartProps) {
   const displayData = data.slice(0, maxBars);
   const maxValue = Math.max(...displayData.map((d) => d.value), 1);
+
+  // Use custom color or default gradient
+  const barColorClass = colorClass
+    ? `${colorClass} rounded-full`
+    : 'bg-gradient-to-r from-crowdsec-primary to-crowdsec-accent rounded-full';
 
   return (
     <div className="card p-4">
@@ -22,13 +33,11 @@ export function HorizontalBarChart({ data, title, maxBars = 10 }: HorizontalBarC
                   {item.flag && <span>{item.flag}</span>}
                   <span className="truncate">{item.label}</span>
                 </span>
-                <span className="text-slate-500 ml-2 shrink-0">
-                  {item.value.toLocaleString()}
-                </span>
+                <span className="text-slate-500 ml-2 shrink-0">{item.value.toLocaleString()}</span>
               </div>
               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-crowdsec-primary to-crowdsec-accent rounded-full transition-all duration-300"
+                  className={`h-full transition-all duration-300 ${barColorClass}`}
                   style={{ width: `${(item.value / maxValue) * 100}%` }}
                 />
               </div>

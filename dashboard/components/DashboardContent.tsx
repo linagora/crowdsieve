@@ -146,7 +146,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
                 onClick={() => updateFilters({ scenario: item.scenario })}
               >
                 <div className="text-sm font-medium truncate" title={item.scenario}>
-                  {item.scenario.split('/').pop()}
+                  {item.scenario}
                 </div>
                 <div className="text-2xl font-bold text-crowdsec-primary">{item.count}</div>
               </div>

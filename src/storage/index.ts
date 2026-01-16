@@ -11,7 +11,7 @@ import type { GeoIPInfo } from '../models/alert.js';
  */
 function escapeLikePattern(pattern: string): string {
   return pattern
-    .replace(/\\/g, '\\\\')  // Escape backslash first
+    .replace(/\\/g, '\\\\') // Escape backslash first
     .replace(/[%_]/g, '\\$&'); // Then escape LIKE wildcards
 }
 
@@ -47,6 +47,15 @@ export interface TimeDistributionStats {
   dateRange: { from: string | null; to: string | null };
 }
 
+export interface DecisionStats {
+  totalDecisions: number;
+  byDayOfWeek: Array<{ day: number; dayName: string; count: number }>;
+  byHourOfDay: Array<{ hour: number; count: number }>;
+  byDurationCategory: Array<{ category: string; count: number }>;
+  topScenarios: Array<{ scenario: string; count: number }>;
+  byCountry: Array<{ countryCode: string; countryName: string; count: number }>;
+}
+
 // Import schema types - use SQLite schema types as canonical (they're compatible)
 import type { SelectAlert } from '../db/schema.js';
 
@@ -61,6 +70,7 @@ export interface AlertStorage {
   getAlertById(id: number): Promise<SelectAlert | null>;
   getStats(since?: Date): Promise<AlertStats>;
   getTimeDistributionStats(since?: Date): Promise<TimeDistributionStats>;
+  getDecisionStats(since?: Date): Promise<DecisionStats>;
   cleanup(retentionDays: number): Promise<number>;
 }
 
@@ -409,9 +419,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(
-          and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`)
-        )
+        .where(and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`))
         .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
         .orderBy(sql`count desc`)
         .limit(15);
@@ -459,29 +467,26 @@ export function createStorage(): AlertStorage {
       }>;
       let byScenario: Array<{ scenario: string; count: number }>;
       let dailyTrend: Array<{ date: string; count: number }>;
-      let summary:
-        | { total: number; minDate: string | null; maxDate: string | null }
-        | undefined;
+      let summary: { total: number; minDate: string | null; maxDate: string | null } | undefined;
 
       if (isPostgres) {
-        [byDayOfWeek, byHourOfDay, byCountry, byScenario, dailyTrend, summary] =
-          await Promise.all([
-            dayOfWeekQuery as Promise<Array<{ day: number; count: number }>>,
-            hourOfDayQuery as Promise<Array<{ hour: number; count: number }>>,
-            byCountryQuery as Promise<
-              Array<{
-                countryCode: string | null;
-                countryName: string | null;
-                count: number;
-              }>
-            >,
-            byScenarioQuery as Promise<Array<{ scenario: string; count: number }>>,
-            dailyTrendQuery as Promise<Array<{ date: string; count: number }>>,
-            summaryQuery.then(
-              (rows: Array<{ total: number; minDate: string | null; maxDate: string | null }>) =>
-                rows[0]
-            ),
-          ]);
+        [byDayOfWeek, byHourOfDay, byCountry, byScenario, dailyTrend, summary] = await Promise.all([
+          dayOfWeekQuery as Promise<Array<{ day: number; count: number }>>,
+          hourOfDayQuery as Promise<Array<{ hour: number; count: number }>>,
+          byCountryQuery as Promise<
+            Array<{
+              countryCode: string | null;
+              countryName: string | null;
+              count: number;
+            }>
+          >,
+          byScenarioQuery as Promise<Array<{ scenario: string; count: number }>>,
+          dailyTrendQuery as Promise<Array<{ date: string; count: number }>>,
+          summaryQuery.then(
+            (rows: Array<{ total: number; minDate: string | null; maxDate: string | null }>) =>
+              rows[0]
+          ),
+        ]);
       } else {
         byDayOfWeek = (
           dayOfWeekQuery as unknown as {
@@ -531,8 +536,7 @@ export function createStorage(): AlertStorage {
         })),
         byCountry: byCountry.map((c) => {
           const countryCode = c.countryCode || 'Unknown';
-          const countryName =
-            countryCode === 'Unknown' ? 'Unknown' : c.countryName || countryCode;
+          const countryName = countryCode === 'Unknown' ? 'Unknown' : c.countryName || countryCode;
           return {
             countryCode,
             countryName,
@@ -552,6 +556,188 @@ export function createStorage(): AlertStorage {
           from: summary?.minDate || null,
           to: summary?.maxDate || null,
         },
+      };
+    },
+
+    async getDecisionStats(since) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const sinceDate = since?.toISOString();
+
+      // Join decisions with alerts to filter by date
+      // We need to filter decisions based on their associated alert's receivedAt
+      const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
+
+      // Query: Total decisions count
+      const totalQuery = db
+        .select({
+          total: sql<number>`count(*)`,
+        })
+        .from(schema.decisions)
+        .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
+        .where(sinceCondition);
+
+      const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+      // Day of week extraction for decisions (based on alert receivedAt)
+      const dayOfWeekExpr = isPostgres
+        ? sql<number>`EXTRACT(DOW FROM ${schema.alerts.receivedAt}::timestamp)`
+        : sql<number>`CAST(strftime('%w', ${schema.alerts.receivedAt}) AS INTEGER)`;
+
+      // Hour extraction for decisions
+      const hourOfDayExpr = isPostgres
+        ? sql<number>`EXTRACT(HOUR FROM ${schema.alerts.receivedAt}::timestamp)`
+        : sql<number>`CAST(strftime('%H', ${schema.alerts.receivedAt}) AS INTEGER)`;
+
+      // Query: Decisions by day of week
+      const byDayOfWeekQuery = db
+        .select({
+          day: dayOfWeekExpr,
+          count: sql<number>`count(*)`,
+        })
+        .from(schema.decisions)
+        .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
+        .where(sinceCondition)
+        .groupBy(dayOfWeekExpr)
+        .orderBy(dayOfWeekExpr);
+
+      // Query: Decisions by hour of day
+      const byHourOfDayQuery = db
+        .select({
+          hour: hourOfDayExpr,
+          count: sql<number>`count(*)`,
+        })
+        .from(schema.decisions)
+        .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
+        .where(sinceCondition)
+        .groupBy(hourOfDayExpr)
+        .orderBy(hourOfDayExpr);
+
+      // Query: Decisions by duration category
+      // Categories: <1h, 1-24h, 1-7d, >7d
+      // Duration is stored as string like "4h", "24h", "168h"
+      const durationCategoryExpr = isPostgres
+        ? sql<string>`CASE
+            WHEN ${schema.decisions.duration} ~ '^[0-9]+s$' THEN '<1h'
+            WHEN ${schema.decisions.duration} ~ '^[0-9]+m$' THEN '<1h'
+            WHEN ${schema.decisions.duration} ~ '^[0-9]+h$' AND CAST(REGEXP_REPLACE(${schema.decisions.duration}, '[^0-9]', '', 'g') AS INTEGER) < 24 THEN '1-24h'
+            WHEN ${schema.decisions.duration} ~ '^[0-9]+h$' AND CAST(REGEXP_REPLACE(${schema.decisions.duration}, '[^0-9]', '', 'g') AS INTEGER) < 168 THEN '1-7d'
+            ELSE '>7d'
+          END`
+        : sql<string>`CASE
+            WHEN ${schema.decisions.duration} LIKE '%s' THEN '<1h'
+            WHEN ${schema.decisions.duration} LIKE '%m' THEN '<1h'
+            WHEN ${schema.decisions.duration} LIKE '%h' AND CAST(REPLACE(${schema.decisions.duration}, 'h', '') AS INTEGER) < 24 THEN '1-24h'
+            WHEN ${schema.decisions.duration} LIKE '%h' AND CAST(REPLACE(${schema.decisions.duration}, 'h', '') AS INTEGER) < 168 THEN '1-7d'
+            ELSE '>7d'
+          END`;
+
+      // Filter out null durations to avoid incorrect categorization
+      const byDurationQuery = db
+        .select({
+          category: durationCategoryExpr,
+          count: sql<number>`count(*) as count`,
+        })
+        .from(schema.decisions)
+        .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
+        .where(and(sinceCondition, sql`${schema.decisions.duration} is not null`))
+        .groupBy(durationCategoryExpr)
+        .orderBy(sql`count desc`);
+
+      // Query: Top scenarios for decisions (keep full scenario path as-is)
+      // Scenario already contains the full path like "crowdsecurity/http-bad-user-agent"
+      const topScenariosQuery = db
+        .select({
+          scenario: schema.decisions.scenario,
+          count: sql<number>`count(*) as count`,
+        })
+        .from(schema.decisions)
+        .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
+        .where(and(sinceCondition, sql`${schema.decisions.scenario} is not null`))
+        .groupBy(schema.decisions.scenario)
+        .orderBy(sql`count desc`)
+        .limit(10);
+
+      // Query: Decisions by country (from associated alerts)
+      // Filter out null country codes to avoid grouping decisions without geo data
+      const byCountryQuery = db
+        .select({
+          countryCode: schema.alerts.geoCountryCode,
+          countryName: schema.alerts.geoCountryName,
+          count: sql<number>`count(*) as count`,
+        })
+        .from(schema.decisions)
+        .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
+        .where(and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`))
+        .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
+        .orderBy(sql`count desc`)
+        .limit(15);
+
+      // Execute queries
+      let total: { total: number } | undefined;
+      let byDayOfWeek: Array<{ day: number; count: number }>;
+      let byHourOfDay: Array<{ hour: number; count: number }>;
+      let byDuration: Array<{ category: string; count: number }>;
+      let topScenarios: Array<{ scenario: string | null; count: number }>;
+      let byCountry: Array<{ countryCode: string | null; countryName: string | null; count: number }>;
+
+      if (isPostgres) {
+        [total, byDayOfWeek, byHourOfDay, byDuration, topScenarios, byCountry] = await Promise.all([
+          totalQuery.then((rows: Array<{ total: number }>) => rows[0]),
+          byDayOfWeekQuery as Promise<Array<{ day: number; count: number }>>,
+          byHourOfDayQuery as Promise<Array<{ hour: number; count: number }>>,
+          byDurationQuery as Promise<Array<{ category: string; count: number }>>,
+          topScenariosQuery as Promise<Array<{ scenario: string | null; count: number }>>,
+          byCountryQuery as Promise<Array<{ countryCode: string | null; countryName: string | null; count: number }>>,
+        ]);
+      } else {
+        total = (totalQuery as unknown as { get(): { total: number } | undefined }).get();
+        byDayOfWeek = (
+          byDayOfWeekQuery as unknown as { all(): Array<{ day: number; count: number }> }
+        ).all();
+        byHourOfDay = (
+          byHourOfDayQuery as unknown as { all(): Array<{ hour: number; count: number }> }
+        ).all();
+        byDuration = (
+          byDurationQuery as unknown as { all(): Array<{ category: string; count: number }> }
+        ).all();
+        topScenarios = (
+          topScenariosQuery as unknown as {
+            all(): Array<{ scenario: string | null; count: number }>;
+          }
+        ).all();
+        byCountry = (
+          byCountryQuery as unknown as {
+            all(): Array<{ countryCode: string | null; countryName: string | null; count: number }>;
+          }
+        ).all();
+      }
+
+      return {
+        totalDecisions: Number(total?.total) || 0,
+        byDayOfWeek: byDayOfWeek.map((d) => ({
+          day: Number(d.day),
+          dayName: DAY_NAMES[Number(d.day)] || 'Unknown',
+          count: Number(d.count),
+        })),
+        byHourOfDay: byHourOfDay.map((h) => ({
+          hour: Number(h.hour),
+          count: Number(h.count),
+        })),
+        byDurationCategory: byDuration.map((d) => ({
+          category: d.category,
+          count: Number(d.count),
+        })),
+        topScenarios: topScenarios
+          .filter((s) => s.scenario !== null)
+          .map((s) => ({
+            scenario: s.scenario!,
+            count: Number(s.count),
+          })),
+        byCountry: byCountry.map((c) => ({
+          countryCode: c.countryCode || 'Unknown',
+          countryName: c.countryName || c.countryCode || 'Unknown',
+          count: Number(c.count),
+        })),
       };
     },
 

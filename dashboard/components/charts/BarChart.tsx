@@ -22,7 +22,9 @@ export function BarChart({ data, title, colorClass = 'bg-crowdsec-accent' }: Bar
               <div
                 key={index}
                 className={`flex-1 ${colorClass} rounded-t transition-all hover:opacity-80 cursor-pointer`}
-                style={{ height: `${Math.max((item.value / maxValue) * 100, MIN_BAR_HEIGHT_PERCENT)}%` }}
+                style={{
+                  height: `${Math.max((item.value / maxValue) * 100, MIN_BAR_HEIGHT_PERCENT)}%`,
+                }}
                 title={`${item.label}: ${item.value.toLocaleString()}`}
               />
             ))}
@@ -30,10 +32,7 @@ export function BarChart({ data, title, colorClass = 'bg-crowdsec-accent' }: Bar
           {/* Labels */}
           <div className="flex gap-1">
             {data.map((item, index) => (
-              <span
-                key={index}
-                className="flex-1 text-xs text-slate-500 text-center truncate"
-              >
+              <span key={index} className="flex-1 text-xs text-slate-500 text-center truncate">
                 {item.label}
               </span>
             ))}

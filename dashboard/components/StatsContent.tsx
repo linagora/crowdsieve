@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar, Globe, Shield, BarChart3 } from 'lucide-react';
+import { Calendar, Globe, BarChart3, Gavel, Clock, Shield } from 'lucide-react';
 import { BarChart } from '@/components/charts/BarChart';
 import { HorizontalBarChart } from '@/components/charts/HorizontalBarChart';
 import { TrendChart } from '@/components/charts/TrendChart';
-import type { TimeDistributionStats } from '@/lib/types';
+import type { TimeDistributionStats, DecisionStats } from '@/lib/types';
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -21,10 +21,12 @@ function countryCodeToFlag(code: string): string {
 
 interface StatsContentProps {
   initialStats: TimeDistributionStats;
+  initialDecisionStats: DecisionStats;
 }
 
-export function StatsContent({ initialStats }: StatsContentProps) {
+export function StatsContent({ initialStats, initialDecisionStats }: StatsContentProps) {
   const [stats, setStats] = useState(initialStats);
+  const [decisionStats, setDecisionStats] = useState(initialDecisionStats);
   const [period, setPeriod] = useState<'7d' | '30d' | 'all'>('30d');
   const [loading, setLoading] = useState(false);
 
@@ -34,12 +36,22 @@ export function StatsContent({ initialStats }: StatsContentProps) {
     async function fetchStats() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/stats/distribution?period=${period}`, {
-          signal: abortController.signal,
-        });
-        if (res.ok) {
-          const data = await res.json();
+        const [distributionRes, decisionRes] = await Promise.all([
+          fetch(`/api/stats/distribution?period=${period}`, {
+            signal: abortController.signal,
+          }),
+          fetch(`/api/stats/decisions?period=${period}`, {
+            signal: abortController.signal,
+          }),
+        ]);
+
+        if (distributionRes.ok) {
+          const data = await distributionRes.json();
           setStats(data);
+        }
+        if (decisionRes.ok) {
+          const data = await decisionRes.json();
+          setDecisionStats(data);
         }
       } catch (err) {
         // Ignore abort errors
@@ -86,18 +98,64 @@ export function StatsContent({ initialStats }: StatsContentProps) {
     [stats.byCountry]
   );
 
-  // Scenario data - memoized
+  // Scenario data - memoized (keep full path like "crowdsecurity/http-bad-user-agent")
   const scenarioData = useMemo(
     () =>
       stats.byScenario.map((s) => ({
-        label: s.scenario.split('/').pop() || s.scenario,
+        label: s.scenario,
         value: s.count,
       })),
     [stats.byScenario]
   );
 
-  const periodLabel =
-    period === '7d' ? '7 days' : period === '30d' ? '30 days' : 'All time';
+  // Decision stats data - memoized
+  const decisionDayOfWeekData = useMemo(() => {
+    const dataMap = new Map(decisionStats.byDayOfWeek.map((d) => [d.day, d.count]));
+    return DAY_ORDER.map((day, index) => ({
+      label: DAY_LABELS[index],
+      value: dataMap.get(day) || 0,
+    }));
+  }, [decisionStats.byDayOfWeek]);
+
+  const decisionHourOfDayData = useMemo(() => {
+    const dataMap = new Map(decisionStats.byHourOfDay.map((d) => [d.hour, d.count]));
+    return Array.from({ length: 24 }, (_, hour) => ({
+      label: hour.toString().padStart(2, '0'),
+      value: dataMap.get(hour) || 0,
+    }));
+  }, [decisionStats.byHourOfDay]);
+
+  const decisionDurationData = useMemo(
+    () =>
+      decisionStats.byDurationCategory.map((d) => ({
+        label: d.category,
+        value: d.count,
+      })),
+    [decisionStats.byDurationCategory]
+  );
+
+  // Decision country data - memoized
+  const decisionCountryData = useMemo(
+    () =>
+      decisionStats.byCountry.map((c) => ({
+        label: c.countryName || c.countryCode || 'Unknown',
+        value: c.count,
+        flag: countryCodeToFlag(c.countryCode),
+      })),
+    [decisionStats.byCountry]
+  );
+
+  // Decision scenario data - memoized (includes origin like "origin/scenario")
+  const decisionScenarioData = useMemo(
+    () =>
+      decisionStats.topScenarios.map((s) => ({
+        label: s.scenario,
+        value: s.count,
+      })),
+    [decisionStats.topScenarios]
+  );
+
+  const periodLabel = period === '7d' ? '7 days' : period === '30d' ? '30 days' : 'All time';
 
   return (
     <div className={`space-y-6 ${loading ? 'opacity-70' : ''}`}>
@@ -195,8 +253,79 @@ export function StatsContent({ initialStats }: StatsContentProps) {
       </div>
 
       {/* Daily Trend - Full Width */}
-      {stats.dailyTrend.length > 0 && (
-        <TrendChart data={stats.dailyTrend} title="Daily Trend" />
+      {stats.dailyTrend.length > 0 && <TrendChart data={stats.dailyTrend} title="Daily Trend" />}
+
+      {/* Decisions Section */}
+      {decisionStats.totalDecisions > 0 && (
+        <>
+          <div className="border-t pt-6 mt-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Gavel className="w-5 h-5" />
+              Decisions
+            </h3>
+
+            {/* Decision Summary Cards */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="card p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">Total Decisions</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {decisionStats.totalDecisions.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">{periodLabel}</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-red-50">
+                    <Gavel className="w-5 h-5 text-red-500" />
+                  </div>
+                </div>
+              </div>
+              <div className="card p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">Duration Categories</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {decisionStats.byDurationCategory.length}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">time ranges</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-indigo-50">
+                    <Clock className="w-5 h-5 text-indigo-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Decision Time Distribution Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <BarChart
+                data={decisionDayOfWeekData}
+                title="Decisions by Day of Week"
+                colorClass="bg-red-500"
+              />
+              <BarChart
+                data={decisionHourOfDayData}
+                title="Decisions by Hour of Day"
+                colorClass="bg-amber-500"
+              />
+            </div>
+
+            {/* Decision Country and Scenario Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <HorizontalBarChart data={decisionCountryData} title="Top Countries" maxBars={10} />
+              <HorizontalBarChart data={decisionScenarioData} title="Top Scenarios" maxBars={10} />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <HorizontalBarChart
+                data={decisionDurationData}
+                title="By Duration"
+                maxBars={10}
+                colorClass="bg-indigo-500"
+              />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

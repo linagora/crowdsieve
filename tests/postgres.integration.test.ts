@@ -366,4 +366,145 @@ describePostgres('PostgreSQL Integration', () => {
       expect(typeof stats.totalAlerts).toBe('number');
     });
   });
+
+  describe('Decision Statistics', () => {
+    const storage = createStorage();
+
+    it('should get decision stats', async () => {
+      // First store some test alerts with decisions
+      const alerts = [
+        createTestAlert({
+          uuid: `test-dec-stats-1-${Date.now()}`,
+          source: { scope: 'ip', value: '10.10.0.1', ip: '10.10.0.1', cn: 'US' },
+          scenario: 'crowdsecurity/http-bad-user-agent',
+          decisions: [
+            {
+              uuid: `dec-stats-1-${Date.now()}`,
+              origin: 'crowdsec',
+              type: 'ban',
+              scope: 'ip',
+              value: '10.10.0.1',
+              duration: '4h',
+              scenario: 'crowdsecurity/http-bad-user-agent',
+              simulated: false,
+            },
+          ],
+        }),
+        createTestAlert({
+          uuid: `test-dec-stats-2-${Date.now()}`,
+          source: { scope: 'ip', value: '10.10.0.2', ip: '10.10.0.2', cn: 'FR' },
+          scenario: 'crowdsecurity/ssh-bf',
+          decisions: [
+            {
+              uuid: `dec-stats-2-${Date.now()}`,
+              origin: 'crowdsec',
+              type: 'ban',
+              scope: 'ip',
+              value: '10.10.0.2',
+              duration: '24h',
+              scenario: 'crowdsecurity/ssh-bf',
+              simulated: false,
+            },
+          ],
+        }),
+      ];
+
+      await storage.storeAlerts(
+        alerts,
+        alerts.map(() => ({ filtered: false, matchedFilters: [] })),
+        undefined
+      );
+
+      const stats = await storage.getDecisionStats();
+
+      // Verify structure
+      expect(stats).toHaveProperty('totalDecisions');
+      expect(stats).toHaveProperty('byDayOfWeek');
+      expect(stats).toHaveProperty('byHourOfDay');
+      expect(stats).toHaveProperty('byDurationCategory');
+      expect(stats).toHaveProperty('topScenarios');
+      expect(stats).toHaveProperty('byCountry');
+
+      // Verify types
+      expect(typeof stats.totalDecisions).toBe('number');
+      expect(stats.totalDecisions).toBeGreaterThanOrEqual(2);
+      expect(Array.isArray(stats.byDayOfWeek)).toBe(true);
+      expect(Array.isArray(stats.byHourOfDay)).toBe(true);
+      expect(Array.isArray(stats.byDurationCategory)).toBe(true);
+      expect(Array.isArray(stats.topScenarios)).toBe(true);
+      expect(Array.isArray(stats.byCountry)).toBe(true);
+    });
+
+    it('should return correct day of week structure for decisions', async () => {
+      const stats = await storage.getDecisionStats();
+
+      for (const day of stats.byDayOfWeek) {
+        expect(day).toHaveProperty('day');
+        expect(day).toHaveProperty('dayName');
+        expect(day).toHaveProperty('count');
+        expect(typeof day.day).toBe('number');
+        expect(day.day).toBeGreaterThanOrEqual(0);
+        expect(day.day).toBeLessThanOrEqual(6);
+        expect(typeof day.dayName).toBe('string');
+        expect(typeof day.count).toBe('number');
+      }
+    });
+
+    it('should return correct hour of day structure for decisions', async () => {
+      const stats = await storage.getDecisionStats();
+
+      for (const hour of stats.byHourOfDay) {
+        expect(hour).toHaveProperty('hour');
+        expect(hour).toHaveProperty('count');
+        expect(typeof hour.hour).toBe('number');
+        expect(hour.hour).toBeGreaterThanOrEqual(0);
+        expect(hour.hour).toBeLessThanOrEqual(23);
+        expect(typeof hour.count).toBe('number');
+      }
+    });
+
+    it('should return correct duration category structure', async () => {
+      const stats = await storage.getDecisionStats();
+
+      for (const category of stats.byDurationCategory) {
+        expect(category).toHaveProperty('category');
+        expect(category).toHaveProperty('count');
+        expect(typeof category.category).toBe('string');
+        expect(['<1h', '1-24h', '1-7d', '>7d']).toContain(category.category);
+        expect(typeof category.count).toBe('number');
+      }
+    });
+
+    it('should return correct scenario structure for decisions', async () => {
+      const stats = await storage.getDecisionStats();
+
+      for (const scenario of stats.topScenarios) {
+        expect(scenario).toHaveProperty('scenario');
+        expect(scenario).toHaveProperty('count');
+        expect(typeof scenario.scenario).toBe('string');
+        expect(typeof scenario.count).toBe('number');
+      }
+    });
+
+    it('should return correct country structure for decisions', async () => {
+      const stats = await storage.getDecisionStats();
+
+      for (const country of stats.byCountry) {
+        expect(country).toHaveProperty('countryCode');
+        expect(country).toHaveProperty('countryName');
+        expect(country).toHaveProperty('count');
+        expect(typeof country.countryCode).toBe('string');
+        expect(typeof country.countryName).toBe('string');
+        expect(typeof country.count).toBe('number');
+      }
+    });
+
+    it('should filter decision stats by since date', async () => {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const stats = await storage.getDecisionStats(oneHourAgo);
+
+      expect(stats).toHaveProperty('totalDecisions');
+      expect(typeof stats.totalDecisions).toBe('number');
+    });
+  });
 });

@@ -303,6 +303,40 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // Get decision statistics
+  fastify.get<{
+    Querystring: { period?: string };
+  }>('/api/stats/decisions', async (request, reply) => {
+    try {
+      const { period } = request.query;
+      let since: Date | undefined;
+
+      // Validate period parameter (accepts: 7d, 30d, all, or empty for default 30d)
+      const validPeriods = ['7d', '30d', 'all'];
+      if (period && !validPeriods.includes(period)) {
+        return reply.code(400).send({
+          error: `Invalid period parameter. Accepted values: ${validPeriods.join(', ')}`,
+        });
+      }
+
+      // Calculate since date based on period
+      if (period === '7d') {
+        since = new Date();
+        since.setDate(since.getDate() - 7);
+      } else if (period === '30d' || !period) {
+        since = new Date();
+        since.setDate(since.getDate() - 30);
+      }
+      // period === 'all' means no since filter
+
+      const stats = await storage.getDecisionStats(since);
+      return reply.send(stats);
+    } catch (err) {
+      logger.error({ err }, 'Failed to get decision stats');
+      return reply.code(500).send({ error: 'Failed to get decision stats' });
+    }
+  });
+
   // Get IP info (reverse DNS + WHOIS)
   fastify.get<{
     Params: { ip: string };
@@ -523,7 +557,10 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       const origin = request.headers.origin;
       const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
       if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
-        logger.warn({ origin, allowedOrigins }, 'Rejected ban request from unauthorized or missing origin');
+        logger.warn(
+          { origin, allowedOrigins },
+          'Rejected ban request from unauthorized or missing origin'
+        );
         return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
       }
 
