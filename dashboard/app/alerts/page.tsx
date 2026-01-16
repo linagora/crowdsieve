@@ -1,4 +1,5 @@
 import { AlertsContent } from '@/components/AlertsContent';
+import { ApiError } from '@/components/ApiError';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
@@ -12,50 +13,72 @@ function getApiHeaders(): HeadersInit {
   return headers;
 }
 
-async function getAlerts(): Promise<StoredAlert[]> {
-  try {
-    const res = await fetch(`${API_BASE}/api/alerts?limit=200`, {
-      cache: 'no-store',
-      headers: getApiHeaders(),
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
-  }
-}
+type ApiResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: 'no_api_key' | 'unauthorized' | 'connection_error'; details?: string };
 
-async function getStats(): Promise<AlertStats> {
+async function fetchApi<T>(url: string, defaultValue: T): Promise<ApiResult<T>> {
+  if (!API_KEY) {
+    return { success: false, error: 'no_api_key' };
+  }
+
   try {
-    const res = await fetch(`${API_BASE}/api/stats`, {
+    const res = await fetch(url, {
       cache: 'no-store',
       headers: getApiHeaders(),
     });
-    if (!res.ok) {
-      return {
-        total: 0,
-        filtered: 0,
-        forwarded: 0,
-        topScenarios: [],
-        topCountries: [],
-        timeBounds: { min: null, max: null },
-      };
+
+    if (res.status === 401 || res.status === 403) {
+      const body = await res.text().catch(() => '');
+      return { success: false, error: 'unauthorized', details: body };
     }
-    return res.json();
-  } catch {
+
+    if (res.status === 500) {
+      const body = await res.text().catch(() => '');
+      if (body.includes('API key not set')) {
+        return { success: false, error: 'unauthorized', details: 'Proxy API key not configured' };
+      }
+    }
+
+    if (!res.ok) {
+      return { success: true, data: defaultValue };
+    }
+
+    return { success: true, data: await res.json() };
+  } catch (err) {
     return {
-      total: 0,
-      filtered: 0,
-      forwarded: 0,
-      topScenarios: [],
-      topCountries: [],
-      timeBounds: { min: null, max: null },
+      success: false,
+      error: 'connection_error',
+      details: err instanceof Error ? err.message : 'Unknown error',
     };
   }
 }
 
-export default async function AlertsPage() {
-  const [alerts, stats] = await Promise.all([getAlerts(), getStats()]);
+async function getAlerts(): Promise<ApiResult<StoredAlert[]>> {
+  return fetchApi(`${API_BASE}/api/alerts?limit=200`, []);
+}
 
-  return <AlertsContent initialAlerts={alerts} stats={stats} />;
+async function getStats(): Promise<ApiResult<AlertStats>> {
+  const defaultStats: AlertStats = {
+    total: 0,
+    filtered: 0,
+    forwarded: 0,
+    topScenarios: [],
+    topCountries: [],
+    timeBounds: { min: null, max: null },
+  };
+  return fetchApi(`${API_BASE}/api/stats`, defaultStats);
+}
+
+export default async function AlertsPage() {
+  const [alertsResult, statsResult] = await Promise.all([getAlerts(), getStats()]);
+
+  if (!alertsResult.success) {
+    return <ApiError type={alertsResult.error} details={alertsResult.details} />;
+  }
+  if (!statsResult.success) {
+    return <ApiError type={statsResult.error} details={statsResult.details} />;
+  }
+
+  return <AlertsContent initialAlerts={alertsResult.data} stats={statsResult.data} />;
 }

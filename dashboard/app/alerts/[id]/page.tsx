@@ -4,6 +4,7 @@ import type { StoredAlert } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
 import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
+import { ApiError } from '@/components/ApiError';
 
 const API_BASE = process.env.API_URL || 'http://localhost:8080';
 const API_KEY = process.env.DASHBOARD_API_KEY;
@@ -16,17 +17,48 @@ function getApiHeaders(): HeadersInit {
   return headers;
 }
 
-async function getAlert(id: string): Promise<StoredAlert | null> {
+type ApiResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: 'no_api_key' | 'unauthorized' | 'connection_error' | 'not_found'; details?: string };
+
+async function getAlert(id: string): Promise<ApiResult<StoredAlert>> {
+  if (!API_KEY) {
+    return { success: false, error: 'no_api_key' };
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/alerts/${id}`, {
       cache: 'no-store',
       headers: getApiHeaders(),
     });
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
+
+    if (res.status === 404) {
+      return { success: false, error: 'not_found' };
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      const body = await res.text().catch(() => '');
+      return { success: false, error: 'unauthorized', details: body };
+    }
+
+    if (res.status === 500) {
+      const body = await res.text().catch(() => '');
+      if (body.includes('API key not set')) {
+        return { success: false, error: 'unauthorized', details: 'Proxy API key not configured' };
+      }
+    }
+
+    if (!res.ok) {
+      return { success: false, error: 'connection_error', details: `HTTP ${res.status}` };
+    }
+
+    return { success: true, data: await res.json() };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'connection_error',
+      details: err instanceof Error ? err.message : 'Unknown error',
+    };
   }
 }
 
@@ -36,11 +68,16 @@ interface AlertDetailPageProps {
 
 export default async function AlertDetailPage({ params }: AlertDetailPageProps) {
   const { id } = await params;
-  const alert = await getAlert(id);
+  const result = await getAlert(id);
 
-  if (!alert) {
-    notFound();
+  if (!result.success) {
+    if (result.error === 'not_found') {
+      notFound();
+    }
+    return <ApiError type={result.error as 'no_api_key' | 'unauthorized' | 'connection_error'} details={result.details} />;
   }
+
+  const alert = result.data;
 
   return (
     <div className="space-y-6">
