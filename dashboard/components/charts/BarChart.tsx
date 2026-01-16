@@ -1,5 +1,7 @@
 'use client';
 
+const MIN_BAR_HEIGHT_PERCENT = 2;
+
 interface BarChartProps {
   data: Array<{ label: string; value: number }>;
   title: string;
@@ -20,7 +22,7 @@ export function BarChart({ data, title, colorClass = 'bg-crowdsec-accent' }: Bar
               <div
                 key={index}
                 className={`flex-1 ${colorClass} rounded-t transition-all hover:opacity-80 cursor-pointer`}
-                style={{ height: `${Math.max((item.value / maxValue) * 100, 2)}%` }}
+                style={{ height: `${Math.max((item.value / maxValue) * 100, MIN_BAR_HEIGHT_PERCENT)}%` }}
                 title={`${item.label}: ${item.value.toLocaleString()}`}
               />
             ))}

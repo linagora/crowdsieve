@@ -1,25 +1,10 @@
 import { ApiError } from '@/components/ApiError';
 import { StatsContent } from '@/components/StatsContent';
+import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 import type { TimeDistributionStats } from '@/lib/types';
 
 // Force dynamic rendering to read env vars at runtime
 export const dynamic = 'force-dynamic';
-
-function getApiConfig() {
-  return {
-    apiBase: process.env.API_URL || 'http://localhost:8080',
-    apiKey: process.env.DASHBOARD_API_KEY,
-  };
-}
-
-function getApiHeaders(): HeadersInit {
-  const { apiKey } = getApiConfig();
-  const headers: HeadersInit = {};
-  if (apiKey) {
-    headers['X-API-Key'] = apiKey;
-  }
-  return headers;
-}
 
 type ApiResult<T> =
   | { success: true; data: T }

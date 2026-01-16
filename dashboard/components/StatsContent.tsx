@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, Globe, Shield, BarChart3, TrendingUp } from 'lucide-react';
+import { Calendar, Globe, Shield, BarChart3 } from 'lucide-react';
 import { BarChart } from '@/components/charts/BarChart';
 import { HorizontalBarChart } from '@/components/charts/HorizontalBarChart';
 import { TrendChart } from '@/components/charts/TrendChart';
@@ -11,7 +11,7 @@ const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function countryCodeToFlag(code: string): string {
-  if (!code || code.length !== 2 || code === 'Unknown') return '';
+  if (!code || code === 'Unknown' || code.length !== 2) return '';
   const codePoints = code
     .toUpperCase()
     .split('')

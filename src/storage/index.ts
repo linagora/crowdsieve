@@ -529,11 +529,16 @@ export function createStorage(): AlertStorage {
           hour: Number(h.hour),
           count: Number(h.count),
         })),
-        byCountry: byCountry.map((c) => ({
-          countryCode: c.countryCode || 'Unknown',
-          countryName: c.countryName || c.countryCode || 'Unknown',
-          count: Number(c.count),
-        })),
+        byCountry: byCountry.map((c) => {
+          const countryCode = c.countryCode || 'Unknown';
+          const countryName =
+            countryCode === 'Unknown' ? 'Unknown' : c.countryName || countryCode;
+          return {
+            countryCode,
+            countryName,
+            count: Number(c.count),
+          };
+        }),
         byScenario: byScenario.map((s) => ({
           scenario: s.scenario,
           count: Number(s.count),

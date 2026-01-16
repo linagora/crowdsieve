@@ -277,6 +277,14 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       const { period } = request.query;
       let since: Date | undefined;
 
+      // Validate period parameter (accepts: 7d, 30d, all, or empty for default 30d)
+      const validPeriods = ['7d', '30d', 'all'];
+      if (period && !validPeriods.includes(period)) {
+        return reply.code(400).send({
+          error: `Invalid period parameter. Accepted values: ${validPeriods.join(', ')}`,
+        });
+      }
+
       // Calculate since date based on period
       if (period === '7d') {
         since = new Date();
