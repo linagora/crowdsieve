@@ -619,7 +619,6 @@ export function createStorage(): AlertStorage {
         ? sql<string>`CASE
             WHEN ${schema.decisions.duration} ~ '^[0-9]+s$' THEN '<1h'
             WHEN ${schema.decisions.duration} ~ '^[0-9]+m$' THEN '<1h'
-            WHEN ${schema.decisions.duration} ~ '^[0-9]+h$' AND CAST(REGEXP_REPLACE(${schema.decisions.duration}, '[^0-9]', '', 'g') AS INTEGER) < 1 THEN '<1h'
             WHEN ${schema.decisions.duration} ~ '^[0-9]+h$' AND CAST(REGEXP_REPLACE(${schema.decisions.duration}, '[^0-9]', '', 'g') AS INTEGER) < 24 THEN '1-24h'
             WHEN ${schema.decisions.duration} ~ '^[0-9]+h$' AND CAST(REGEXP_REPLACE(${schema.decisions.duration}, '[^0-9]', '', 'g') AS INTEGER) < 168 THEN '1-7d'
             ELSE '>7d'
@@ -627,12 +626,12 @@ export function createStorage(): AlertStorage {
         : sql<string>`CASE
             WHEN ${schema.decisions.duration} LIKE '%s' THEN '<1h'
             WHEN ${schema.decisions.duration} LIKE '%m' THEN '<1h'
-            WHEN ${schema.decisions.duration} LIKE '%h' AND CAST(REPLACE(${schema.decisions.duration}, 'h', '') AS INTEGER) < 1 THEN '<1h'
             WHEN ${schema.decisions.duration} LIKE '%h' AND CAST(REPLACE(${schema.decisions.duration}, 'h', '') AS INTEGER) < 24 THEN '1-24h'
             WHEN ${schema.decisions.duration} LIKE '%h' AND CAST(REPLACE(${schema.decisions.duration}, 'h', '') AS INTEGER) < 168 THEN '1-7d'
             ELSE '>7d'
           END`;
 
+      // Filter out null durations to avoid incorrect categorization
       const byDurationQuery = db
         .select({
           category: durationCategoryExpr,
@@ -640,7 +639,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(sinceCondition)
+        .where(and(sinceCondition, sql`${schema.decisions.duration} is not null`))
         .groupBy(durationCategoryExpr)
         .orderBy(sql`count desc`);
 
@@ -659,6 +658,7 @@ export function createStorage(): AlertStorage {
         .limit(10);
 
       // Query: Decisions by country (from associated alerts)
+      // Filter out null country codes to avoid grouping decisions without geo data
       const byCountryQuery = db
         .select({
           countryCode: schema.alerts.geoCountryCode,
@@ -667,7 +667,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(sinceCondition)
+        .where(and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`))
         .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
         .orderBy(sql`count desc`)
         .limit(15);
