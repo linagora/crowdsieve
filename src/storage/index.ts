@@ -13,6 +13,7 @@ function escapeLikePattern(pattern: string): string {
 
 export interface AlertQuery {
   filtered?: boolean;
+  forwardedToCapi?: boolean;
   scenario?: string;
   sourceCountry?: string;
   sourceIp?: string;
@@ -170,6 +171,9 @@ export function createStorage(): AlertStorage {
 
       if (query.filtered !== undefined) {
         conditions.push(eq(schema.alerts.filtered, query.filtered));
+      }
+      if (query.forwardedToCapi !== undefined) {
+        conditions.push(eq(schema.alerts.forwardedToCapi, query.forwardedToCapi));
       }
       if (query.scenario) {
         const escaped = escapeLikePattern(query.scenario);

@@ -16,7 +16,7 @@ export function AlertsTable({ initialAlerts }: AlertsTableProps) {
 
   const filteredAlerts = alerts.filter((alert) => {
     if (filter === 'filtered') return alert.filtered;
-    if (filter === 'forwarded') return !alert.filtered;
+    if (filter === 'forwarded') return alert.forwardedToCapi;
     return true;
   });
 

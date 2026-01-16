@@ -131,6 +131,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       limit?: string;
       offset?: string;
       filtered?: string;
+      forwardedToCapi?: string;
       scenario?: string;
       country?: string;
       machineId?: string;
@@ -197,6 +198,9 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         limit,
         offset,
         filtered: request.query.filtered ? request.query.filtered === 'true' : undefined,
+        forwardedToCapi: request.query.forwardedToCapi
+          ? request.query.forwardedToCapi === 'true'
+          : undefined,
         scenario,
         sourceCountry: country,
         sourceIp: ip,

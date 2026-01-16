@@ -57,12 +57,13 @@ export function AlertCard({ alert, onClick }: AlertCardProps) {
 
         {/* Status */}
         <div className="flex flex-col items-end gap-2">
-          {alert.filtered ? (
+          {alert.filtered && (
             <span className="badge bg-yellow-100 text-yellow-800">
               <Filter className="w-3 h-3 mr-1" />
               Filtered
             </span>
-          ) : (
+          )}
+          {alert.forwardedToCapi && (
             <span className="badge bg-green-100 text-green-800">
               <Send className="w-3 h-3 mr-1" />
               Forwarded

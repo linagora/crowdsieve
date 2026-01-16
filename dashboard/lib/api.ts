@@ -7,6 +7,7 @@ export async function fetchAlerts(params?: {
   limit?: number;
   offset?: number;
   filtered?: boolean;
+  forwardedToCapi?: boolean;
   scenario?: string;
   country?: string;
   since?: string;
@@ -18,6 +19,8 @@ export async function fetchAlerts(params?: {
   if (params?.limit) searchParams.set('limit', params.limit.toString());
   if (params?.offset) searchParams.set('offset', params.offset.toString());
   if (params?.filtered !== undefined) searchParams.set('filtered', params.filtered.toString());
+  if (params?.forwardedToCapi !== undefined)
+    searchParams.set('forwardedToCapi', params.forwardedToCapi.toString());
   if (params?.scenario) searchParams.set('scenario', params.scenario);
   if (params?.country) searchParams.set('country', params.country);
   if (params?.since) searchParams.set('since', params.since);

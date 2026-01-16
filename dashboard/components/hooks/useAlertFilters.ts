@@ -79,9 +79,9 @@ export function useAlertFilters({
   // Reusable fetch function
   const doFetch = useCallback(
     async (isAutoRefresh = false) => {
-      // Only fetch from server if time, scenario or machineId filters are set
+      // Only fetch from server if time, scenario, machineId or status filters are set
       const hasServerFilters =
-        filters.since || filters.until || filters.scenario || filters.machineId;
+        filters.since || filters.until || filters.scenario || filters.machineId || filters.status !== 'all';
 
       if (!hasServerFilters && !isAutoRefresh) {
         setAlerts(initialAlertsRef.current);
@@ -101,6 +101,8 @@ export function useAlertFilters({
           until: filters.until?.toISOString(),
           scenario: filters.scenario || undefined,
           machineId: filters.machineId || undefined,
+          filtered: filters.status === 'filtered' ? true : undefined,
+          forwardedToCapi: filters.status === 'forwarded' ? true : undefined,
         });
         setAlerts(result);
         setLastUpdated(new Date());
@@ -124,7 +126,7 @@ export function useAlertFilters({
         }
       }
     },
-    [filters.since, filters.until, filters.scenario, filters.machineId, limit]
+    [filters.since, filters.until, filters.scenario, filters.machineId, filters.status, limit]
   );
 
   // Fetch filtered alerts when filters change
@@ -146,7 +148,7 @@ export function useAlertFilters({
   // Apply client-side status filter
   const filteredAlerts = alerts.filter((alert) => {
     if (filters.status === 'filtered') return alert.filtered;
-    if (filters.status === 'forwarded') return !alert.filtered;
+    if (filters.status === 'forwarded') return alert.forwardedToCapi;
     return true;
   });
 

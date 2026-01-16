@@ -11,6 +11,7 @@ data/
 *.db
 *.db-journal
 *.db-wal
+import-data
 
 # GeoIP database
 *.mmdb
