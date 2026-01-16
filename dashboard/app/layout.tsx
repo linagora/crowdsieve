@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { Header } from '@/components/Header';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -14,24 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={inter.className}>
         <div className="min-h-screen">
-          <header className="bg-crowdsec-primary text-white">
-            <div className="max-w-7xl mx-auto px-4 py-4">
-              <div className="flex items-center justify-between">
-                <h1 className="text-xl font-bold">CrowdSieve</h1>
-                <nav className="flex gap-4">
-                  <a href="/" className="hover:text-crowdsec-accent transition-colors">
-                    Dashboard
-                  </a>
-                  <a href="/alerts" className="hover:text-crowdsec-accent transition-colors">
-                    Alerts
-                  </a>
-                  <a href="/decisions" className="hover:text-crowdsec-accent transition-colors">
-                    Decisions
-                  </a>
-                </nav>
-              </div>
-            </div>
-          </header>
+          <Header />
           <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
         </div>
       </body>

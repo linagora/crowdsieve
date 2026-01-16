@@ -121,3 +121,13 @@ export interface DecisionSearchResponse {
   results: ServerDecisions[];
   shared: Decision[]; // Decisions from CAPI/lists present on all servers
 }
+
+export interface TimeDistributionStats {
+  byDayOfWeek: Array<{ day: number; dayName: string; count: number }>;
+  byHourOfDay: Array<{ hour: number; count: number }>;
+  byCountry: Array<{ countryCode: string; countryName: string; count: number }>;
+  byScenario: Array<{ scenario: string; count: number }>;
+  dailyTrend: Array<{ date: string; count: number }>;
+  totalAlerts: number;
+  dateRange: { from: string | null; to: string | null };
+}

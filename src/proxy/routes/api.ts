@@ -269,6 +269,32 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // Get time distribution statistics
+  fastify.get<{
+    Querystring: { period?: string };
+  }>('/api/stats/distribution', async (request, reply) => {
+    try {
+      const { period } = request.query;
+      let since: Date | undefined;
+
+      // Calculate since date based on period
+      if (period === '7d') {
+        since = new Date();
+        since.setDate(since.getDate() - 7);
+      } else if (period === '30d' || !period) {
+        since = new Date();
+        since.setDate(since.getDate() - 30);
+      }
+      // period === 'all' means no since filter
+
+      const stats = await storage.getTimeDistributionStats(since);
+      return reply.send(stats);
+    } catch (err) {
+      logger.error({ err }, 'Failed to get distribution stats');
+      return reply.code(500).send({ error: 'Failed to get distribution stats' });
+    }
+  });
+
   // Get IP info (reverse DNS + WHOIS)
   fastify.get<{
     Params: { ip: string };
