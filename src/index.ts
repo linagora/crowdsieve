@@ -64,15 +64,11 @@ async function main() {
   // Ensure dashboard API key is set (generate if not provided)
   const apiKeyInfo = ensureDashboardApiKey();
   if (apiKeyInfo.generated) {
-    // Mask the key in structured logs (show first 4 and last 4 chars)
-    const maskedKey = `${apiKeyInfo.key.slice(0, 4)}..${apiKeyInfo.key.slice(-4)}`;
     logger.warn(
-      { apiKey: maskedKey },
-      'DASHBOARD_API_KEY was not set. Generated a random key for this session. ' +
-        'Set DASHBOARD_API_KEY environment variable to use a persistent key.'
+      'DASHBOARD_API_KEY was not set. A random key has been generated for this session. ' +
+        'The dashboard API will not be accessible without this key. ' +
+        'Set the DASHBOARD_API_KEY environment variable to use a persistent key.'
     );
-    // Print full key to console for user to copy (not in structured logs)
-    console.log(`\n  Generated DASHBOARD_API_KEY: ${apiKeyInfo.key}\n`);
   }
 
   // Initialize database
