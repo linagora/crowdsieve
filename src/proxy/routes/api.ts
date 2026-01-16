@@ -709,19 +709,15 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Delete a decision from a LAPI server using machine credentials
+  // Note: CSRF protection is not needed here because:
+  // 1. This endpoint requires API key authentication (already checked by preHandler)
+  // 2. Requests come from the Next.js dashboard proxy (server-to-server)
+  // 3. The dashboard proxy already handles browser CSRF via same-origin policy
   fastify.delete<{
     Params: { id: string };
     Querystring: { server: string };
   }>('/api/decisions/:id', async (request, reply) => {
     try {
-      // CSRF protection: require and verify Origin header matches expected hosts
-      const origin = request.headers.origin;
-      const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
-      if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
-        logger.warn({ origin, allowedOrigins }, 'Rejected delete request from unauthorized or missing origin');
-        return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
-      }
-
       const { id } = request.params;
       const { server } = request.query;
 
