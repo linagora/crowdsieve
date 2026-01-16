@@ -2,12 +2,40 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search, Loader2, Shield, ShieldAlert, Globe, Server } from 'lucide-react';
+import { Search, Loader2, Shield, ShieldAlert, Globe, Server, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { DecisionSearchResponse, Decision } from '@/lib/types';
 
-function DecisionCard({ decision }: { decision: Decision }) {
+interface DecisionCardProps {
+  decision: Decision;
+  server?: string;
+  onDelete?: (decisionId: number, server: string) => Promise<void>;
+  canDelete?: boolean;
+}
+
+function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardProps) {
   const isExpired = decision.until && new Date(decision.until) < new Date();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (!onDelete || !server || !decision.id) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this decision?\n\nType: ${decision.type}\nScenario: ${decision.scenario}\nValue: ${decision.value}`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete(decision.id, server);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div
@@ -20,11 +48,27 @@ function DecisionCard({ decision }: { decision: Decision }) {
           <span className="text-slate-500">-</span>
           <span className="font-mono text-sm">{decision.scenario}</span>
         </div>
-        <span
-          className={`text-xs px-2 py-1 rounded ${isExpired ? 'bg-slate-200 text-slate-600' : 'bg-red-100 text-red-700'}`}
-        >
-          {decision.origin}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-xs px-2 py-1 rounded ${isExpired ? 'bg-slate-200 text-slate-600' : 'bg-red-100 text-red-700'}`}
+          >
+            {decision.origin}
+          </span>
+          {canDelete && decision.id && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+              title="Delete decision"
+            >
+              {deleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
       <div className="mt-2 text-sm text-slate-600 flex gap-4">
         <span>Duration: {decision.duration}</span>
@@ -34,6 +78,7 @@ function DecisionCard({ decision }: { decision: Decision }) {
           </span>
         )}
       </div>
+      {deleteError && <p className="mt-2 text-sm text-red-600">{deleteError}</p>}
     </div>
   );
 }
@@ -74,6 +119,25 @@ function DecisionSearchContent() {
       }
     },
     [ip]
+  );
+
+  const handleDeleteDecision = useCallback(
+    async (decisionId: number, server: string) => {
+      const res = await fetch(`/api/decisions/${decisionId}?server=${encodeURIComponent(server)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete decision');
+      }
+
+      // Refresh results after successful delete
+      if (results?.ip) {
+        handleSearch(results.ip);
+      }
+    },
+    [results?.ip, handleSearch]
   );
 
   // Auto-search if IP is provided in URL
@@ -141,7 +205,7 @@ function DecisionSearchContent() {
             </p>
           </div>
 
-          {/* Shared decisions (from CAPI/lists) */}
+          {/* Shared decisions (from CAPI/lists) - cannot be deleted */}
           {results.shared.length > 0 && (
             <div className="card p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -153,13 +217,13 @@ function DecisionSearchContent() {
               </p>
               <div className="space-y-3">
                 {results.shared.map((decision, idx) => (
-                  <DecisionCard key={`shared-${idx}`} decision={decision} />
+                  <DecisionCard key={`shared-${idx}`} decision={decision} canDelete={false} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Per-server decisions */}
+          {/* Per-server decisions - can be deleted */}
           {results.results.map((serverResult) => (
             <div key={serverResult.server} className="card p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -174,7 +238,13 @@ function DecisionSearchContent() {
               ) : (
                 <div className="space-y-3">
                   {serverResult.decisions.map((decision, idx) => (
-                    <DecisionCard key={`${serverResult.server}-${idx}`} decision={decision} />
+                    <DecisionCard
+                      key={`${serverResult.server}-${idx}`}
+                      decision={decision}
+                      server={serverResult.server}
+                      onDelete={handleDeleteDecision}
+                      canDelete={true}
+                    />
                   ))}
                 </div>
               )}
