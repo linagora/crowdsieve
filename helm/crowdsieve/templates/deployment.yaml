@@ -91,13 +91,11 @@ spec:
             # Dashboard configuration
             - name: DASHBOARD_PORT
               value: {{ .Values.crowdsieve.dashboard.port | quote }}
-            {{- if .Values.crowdsieve.dashboard.apiKey }}
             - name: DASHBOARD_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "crowdsieve.fullname" . }}-dashboard
                   key: api-key
-            {{- end }}
             {{- if .Values.crowdsieve.dashboard.corsOrigin }}
             - name: CORS_ORIGIN
               value: {{ .Values.crowdsieve.dashboard.corsOrigin | quote }}

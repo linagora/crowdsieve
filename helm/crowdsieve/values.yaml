@@ -88,7 +88,10 @@ crowdsieve:
   dashboard:
     # -- Dashboard listen port
     port: 3000
-    # -- API key for dashboard authentication (optional, leave empty to disable)
+    # -- API key for dashboard authentication
+    # If empty, a random key is auto-generated on each helm install/upgrade.
+    # For persistent authentication, set this to a secure value.
+    # WARNING: Auto-generated keys change on each upgrade, requiring re-authentication.
     apiKey: ""
     # -- CORS origin (leave empty for restrictive mode)
     corsOrigin: ""

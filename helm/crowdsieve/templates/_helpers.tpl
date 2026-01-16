@@ -77,6 +77,21 @@ CrowdSieve internal service URL (for CrowdSec LAPI to connect to)
 {{- end }}
 
 {{/*
+Dashboard API key - use provided value or generate a random one.
+NOTE: When auto-generating, a new key is created on each helm upgrade unless
+the user provides their own value. For persistent auto-generated keys,
+users should set the key explicitly after initial deployment.
+*/}}
+{{- define "crowdsieve.dashboardApiKey" -}}
+{{- if .Values.crowdsieve.dashboard.apiKey -}}
+{{- .Values.crowdsieve.dashboard.apiKey -}}
+{{- else -}}
+{{- /* Generate a random 32-character alphanumeric key */ -}}
+{{- randAlphaNum 32 -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Validate CrowdSieve configuration
 */}}
 {{- define "crowdsieve.validateConfig" -}}
