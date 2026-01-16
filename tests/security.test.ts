@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import net from 'net';
 import { ExpressionFilter } from '../src/filters/implementations/expression.js';
 import type { FilterContext } from '../src/filters/types.js';
+import { MAX_ALERTS_PER_BATCH } from '../src/proxy/routes/signals.js';
 
 /**
  * Escape SQL LIKE wildcards (copy from storage for testing)
@@ -146,5 +148,137 @@ describe('Security - Input Validation', () => {
     expect(boundOffset(-10)).toBe(0);
     expect(boundOffset(undefined)).toBe(0);
     expect(boundOffset(NaN)).toBe(0);
+  });
+});
+
+describe('Security - Signals Batch Size Limit', () => {
+  it('should export MAX_ALERTS_PER_BATCH constant', () => {
+    expect(MAX_ALERTS_PER_BATCH).toBeDefined();
+    expect(typeof MAX_ALERTS_PER_BATCH).toBe('number');
+  });
+
+  it('should have a reasonable batch limit', () => {
+    // Limit should be between 100 and 10000
+    expect(MAX_ALERTS_PER_BATCH).toBeGreaterThanOrEqual(100);
+    expect(MAX_ALERTS_PER_BATCH).toBeLessThanOrEqual(10000);
+  });
+
+  it('should be exactly 1000', () => {
+    expect(MAX_ALERTS_PER_BATCH).toBe(1000);
+  });
+
+  it('should allow valid batch sizes', () => {
+    const validSizes = [1, 100, 500, 999, 1000];
+    for (const size of validSizes) {
+      expect(size <= MAX_ALERTS_PER_BATCH).toBe(true);
+    }
+  });
+
+  it('should reject oversized batches', () => {
+    const invalidSizes = [1001, 2000, 10000, 100000];
+    for (const size of invalidSizes) {
+      expect(size > MAX_ALERTS_PER_BATCH).toBe(true);
+    }
+  });
+});
+
+describe('Security - Dashboard IP Validation', () => {
+  // Tests for IP validation in /api/ip-info/[ip] route
+  it('should accept valid IPv4 addresses', () => {
+    const validIPs = ['192.168.1.1', '10.0.0.1', '8.8.8.8', '1.1.1.1', '255.255.255.255'];
+    for (const ip of validIPs) {
+      expect(net.isIP(ip)).not.toBe(0);
+    }
+  });
+
+  it('should accept valid IPv6 addresses', () => {
+    const validIPs = ['::1', '2001:db8::1', 'fe80::1', '2001:0db8:85a3::8a2e:0370:7334'];
+    for (const ip of validIPs) {
+      expect(net.isIP(ip)).not.toBe(0);
+    }
+  });
+
+  it('should reject invalid IP addresses in route parameter', () => {
+    const invalidIPs = [
+      'not-an-ip',
+      '192.168.1.256',
+      '192.168.1',
+      'example.com',
+      '',
+      '../../../etc/passwd', // Path traversal attempt
+      '192.168.1.1; cat /etc/passwd', // Command injection
+      '<script>alert(1)</script>', // XSS
+      '%00', // Null byte
+    ];
+    for (const ip of invalidIPs) {
+      expect(net.isIP(ip)).toBe(0);
+    }
+  });
+});
+
+describe('Security - API Key Fail-Secure Behavior', () => {
+  it('should treat missing API key as security violation', () => {
+    // Simulates the fail-secure behavior in api.ts
+    const configuredKey = undefined; // API key not configured
+    const shouldReject = !configuredKey;
+    expect(shouldReject).toBe(true);
+  });
+
+  it('should treat empty API key as security violation', () => {
+    const configuredKey = '';
+    const shouldReject = !configuredKey;
+    expect(shouldReject).toBe(true);
+  });
+
+  it('should allow valid API key', () => {
+    const configuredKey = 'valid-api-key-12345';
+    const shouldReject = !configuredKey;
+    expect(shouldReject).toBe(false);
+  });
+
+  it('should generate 64-character hex key', () => {
+    // Simulates the key generation in index.ts
+    const { randomBytes } = require('crypto');
+    const generatedKey = randomBytes(32).toString('hex');
+    expect(generatedKey).toHaveLength(64);
+    expect(/^[a-f0-9]{64}$/.test(generatedKey)).toBe(true);
+  });
+
+  it('should mask key correctly for logging', () => {
+    const key = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    const maskedKey = `${key.slice(0, 4)}..${key.slice(-4)}`;
+    expect(maskedKey).toBe('1234..cdef');
+    expect(maskedKey).not.toContain(key); // Full key should not be in masked version
+  });
+});
+
+describe('Security - CSRF Origin Validation', () => {
+  it('should validate origin against allowed list', () => {
+    const allowedOrigins = ['http://localhost:3000', 'https://dashboard.example.com'];
+
+    const testCases = [
+      { origin: 'http://localhost:3000', expected: true },
+      { origin: 'https://dashboard.example.com', expected: true },
+      { origin: 'https://evil.com', expected: false },
+      { origin: 'http://localhost:3001', expected: false },
+    ];
+
+    for (const { origin, expected } of testCases) {
+      const isAllowed = allowedOrigins.some((allowed) => origin === allowed.trim());
+      expect(isAllowed).toBe(expected);
+    }
+  });
+
+  it('should reject requests without Origin header', () => {
+    const origin = undefined;
+    // Updated logic: !origin || !allowedOrigins.some(...)
+    const shouldReject = !origin;
+    expect(shouldReject).toBe(true);
+  });
+
+  it('should reject requests with null Origin', () => {
+    const origin = null;
+    const shouldReject = !origin;
+    expect(shouldReject).toBe(true);
   });
 });

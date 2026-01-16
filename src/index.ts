@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import pino from 'pino';
 import { dirname, join } from 'path';
 import { loadConfig, loadConfigFromEnv, loadFiltersFromDirectory, Config } from './config/index.js';
@@ -10,6 +11,22 @@ import { ClientValidator } from './validation/index.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/GeoLite2-City.mmdb';
+
+/**
+ * Generate a secure random API key if not provided.
+ * This ensures the dashboard API is always protected.
+ */
+function ensureDashboardApiKey(): { key: string; generated: boolean } {
+  const existingKey = process.env.DASHBOARD_API_KEY;
+  if (existingKey) {
+    return { key: existingKey, generated: false };
+  }
+
+  // Generate a secure 32-byte random key (64 hex characters)
+  const generatedKey = randomBytes(32).toString('hex');
+  process.env.DASHBOARD_API_KEY = generatedKey;
+  return { key: generatedKey, generated: true };
+}
 
 async function main() {
   // Load configuration from file, then override with environment variables
@@ -43,6 +60,16 @@ async function main() {
 
   logger.info('Starting CrowdSieve...');
   logger.info({ configPath: CONFIG_PATH }, 'Configuration loaded');
+
+  // Ensure dashboard API key is set (generate if not provided)
+  const apiKeyInfo = ensureDashboardApiKey();
+  if (apiKeyInfo.generated) {
+    logger.warn(
+      'DASHBOARD_API_KEY was not set. A random key has been generated for this session. ' +
+        'The dashboard API will not be accessible without this key. ' +
+        'Set the DASHBOARD_API_KEY environment variable to use a persistent key.'
+    );
+  }
 
   // Initialize database
   const dbType = config.storage.type;

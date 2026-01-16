@@ -115,11 +115,14 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
   const { storage, proxyLogger: logger } = fastify;
 
   // API key authentication hook
+  // DASHBOARD_API_KEY is always set (generated at startup if not provided)
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     const configuredKey = process.env.DASHBOARD_API_KEY;
 
-    // No API key configured = development mode (allow all)
-    if (!configuredKey) return;
+    // This should never happen as key is generated at startup, but fail secure
+    if (!configuredKey) {
+      return reply.code(500).send({ error: 'Server misconfiguration: API key not set' });
+    }
 
     const apiKey = request.headers['x-api-key'];
     if (typeof apiKey !== 'string' || !safeCompare(apiKey, configuredKey)) {
@@ -482,6 +485,14 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     };
   }>('/api/decisions/ban', async (request, reply) => {
     try {
+      // CSRF protection: require and verify Origin header matches expected hosts
+      const origin = request.headers.origin;
+      const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+      if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
+        logger.warn({ origin, allowedOrigins }, 'Rejected ban request from unauthorized or missing origin');
+        return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
+      }
+
       const { server, ip, duration, reason } = request.body;
 
       // Validate required fields
