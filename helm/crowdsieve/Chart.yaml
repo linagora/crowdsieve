@@ -2,7 +2,7 @@ apiVersion: v2
 name: crowdsieve
 description: A Helm chart for deploying CrowdSieve with CrowdSec - filtering proxy for CrowdSec CAPI
 type: application
-version: 0.1.5
+version: 0.1.6
 appVersion: "1.0.0"
 
 home: https://github.com/linagora/crowdsieve

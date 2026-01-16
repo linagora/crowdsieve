@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2025-01-16
+
+### Added
+
+#### Dashboard
+
+- **Statistics page**: New `/stats` page with interactive visualizations:
+- **Responsive header**: Mobile-friendly navigation with hamburger menu
+
+#### Backend
+
+- **Time distribution API**: New `/api/stats/distribution` endpoint for statistics data
+- **PostgreSQL integration tests**: Added tests for `getTimeDistributionStats` method
+
+### Changed
+
+- **Frontend optimizations**: Memoized data transformations and added request cancellation for period changes
+
+### Fixed
+
+#### Helm Chart
+
+- **Dashboard API key persistence**: Reuse existing API key secret on upgrades instead of regenerating
+
 ## [0.1.5] - 2025-01-16
 
 ### Security
