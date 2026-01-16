@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Calendar, Globe, Shield, BarChart3 } from 'lucide-react';
 import { BarChart } from '@/components/charts/BarChart';
 import { HorizontalBarChart } from '@/components/charts/HorizontalBarChart';
@@ -29,50 +29,72 @@ export function StatsContent({ initialStats }: StatsContentProps) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const abortController = new AbortController();
+
     async function fetchStats() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/stats/distribution?period=${period}`);
+        const res = await fetch(`/api/stats/distribution?period=${period}`, {
+          signal: abortController.signal,
+        });
         if (res.ok) {
           const data = await res.json();
           setStats(data);
         }
+      } catch (err) {
+        // Ignore abort errors
+        if (err instanceof Error && err.name === 'AbortError') return;
+        throw err;
       } finally {
-        setLoading(false);
+        if (!abortController.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
     fetchStats();
+
+    return () => abortController.abort();
   }, [period]);
 
-  // Transform day of week data (reorder Mon-Sun)
-  const dayOfWeekData = (() => {
+  // Transform day of week data (reorder Mon-Sun) - memoized
+  const dayOfWeekData = useMemo(() => {
     const dataMap = new Map(stats.byDayOfWeek.map((d) => [d.day, d.count]));
     return DAY_ORDER.map((day, index) => ({
       label: DAY_LABELS[index],
       value: dataMap.get(day) || 0,
     }));
-  })();
+  }, [stats.byDayOfWeek]);
 
-  // Transform hour of day data (ensure all 24 hours)
-  const hourOfDayData = (() => {
+  // Transform hour of day data (ensure all 24 hours) - memoized
+  const hourOfDayData = useMemo(() => {
     const dataMap = new Map(stats.byHourOfDay.map((d) => [d.hour, d.count]));
     return Array.from({ length: 24 }, (_, hour) => ({
       label: hour.toString().padStart(2, '0'),
       value: dataMap.get(hour) || 0,
     }));
-  })();
+  }, [stats.byHourOfDay]);
 
-  const countryData = stats.byCountry.map((c) => ({
-    label: c.countryName || c.countryCode || 'Unknown',
-    value: c.count,
-    flag: countryCodeToFlag(c.countryCode),
-  }));
+  // Country data - memoized
+  const countryData = useMemo(
+    () =>
+      stats.byCountry.map((c) => ({
+        label: c.countryName || c.countryCode || 'Unknown',
+        value: c.count,
+        flag: countryCodeToFlag(c.countryCode),
+      })),
+    [stats.byCountry]
+  );
 
-  const scenarioData = stats.byScenario.map((s) => ({
-    label: s.scenario.split('/').pop() || s.scenario,
-    value: s.count,
-  }));
+  // Scenario data - memoized
+  const scenarioData = useMemo(
+    () =>
+      stats.byScenario.map((s) => ({
+        label: s.scenario.split('/').pop() || s.scenario,
+        value: s.count,
+      })),
+    [stats.byScenario]
+  );
 
   const periodLabel =
     period === '7d' ? '7 days' : period === '30d' ? '30 days' : 'All time';
