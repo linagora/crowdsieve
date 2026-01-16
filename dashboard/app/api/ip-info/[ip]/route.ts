@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIP } from 'net';
-
-const API_BASE = process.env.API_URL || process.env.PROXY_URL || 'http://localhost:8080';
-const API_KEY = process.env.DASHBOARD_API_KEY;
-
-function getApiHeaders(): HeadersInit {
-  const headers: HeadersInit = {};
-  if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
-  }
-  return headers;
-}
+import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ ip: string }> }) {
+  const { apiBase } = getApiConfig();
   const { ip } = await params;
 
   // Validate IP address format before forwarding to backend
@@ -21,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/ip-info/${encodeURIComponent(ip)}`, {
+    const res = await fetch(`${apiBase}/api/ip-info/${encodeURIComponent(ip)}`, {
       cache: 'no-store',
       headers: getApiHeaders(),
     });
