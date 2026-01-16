@@ -2,7 +2,7 @@ import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import type { SignalsRequest } from '../../models/alert.js';
 
 // Maximum number of alerts allowed per batch to prevent DoS
-const MAX_ALERTS_PER_BATCH = 1000;
+export const MAX_ALERTS_PER_BATCH = 1000;
 
 const signalsRoute: FastifyPluginAsync = async (fastify) => {
   const { config, filterEngine, storage, proxyLogger: logger, clientValidator } = fastify;
