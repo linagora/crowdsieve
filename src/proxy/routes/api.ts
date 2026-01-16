@@ -485,6 +485,14 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     };
   }>('/api/decisions/ban', async (request, reply) => {
     try {
+      // CSRF protection: verify Origin header matches expected hosts
+      const origin = request.headers.origin;
+      const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+      if (origin && !allowedOrigins.some((allowed) => origin === allowed.trim())) {
+        logger.warn({ origin, allowedOrigins }, 'Rejected ban request from unauthorized origin');
+        return reply.code(403).send({ error: 'Forbidden: Invalid origin' });
+      }
+
       const { server, ip, duration, reason } = request.body;
 
       // Validate required fields

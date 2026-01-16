@@ -1,4 +1,5 @@
 import { eq, desc, and, or, gte, lte, like, sql } from 'drizzle-orm';
+import net from 'net';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
 import { getDatabaseContext } from '../db/index.js';
@@ -63,7 +64,9 @@ export function createStorage(): AlertStorage {
       for (let i = 0; i < alerts.length; i++) {
         const alert = alerts[i];
         const detail = filterDetails[i];
-        const geoip = geoipLookup?.(alert.source.ip || alert.source.value || '') || null;
+        // Validate IP before GeoIP lookup to avoid silent failures
+        const ipToLookup = alert.source.ip || alert.source.value || '';
+        const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
 
         const insertQuery = db
           .insert(schema.alerts)

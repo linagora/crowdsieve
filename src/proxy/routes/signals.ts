@@ -1,6 +1,9 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import type { SignalsRequest } from '../../models/alert.js';
 
+// Maximum number of alerts allowed per batch to prevent DoS
+const MAX_ALERTS_PER_BATCH = 1000;
+
 const signalsRoute: FastifyPluginAsync = async (fastify) => {
   const { config, filterEngine, storage, proxyLogger: logger, clientValidator } = fastify;
 
@@ -42,6 +45,17 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
 
     if (!Array.isArray(alerts)) {
       return reply.code(400).send({ error: 'Invalid request body: expected array' });
+    }
+
+    // Limit batch size to prevent DoS
+    if (alerts.length > MAX_ALERTS_PER_BATCH) {
+      logger.warn(
+        { count: alerts.length, max: MAX_ALERTS_PER_BATCH, clientIp: request.ip },
+        'Rejected oversized alerts batch'
+      );
+      return reply.code(413).send({
+        error: `Batch too large: maximum ${MAX_ALERTS_PER_BATCH} alerts per request`,
+      });
     }
 
     logger.info({ count: alerts.length, apiVersion }, 'Received signals batch');
