@@ -77,12 +77,8 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   // Rate limiting - only for external requests, not internal dashboard server
   const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
   const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
+  // DASHBOARD_API_KEY is always set (generated at startup if not provided)
   const dashboardApiKey = process.env.DASHBOARD_API_KEY;
-  if (!dashboardApiKey) {
-    logger.warn(
-      'DASHBOARD_API_KEY is not set; internal dashboard requests will not bypass rate limiting'
-    );
-  }
   await app.register(rateLimit, {
     max: isNaN(rateLimitMax) || rateLimitMax < 1 ? 100 : rateLimitMax,
     timeWindow: isNaN(rateLimitWindow) || rateLimitWindow < 1000 ? 60000 : rateLimitWindow,

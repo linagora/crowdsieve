@@ -115,11 +115,14 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
   const { storage, proxyLogger: logger } = fastify;
 
   // API key authentication hook
+  // DASHBOARD_API_KEY is always set (generated at startup if not provided)
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     const configuredKey = process.env.DASHBOARD_API_KEY;
 
-    // No API key configured = development mode (allow all)
-    if (!configuredKey) return;
+    // This should never happen as key is generated at startup, but fail secure
+    if (!configuredKey) {
+      return reply.code(500).send({ error: 'Server misconfiguration: API key not set' });
+    }
 
     const apiKey = request.headers['x-api-key'];
     if (typeof apiKey !== 'string' || !safeCompare(apiKey, configuredKey)) {
