@@ -2,6 +2,9 @@ import { AlertsContent } from '@/components/AlertsContent';
 import { ApiError } from '@/components/ApiError';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
+// Force dynamic rendering to read env vars at runtime
+export const dynamic = 'force-dynamic';
+
 // Read env vars inside functions to ensure they're evaluated at runtime (not build time)
 function getApiConfig() {
   return {
