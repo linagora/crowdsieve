@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2025-01-16
+
+### Security
+
+- **CSRF protection hardened**: Origin header is now required for ban requests (previously allowed requests without Origin header)
+- **API key no longer logged**: Generated API key is no longer printed to console output to prevent accidental exposure in logs
+- **Fail-secure API authentication**: API endpoints now reject all requests when `DASHBOARD_API_KEY` is not configured (previously allowed unauthenticated access)
+
+### Fixed
+
+- **Dashboard environment variables in Docker**: Environment variables (`DASHBOARD_API_KEY`, `API_URL`) are now properly read at runtime instead of build time, fixing configuration issues in Docker standalone mode
+- **Dashboard error display**: Dashboard now shows clear error messages when API key is missing or rejected, instead of silently failing
+
+### Added
+
+- Security tests for batch size limit enforcement, IP address validation, fail-secure behavior, and CSRF protection
+
+### Changed
+
+#### Helm Chart
+
+- **Dashboard API key**: Auto-generate a random API key if `crowdsieve.dashboard.apiKey` is not set, ensuring the dashboard is always protected by authentication
+
 ## [0.1.4] - 2025-01-15
 
 ### Fixed
