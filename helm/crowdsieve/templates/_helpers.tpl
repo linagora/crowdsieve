@@ -77,17 +77,21 @@ CrowdSieve internal service URL (for CrowdSec LAPI to connect to)
 {{- end }}
 
 {{/*
-Dashboard API key - use provided value or generate a random one.
-NOTE: When auto-generating, a new key is created on each helm upgrade unless
-the user provides their own value. For persistent auto-generated keys,
-users should set the key explicitly after initial deployment.
+Dashboard API key - use provided value, existing secret value, or generate a new one.
+Priority: 1) User-provided value, 2) Existing secret value (for upgrades), 3) New random value
 */}}
 {{- define "crowdsieve.dashboardApiKey" -}}
 {{- if .Values.crowdsieve.dashboard.apiKey -}}
 {{- .Values.crowdsieve.dashboard.apiKey -}}
 {{- else -}}
-{{- /* Generate a random 32-character alphanumeric key */ -}}
+{{- $secretName := printf "%s-dashboard" (include "crowdsieve.fullname" .) -}}
+{{- $existingSecret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- if and $existingSecret $existingSecret.data (index $existingSecret.data "api-key") -}}
+{{- index $existingSecret.data "api-key" | b64dec -}}
+{{- else -}}
+{{- /* Generate a random 32-character alphanumeric key for new installations */ -}}
 {{- randAlphaNum 32 -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 
