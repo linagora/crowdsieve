@@ -6,13 +6,19 @@ import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { ApiError } from '@/components/ApiError';
 
-const API_BASE = process.env.API_URL || 'http://localhost:8080';
-const API_KEY = process.env.DASHBOARD_API_KEY;
+// Read env vars inside functions to ensure they're evaluated at runtime (not build time)
+function getApiConfig() {
+  return {
+    apiBase: process.env.API_URL || 'http://localhost:8080',
+    apiKey: process.env.DASHBOARD_API_KEY,
+  };
+}
 
 function getApiHeaders(): HeadersInit {
+  const { apiKey } = getApiConfig();
   const headers: HeadersInit = {};
-  if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
   }
   return headers;
 }
@@ -22,12 +28,14 @@ type ApiResult<T> =
   | { success: false; error: 'no_api_key' | 'unauthorized' | 'connection_error' | 'not_found'; details?: string };
 
 async function getAlert(id: string): Promise<ApiResult<StoredAlert>> {
-  if (!API_KEY) {
+  const { apiBase, apiKey } = getApiConfig();
+
+  if (!apiKey) {
     return { success: false, error: 'no_api_key' };
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/alerts/${id}`, {
+    const res = await fetch(`${apiBase}/api/alerts/${id}`, {
       cache: 'no-store',
       headers: getApiHeaders(),
     });

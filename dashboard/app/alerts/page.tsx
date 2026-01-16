@@ -2,13 +2,19 @@ import { AlertsContent } from '@/components/AlertsContent';
 import { ApiError } from '@/components/ApiError';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
-const API_BASE = process.env.API_URL || 'http://localhost:8080';
-const API_KEY = process.env.DASHBOARD_API_KEY;
+// Read env vars inside functions to ensure they're evaluated at runtime (not build time)
+function getApiConfig() {
+  return {
+    apiBase: process.env.API_URL || 'http://localhost:8080',
+    apiKey: process.env.DASHBOARD_API_KEY,
+  };
+}
 
 function getApiHeaders(): HeadersInit {
+  const { apiKey } = getApiConfig();
   const headers: HeadersInit = {};
-  if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
   }
   return headers;
 }
@@ -18,7 +24,9 @@ type ApiResult<T> =
   | { success: false; error: 'no_api_key' | 'unauthorized' | 'connection_error'; details?: string };
 
 async function fetchApi<T>(url: string, defaultValue: T): Promise<ApiResult<T>> {
-  if (!API_KEY) {
+  const { apiKey } = getApiConfig();
+
+  if (!apiKey) {
     return { success: false, error: 'no_api_key' };
   }
 
@@ -55,10 +63,12 @@ async function fetchApi<T>(url: string, defaultValue: T): Promise<ApiResult<T>> 
 }
 
 async function getAlerts(): Promise<ApiResult<StoredAlert[]>> {
-  return fetchApi(`${API_BASE}/api/alerts?limit=200`, []);
+  const { apiBase } = getApiConfig();
+  return fetchApi(`${apiBase}/api/alerts?limit=200`, []);
 }
 
 async function getStats(): Promise<ApiResult<AlertStats>> {
+  const { apiBase } = getApiConfig();
   const defaultStats: AlertStats = {
     total: 0,
     filtered: 0,
@@ -67,7 +77,7 @@ async function getStats(): Promise<ApiResult<AlertStats>> {
     topCountries: [],
     timeBounds: { min: null, max: null },
   };
-  return fetchApi(`${API_BASE}/api/stats`, defaultStats);
+  return fetchApi(`${apiBase}/api/stats`, defaultStats);
 }
 
 export default async function AlertsPage() {
