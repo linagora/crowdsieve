@@ -81,7 +81,11 @@ export function useAlertFilters({
     async (isAutoRefresh = false) => {
       // Only fetch from server if time, scenario, machineId or status filters are set
       const hasServerFilters =
-        filters.since || filters.until || filters.scenario || filters.machineId || filters.status !== 'all';
+        filters.since ||
+        filters.until ||
+        filters.scenario ||
+        filters.machineId ||
+        filters.status !== 'all';
 
       if (!hasServerFilters && !isAutoRefresh) {
         setAlerts(initialAlertsRef.current);

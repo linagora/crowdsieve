@@ -131,3 +131,12 @@ export interface TimeDistributionStats {
   totalAlerts: number;
   dateRange: { from: string | null; to: string | null };
 }
+
+export interface DecisionStats {
+  totalDecisions: number;
+  byDayOfWeek: Array<{ day: number; dayName: string; count: number }>;
+  byHourOfDay: Array<{ hour: number; count: number }>;
+  byDurationCategory: Array<{ category: string; count: number }>;
+  topScenarios: Array<{ scenario: string; count: number }>;
+  byCountry: Array<{ countryCode: string; countryName: string; count: number }>;
+}

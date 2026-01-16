@@ -33,9 +33,7 @@ export function ApiError({ type, details }: ApiErrorProps) {
     <div className="min-h-[400px] flex items-center justify-center p-8">
       <div className="max-w-md w-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
         <div className="text-4xl mb-4">{error.icon}</div>
-        <h2 className="text-xl font-semibold text-red-800 dark:text-red-200 mb-2">
-          {error.title}
-        </h2>
+        <h2 className="text-xl font-semibold text-red-800 dark:text-red-200 mb-2">{error.title}</h2>
         <p className="text-red-700 dark:text-red-300 mb-4">{error.message}</p>
         {details && (
           <p className="text-sm text-red-600 dark:text-red-400 font-mono bg-red-100 dark:bg-red-900/40 p-2 rounded">
