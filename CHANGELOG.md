@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.6] - 2025-01-16
+## [0.1.7] - 2026-01-16
+
+### Added
+
+#### Dashboard
+
+- **Decision statistics**: Added decision breakdown by duration, scenario, and country to the statistics page
+- **Decision deletion**: Added ability to delete decisions from LAPI servers via the dashboard
+
+#### Backend
+
+- **Decision stats API**: New `/api/stats/decisions` endpoint for decision statistics
+- **Delete decision API**: New `DELETE /api/decisions/:id` endpoint to remove decisions from LAPI
+
+#### Tests
+
+- Added comprehensive test coverage for `getDecisionStats` method (SQLite + PostgreSQL)
+- Added tests for DELETE decision endpoint (ID validation, server validation)
+
+### Fixed
+
+- **Server-to-server CSRF issue**: Removed Origin header validation on DELETE decisions endpoint since Next.js proxy requests don't include Origin headers (API key authentication is sufficient)
+- **Null filtering in stats queries**: Filter out null country codes and durations in decision statistics
+
+### Changed
+
+- **Release workflow**: GitHub Releases are now created manually instead of automatically on each tag
+
+## [0.1.6] - 2026-01-16
 
 ### Added
 
@@ -31,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Dashboard API key persistence**: Reuse existing API key secret on upgrades instead of regenerating
 
-## [0.1.5] - 2025-01-16
+## [0.1.5] - 2026-01-16
 
 ### Security
 
@@ -54,7 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Dashboard API key**: Auto-generate a random API key if `crowdsieve.dashboard.apiKey` is not set, ensuring the dashboard is always protected by authentication
 
-## [0.1.4] - 2025-01-15
+## [0.1.4] - 2026-01-15
 
 ### Fixed
 
@@ -62,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Machine registration script**: Fix grep pattern to use exact match (`^name `) instead of substring match, preventing false positives when machine names are prefixes of other machine names (e.g., "crowdsieve" matching "crowdsieve-lapi-xxx")
 
-## [0.1.3] - 2025-01-15
+## [0.1.3] - 2026-01-15
 
 ### Added
 
@@ -73,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Create manual IP bans from the dashboard
   - Auto-configure local LAPI connection using first bouncer and machine credentials (`lapiServers.autoConfigureLocal`)
 
-## [0.1.2] - 2025-01-15
+## [0.1.2] - 2026-01-15
 
 ### Added
 
@@ -81,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Pre-registered machines**: Configure machines (agents/watchers) with credentials that are automatically registered when CrowdSec LAPI starts via a postStart lifecycle hook
 
-## [0.1.1] - 2025-01-15
+## [0.1.1] - 2026-01-15
 
 ### Added
 
@@ -105,6 +133,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Move Docker Hub README sync to separate job to avoid blocking releases
 
-## [0.1.0] - 2025-01-14
+## [0.1.0] - 2026-01-14
 
 - Initial release of CrowdSieve
