@@ -262,4 +262,108 @@ describePostgres('PostgreSQL Integration', () => {
       expect(stats).toHaveProperty('timeBounds');
     });
   });
+
+  describe('Time Distribution Statistics', () => {
+    const storage = createStorage();
+
+    it('should get time distribution stats', async () => {
+      // First store some test alerts
+      const alerts = [
+        createTestAlert({
+          uuid: `test-dist-1-${Date.now()}`,
+          source: { scope: 'ip', value: '10.2.0.1', ip: '10.2.0.1', cn: 'US' },
+          scenario: 'test/scenario-a',
+        }),
+        createTestAlert({
+          uuid: `test-dist-2-${Date.now()}`,
+          source: { scope: 'ip', value: '10.2.0.2', ip: '10.2.0.2', cn: 'FR' },
+          scenario: 'test/scenario-b',
+        }),
+      ];
+
+      await storage.storeAlerts(
+        alerts,
+        alerts.map(() => ({ filtered: false, matchedFilters: [] })),
+        undefined
+      );
+
+      const stats = await storage.getTimeDistributionStats();
+
+      // Verify structure
+      expect(stats).toHaveProperty('byDayOfWeek');
+      expect(stats).toHaveProperty('byHourOfDay');
+      expect(stats).toHaveProperty('byCountry');
+      expect(stats).toHaveProperty('byScenario');
+      expect(stats).toHaveProperty('dailyTrend');
+      expect(stats).toHaveProperty('totalAlerts');
+      expect(stats).toHaveProperty('dateRange');
+
+      // Verify arrays
+      expect(Array.isArray(stats.byDayOfWeek)).toBe(true);
+      expect(Array.isArray(stats.byHourOfDay)).toBe(true);
+      expect(Array.isArray(stats.byCountry)).toBe(true);
+      expect(Array.isArray(stats.byScenario)).toBe(true);
+      expect(Array.isArray(stats.dailyTrend)).toBe(true);
+
+      // Verify totalAlerts is a number
+      expect(typeof stats.totalAlerts).toBe('number');
+      expect(stats.totalAlerts).toBeGreaterThanOrEqual(2);
+
+      // Verify dateRange
+      expect(stats.dateRange).toHaveProperty('from');
+      expect(stats.dateRange).toHaveProperty('to');
+    });
+
+    it('should return correct day of week structure', async () => {
+      const stats = await storage.getTimeDistributionStats();
+
+      // Each day entry should have day, dayName, and count
+      for (const day of stats.byDayOfWeek) {
+        expect(day).toHaveProperty('day');
+        expect(day).toHaveProperty('dayName');
+        expect(day).toHaveProperty('count');
+        expect(typeof day.day).toBe('number');
+        expect(day.day).toBeGreaterThanOrEqual(0);
+        expect(day.day).toBeLessThanOrEqual(6);
+        expect(typeof day.dayName).toBe('string');
+        expect(typeof day.count).toBe('number');
+      }
+    });
+
+    it('should return correct hour of day structure', async () => {
+      const stats = await storage.getTimeDistributionStats();
+
+      // Each hour entry should have hour and count
+      for (const hour of stats.byHourOfDay) {
+        expect(hour).toHaveProperty('hour');
+        expect(hour).toHaveProperty('count');
+        expect(typeof hour.hour).toBe('number');
+        expect(hour.hour).toBeGreaterThanOrEqual(0);
+        expect(hour.hour).toBeLessThanOrEqual(23);
+        expect(typeof hour.count).toBe('number');
+      }
+    });
+
+    it('should return correct country structure', async () => {
+      const stats = await storage.getTimeDistributionStats();
+
+      // Each country entry should have countryCode, countryName, and count
+      for (const country of stats.byCountry) {
+        expect(country).toHaveProperty('countryCode');
+        expect(country).toHaveProperty('countryName');
+        expect(country).toHaveProperty('count');
+        expect(typeof country.countryCode).toBe('string');
+        expect(typeof country.countryName).toBe('string');
+        expect(typeof country.count).toBe('number');
+      }
+    });
+
+    it('should filter by since date', async () => {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const stats = await storage.getTimeDistributionStats(oneHourAgo);
+
+      expect(stats).toHaveProperty('totalAlerts');
+      expect(typeof stats.totalAlerts).toBe('number');
+    });
+  });
 });
