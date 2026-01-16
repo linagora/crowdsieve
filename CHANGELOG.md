@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.6] - 2025-01-16
+## [0.1.7] - 2026-01-16
+
+### Added
+
+#### Dashboard
+
+- **Decision statistics**: Added decision breakdown by duration, scenario, and country to the statistics page
+- **Decision deletion**: Added ability to delete decisions from LAPI servers via the dashboard
+
+#### Backend
+
+- **Decision stats API**: New `/api/stats/decisions` endpoint for decision statistics
+- **Delete decision API**: New `DELETE /api/decisions/:id` endpoint to remove decisions from LAPI
+
+#### Tests
+
+- Added comprehensive test coverage for `getDecisionStats` method (SQLite + PostgreSQL)
+- Added tests for DELETE decision endpoint (ID validation, server validation)
+
+### Fixed
+
+- **Server-to-server CSRF issue**: Removed Origin header validation on DELETE decisions endpoint since Next.js proxy requests don't include Origin headers (API key authentication is sufficient)
+- **Null filtering in stats queries**: Filter out null country codes and durations in decision statistics
+
+### Changed
+
+- **Release workflow**: GitHub Releases are now created manually instead of automatically on each tag
+
+## [0.1.6] - 2026-01-16
 
 ### Added
 
