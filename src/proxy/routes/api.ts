@@ -12,8 +12,10 @@ const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/;
 
 // Exported constants for use in tests
 export const MAX_REASON_LENGTH = 500;
+export const MAX_MACHINE_ID_LENGTH = 255;
 export const DURATION_REGEX = /^\d+[smh]$/;
 export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
 
 // JWT token cache for machine authentication
 interface TokenCacheEntry {
@@ -166,6 +168,17 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Invalid IP address format' });
       }
 
+      // Validate machineId format if provided
+      const machineId = request.query.machineId;
+      if (machineId) {
+        if (machineId.length > MAX_MACHINE_ID_LENGTH) {
+          return reply.code(400).send({ error: 'Machine ID too long' });
+        }
+        if (!MACHINE_ID_REGEX.test(machineId)) {
+          return reply.code(400).send({ error: 'Invalid machine ID format' });
+        }
+      }
+
       // Parse and validate date parameters
       let since: Date | undefined;
       let until: Date | undefined;
@@ -204,7 +217,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         scenario,
         sourceCountry: country,
         sourceIp: ip,
-        machineId: request.query.machineId,
+        machineId,
         since,
         until,
       };

@@ -3,8 +3,10 @@ import net from 'net';
 import { timingSafeEqual } from 'crypto';
 import {
   MAX_REASON_LENGTH,
+  MAX_MACHINE_ID_LENGTH,
   DURATION_REGEX,
   SERVER_NAME_REGEX,
+  MACHINE_ID_REGEX,
 } from '../src/proxy/routes/api.js';
 
 describe('Decisions API - Input Validation', () => {
@@ -100,6 +102,62 @@ describe('Decisions API - Input Validation', () => {
       for (const name of invalidNames) {
         expect(SERVER_NAME_REGEX.test(name)).toBe(false);
       }
+    });
+  });
+
+  describe('Machine ID validation', () => {
+    it('should accept valid machine IDs', () => {
+      const validMachineIds = [
+        'machine-123',
+        'server.local',
+        'host_1',
+        'node-1.2.3.4',
+        'my-server',
+        'Machine01',
+        'PROD_HOST',
+        'a',
+        'server:8080',
+        'host.domain.com',
+        'machine_name-01.local',
+      ];
+      for (const machineId of validMachineIds) {
+        expect(MACHINE_ID_REGEX.test(machineId)).toBe(true);
+      }
+    });
+
+    it('should reject invalid machine IDs', () => {
+      const invalidMachineIds = [
+        '', // empty
+        'machine id', // space
+        'machine@host', // @ special char
+        '../etc/passwd', // path traversal attempt
+        'machine/name', // slash
+        'host<script>', // XSS attempt
+        'machine;rm -rf', // command injection attempt
+        'host|cat /etc/passwd', // pipe injection
+        'machine`id`', // backtick injection
+        "machine'name", // single quote
+        'machine"name', // double quote
+      ];
+      for (const machineId of invalidMachineIds) {
+        expect(MACHINE_ID_REGEX.test(machineId)).toBe(false);
+      }
+    });
+
+    it('should accept machine IDs within length limit', () => {
+      const validMachineIds = [
+        'a',
+        'machine-123',
+        'a'.repeat(MAX_MACHINE_ID_LENGTH),
+      ];
+      for (const machineId of validMachineIds) {
+        expect(machineId.length <= MAX_MACHINE_ID_LENGTH).toBe(true);
+      }
+    });
+
+    it('should reject machine IDs exceeding length limit', () => {
+      const tooLongMachineId = 'a'.repeat(MAX_MACHINE_ID_LENGTH + 1);
+      expect(tooLongMachineId.length > MAX_MACHINE_ID_LENGTH).toBe(true);
     });
   });
 

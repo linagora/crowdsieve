@@ -5,10 +5,13 @@ import { getDatabaseContext } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
 
 /**
- * Escape SQL LIKE wildcards to prevent injection
+ * Escape SQL LIKE wildcards to prevent injection.
+ * Backslash must be escaped FIRST to avoid double-escaping.
  */
 function escapeLikePattern(pattern: string): string {
-  return pattern.replace(/[%_\\]/g, '\\$&');
+  return pattern
+    .replace(/\\/g, '\\\\')  // Escape backslash first
+    .replace(/[%_]/g, '\\$&'); // Then escape LIKE wildcards
 }
 
 export interface AlertQuery {
