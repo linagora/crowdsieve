@@ -553,15 +553,19 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     };
   }>('/api/decisions/ban', async (request, reply) => {
     try {
-      // CSRF protection: require and verify Origin header matches expected hosts
-      const origin = request.headers.origin;
-      const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
-      if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
-        logger.warn(
-          { origin, allowedOrigins },
-          'Rejected ban request from unauthorized or missing origin'
-        );
-        return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
+      // CSRF protection: require Origin header for browser requests
+      // Skip Origin check if request has valid X-API-Key (server-to-server call)
+      const hasApiKey = !!request.headers['x-api-key'];
+      if (!hasApiKey) {
+        const origin = request.headers.origin;
+        const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+        if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
+          logger.warn(
+            { origin, allowedOrigins },
+            'Rejected ban request from unauthorized or missing origin'
+          );
+          return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
+        }
       }
 
       const { server, ip, duration, reason } = request.body;
@@ -760,7 +764,10 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Delete the decision via LAPI
       const deleteUrl = `${lapiServer.url}/v1/decisions/${decisionId}`;
-      logger.info({ server: lapiServer.name, decisionId, url: deleteUrl }, 'Deleting decision from LAPI');
+      logger.info(
+        { server: lapiServer.name, decisionId, url: deleteUrl },
+        'Deleting decision from LAPI'
+      );
 
       const response = await fetch(deleteUrl, {
         method: 'DELETE',

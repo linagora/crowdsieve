@@ -678,7 +678,11 @@ export function createStorage(): AlertStorage {
       let byHourOfDay: Array<{ hour: number; count: number }>;
       let byDuration: Array<{ category: string; count: number }>;
       let topScenarios: Array<{ scenario: string | null; count: number }>;
-      let byCountry: Array<{ countryCode: string | null; countryName: string | null; count: number }>;
+      let byCountry: Array<{
+        countryCode: string | null;
+        countryName: string | null;
+        count: number;
+      }>;
 
       if (isPostgres) {
         [total, byDayOfWeek, byHourOfDay, byDuration, topScenarios, byCountry] = await Promise.all([
@@ -687,7 +691,9 @@ export function createStorage(): AlertStorage {
           byHourOfDayQuery as Promise<Array<{ hour: number; count: number }>>,
           byDurationQuery as Promise<Array<{ category: string; count: number }>>,
           topScenariosQuery as Promise<Array<{ scenario: string | null; count: number }>>,
-          byCountryQuery as Promise<Array<{ countryCode: string | null; countryName: string | null; count: number }>>,
+          byCountryQuery as Promise<
+            Array<{ countryCode: string | null; countryName: string | null; count: number }>
+          >,
         ]);
       } else {
         total = (totalQuery as unknown as { get(): { total: number } | undefined }).get();
