@@ -136,7 +136,9 @@ export async function fetchLogs(
 
     for (let i = 0; i < logLines.length; i++) {
       const raw = logLines[i];
-      const timestamp = timestamps[i]
+      // Bounds check: timestamps array may be shorter than logLines
+      const hasTimestamp = i < timestamps.length && timestamps[i] != null;
+      const timestamp = hasTimestamp
         ? new Date(timestamps[i] / 1000000).toISOString() // Loki returns nanoseconds
         : new Date().toISOString();
 
