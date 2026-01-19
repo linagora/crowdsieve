@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Log Analyzers
+
+- **Integrated log analyzer system**: Periodically fetch logs from Grafana/Loki, apply detection rules, and push ban decisions to CrowdSec LAPI servers
+- **YAML-based detection rules**: Configurable analyzers in `config/analyzers.d/` with:
+  - Flexible scheduling (interval and lookback duration)
+  - Field extraction from JSON logs
+  - Grouping and distinct value counting
+  - Threshold-based alerting with configurable operators
+- **Global whitelist**: Define IPs and CIDR ranges to exclude from all analyzer detections
+- **Environment variable interpolation**: Use `${VAR}` or `${VAR:-default}` syntax in analyzer configs
+- **Multi-target support**: Push decisions to all LAPI servers or specific targets
+
+#### Dashboard
+
+- **Analyzers page**: New `/analyzers` page showing:
+  - List of configured analyzers and their status
+  - Last run results (logs fetched, alerts generated, decisions pushed)
+  - Manual trigger button for immediate execution
+  - Next scheduled run time
+
+#### Backend
+
+- **Don't verify Origin header when X-Api-Key exists**
+- **Analyzer API endpoints**:
+  - `GET /api/analyzers` - List all analyzers with status
+  - `GET /api/analyzers/:id` - Get analyzer details
+  - `GET /api/analyzers/:id/runs` - Get run history
+  - `POST /api/analyzers/:id/run` - Trigger manual run
+- **Database tables**: New `analyzer_runs` and `analyzer_results` tables for run history persistence
+- **Staggered startup**: Analyzers start with progressive delays to avoid thundering herd on Grafana/Loki
+
 ## [0.1.7] - 2026-01-16
 
 ### Added
