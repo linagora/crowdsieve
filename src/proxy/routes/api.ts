@@ -3,6 +3,7 @@ import { timingSafeEqual, createHash } from 'crypto';
 import net from 'net';
 import { getIPInfo } from '../../ipinfo/index.js';
 import type { LapiServer } from '../../config/index.js';
+import { getAnalyzerEngine } from '../../analyzers/index.js';
 
 // Constants for input validation
 const MAX_LIMIT = 1000;
@@ -801,6 +802,106 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (err) {
       logger.error({ err }, 'Failed to delete decision');
       return reply.code(500).send({ error: 'Failed to delete decision' });
+    }
+  });
+
+  // ============== Analyzer API Endpoints ==============
+
+  // Get list of analyzers and their status
+  fastify.get('/api/analyzers', async (request, reply) => {
+    try {
+      const engine = getAnalyzerEngine();
+      if (!engine) {
+        return reply.send({ enabled: false, analyzers: [] });
+      }
+
+      const status = engine.getStatus();
+      return reply.send({ enabled: true, analyzers: status });
+    } catch (err) {
+      logger.error({ err }, 'Failed to get analyzers');
+      return reply.code(500).send({ error: 'Failed to get analyzers' });
+    }
+  });
+
+  // Get analyzer details
+  fastify.get<{
+    Params: { id: string };
+  }>('/api/analyzers/:id', async (request, reply) => {
+    try {
+      const engine = getAnalyzerEngine();
+      if (!engine) {
+        return reply.code(404).send({ error: 'Analyzer engine not enabled' });
+      }
+
+      const { id } = request.params;
+      const analyzer = engine.getAnalyzer(id);
+      if (!analyzer) {
+        return reply.code(404).send({ error: 'Analyzer not found' });
+      }
+
+      const status = engine.getStatus().find((s) => s.id === id);
+      return reply.send({ analyzer, status });
+    } catch (err) {
+      logger.error({ err }, 'Failed to get analyzer');
+      return reply.code(500).send({ error: 'Failed to get analyzer' });
+    }
+  });
+
+  // Get analyzer run history
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { limit?: string };
+  }>('/api/analyzers/:id/runs', async (request, reply) => {
+    try {
+      const engine = getAnalyzerEngine();
+      if (!engine) {
+        return reply.code(404).send({ error: 'Analyzer engine not enabled' });
+      }
+
+      const { id } = request.params;
+      const parsedLimit = parseInt(request.query.limit || '10', 10);
+      const limit = Math.min(Math.max(isNaN(parsedLimit) ? 10 : parsedLimit, 1), 100);
+
+      const analyzer = engine.getAnalyzer(id);
+      if (!analyzer) {
+        return reply.code(404).send({ error: 'Analyzer not found' });
+      }
+
+      const runs = await engine.getRunHistory(id, limit);
+      return reply.send({ runs });
+    } catch (err) {
+      logger.error({ err }, 'Failed to get analyzer runs');
+      return reply.code(500).send({ error: 'Failed to get analyzer runs' });
+    }
+  });
+
+  // Manually trigger an analyzer run
+  fastify.post<{
+    Params: { id: string };
+  }>('/api/analyzers/:id/run', async (request, reply) => {
+    try {
+      const engine = getAnalyzerEngine();
+      if (!engine) {
+        return reply.code(404).send({ error: 'Analyzer engine not enabled' });
+      }
+
+      const { id } = request.params;
+      const analyzer = engine.getAnalyzer(id);
+      if (!analyzer) {
+        return reply.code(404).send({ error: 'Analyzer not found' });
+      }
+
+      logger.info({ analyzer: id }, 'Manually triggering analyzer run');
+      const result = await engine.triggerRun(id);
+
+      if (!result) {
+        return reply.code(500).send({ error: 'Failed to trigger analyzer run' });
+      }
+
+      return reply.send({ success: true, result });
+    } catch (err) {
+      logger.error({ err }, 'Failed to trigger analyzer run');
+      return reply.code(500).send({ error: 'Failed to trigger analyzer run' });
     }
   });
 };

@@ -11,7 +11,9 @@ data/
 *.db
 *.db-journal
 *.db-wal
+.cnb
 import-data
+crowdsec-test/
 
 # GeoIP database
 *.mmdb

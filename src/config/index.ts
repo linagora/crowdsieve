@@ -179,6 +179,27 @@ const ConfigSchema = z.object({
       fail_closed: z.boolean().default(false),
     })
     .default({}),
+  analyzers: z
+    .object({
+      enabled: z.boolean().default(false),
+      config_dir: z.string().default('./config/analyzers.d'),
+      default_interval: z.string().default('3h'),
+      default_lookback: z.string().default('3h'),
+      default_targets: z.union([z.literal('all'), z.array(z.string())]).default('all'),
+      // Global whitelist: IPs and CIDR ranges to ignore in all analyzers
+      whitelist: z.array(z.string()).default([]),
+      sources: z
+        .record(
+          z.object({
+            type: z.literal('loki'),
+            grafana_url: z.string(),
+            token: z.string(),
+            datasource_uid: z.string(),
+          })
+        )
+        .default({}),
+    })
+    .default({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

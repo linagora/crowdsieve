@@ -7,6 +7,10 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Alert Filtering**: Powerful expression-based filter rules with logical operators (and, or, not)
   - Field operators: eq, ne, gt, lt, in, contains, starts_with, ends_with, regex, glob, cidr
   - Combinable conditions for complex filtering logic
+- **Log Analyzers**: Scheduled log analysis from Grafana/Loki with automatic ban pushing
+  - Configurable detection rules (YAML) with grouping, distinct counting, and thresholds
+  - Global whitelist for IPs and CIDR ranges
+  - Push decisions to all your CrowdSec LAPI servers
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
@@ -45,7 +49,7 @@ Traditional CrowdSec architecture embeds intelligence in each scenario to determ
 
 ### Roadmap
 
-- **Local Scenario Analysis**: Future versions may support creating CrowdSec scenarios that analyze patterns from alerts received in Crowdsieve, enabling local correlation and detection rules based on your aggregated alert data
+- **Extended Analyzer Sources**: Support for additional log sources beyond Grafana/Loki (Elasticsearch, direct file reading, etc.)
 
 ## Quick Start
 
@@ -278,6 +282,107 @@ CLIENT_VALIDATION_FAIL_CLOSED=false       # Set to true to reject when CAPI unav
 
 Validation uses a dual-layer cache (in-memory LRU + SQLite) for performance.
 
+## Log Analyzers
+
+CrowdSieve includes an integrated log analyzer system that periodically fetches logs from Grafana/Loki, applies detection rules, and pushes ban decisions to your CrowdSec LAPI servers.
+
+### Analyzer Configuration
+
+Enable analyzers in `config/filters.yaml`:
+
+```yaml
+analyzers:
+  enabled: true
+  config_dir: './config/analyzers.d'
+  default_interval: '3h'
+  default_lookback: '3h'
+  default_targets: 'all'
+
+  # Global whitelist: IPs and CIDR ranges to ignore in all analyzers
+  whitelist:
+    - '10.0.0.0/8'        # Private networks
+    - '172.16.0.0/12'
+    - '192.168.0.0/16'
+    - '127.0.0.1'         # Localhost
+    - '::1'               # IPv6 localhost
+    - 'fc00::/7'          # IPv6 ULA
+
+  # Log sources (referenced by analyzers)
+  sources:
+    grafana-prod:
+      type: 'loki'
+      grafana_url: '${GRAFANA_URL}'
+      token: '${GRAFANA_TOKEN}'
+      datasource_uid: 'logs-prod-dc1'
+```
+
+### Analyzer Rules
+
+Create analyzer rules in `config/analyzers.d/`:
+
+```yaml
+# config/analyzers.d/smtp-credential-stuffing.yaml
+id: 'smtp-credential-stuffing'
+name: 'SMTP Credential Stuffing Detection'
+enabled: true
+
+schedule:
+  interval: '3h'       # Run every 3 hours
+  lookback: '3h'       # Analyze last 3 hours of logs
+
+source:
+  ref: 'grafana-prod'  # Reference to global source
+  query: '{app="tmail"} |= "SMTP Authentication failed"'
+  max_lines: 5000
+
+extraction:
+  format: 'json'
+  fields:
+    source_ip: 'mdc.remoteIP'
+    username: 'mdc.username'
+    timestamp: 'timestamp'
+
+detection:
+  groupby: 'source_ip'    # Group logs by this field
+  distinct: 'username'    # Count distinct values
+  threshold: 6            # Alert if >= 6 distinct usernames
+  operator: '>='
+
+decision:
+  type: 'ban'
+  duration: '24h'
+  scope: 'ip'
+  scenario: 'crowdsieve/smtp-credential-stuffing'
+  reason: 'Multiple distinct usernames attempted from single IP'
+
+targets:
+  - 'all'  # Push to all LAPI servers
+```
+
+### Whitelist Support
+
+The global whitelist supports:
+- Individual IPs: `192.168.1.1`, `::1`
+- CIDR ranges: `10.0.0.0/8`, `2001:db8::/32`
+- IPv4 and IPv6
+
+Whitelisted IPs are excluded from all analyzer detections, preventing false positives from trusted infrastructure.
+
+### Analyzer Dashboard
+
+The dashboard includes an **Analyzers** page showing:
+- List of configured analyzers and their status
+- Last run results (logs fetched, alerts generated, decisions pushed)
+- Manual trigger for immediate execution
+- Run history and whitelisted counts
+
+### Analyzer API Endpoints
+
+- `GET /api/analyzers` - List all analyzers with status
+- `GET /api/analyzers/:id` - Get analyzer details
+- `GET /api/analyzers/:id/runs` - Get run history
+- `POST /api/analyzers/:id/run` - Trigger manual run
+
 ## Environment Variables
 
 | Variable          | Default                     | Description                                           |
@@ -328,13 +433,17 @@ flowchart LR
     LAPI1[CrowdSec LAPI] --> Proxy
     LAPI2[CrowdSec LAPI] --> Proxy
     Proxy --> CAPI[CrowdSec CAPI<br/>api.crowdsec.net]
+    Loki[Grafana/Loki] --> Analyzers
 
     subgraph CrowdSieve
         Proxy[Proxy :8080]
         DB[(SQLite/PostgreSQL)]
         Dashboard[Dashboard :3000]
+        Analyzers[Log Analyzers]
         Proxy --> DB
         Dashboard --> Proxy
+        Analyzers --> DB
+        Analyzers --> Proxy
     end
 
     Proxy <-.->|Decisions & Bans| LAPI1

@@ -180,6 +180,39 @@ function runSQLiteMigrations(sqlite: Database.Database) {
 
     -- Note: token_hash already has implicit index from UNIQUE constraint
     CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
+
+    -- Analyzer tables
+    CREATE TABLE IF NOT EXISTS analyzer_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      analyzer_id TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      status TEXT NOT NULL,
+      logs_fetched INTEGER DEFAULT 0,
+      alerts_generated INTEGER DEFAULT 0,
+      decisions_pushed INTEGER DEFAULT 0,
+      error_message TEXT,
+      results_json TEXT,
+      push_results_json TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_analyzer_runs_analyzer_id ON analyzer_runs(analyzer_id);
+    CREATE INDEX IF NOT EXISTS idx_analyzer_runs_started_at ON analyzer_runs(started_at);
+
+    CREATE TABLE IF NOT EXISTS analyzer_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id INTEGER NOT NULL REFERENCES analyzer_runs(id) ON DELETE CASCADE,
+      source_ip TEXT NOT NULL,
+      distinct_count INTEGER NOT NULL,
+      total_count INTEGER NOT NULL,
+      first_seen TEXT,
+      last_seen TEXT,
+      decision_pushed INTEGER DEFAULT 0, -- boolean stored as INTEGER (0/1) in SQLite
+      decision_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_analyzer_results_run_id ON analyzer_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_analyzer_results_source_ip ON analyzer_results(source_ip);
   `);
 }
 

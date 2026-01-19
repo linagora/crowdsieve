@@ -8,6 +8,8 @@ import { createStorage } from './storage/index.js';
 import { createProxyServer } from './proxy/server.js';
 import { initGeoIP, lookupIP, closeGeoIP } from './geoip/index.js';
 import { ClientValidator } from './validation/index.js';
+import { initializeAnalyzerEngine, getAnalyzerEngine } from './analyzers/index.js';
+import { createAnalyzerStorage } from './analyzers/storage.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/GeoLite2-City.mmdb';
@@ -41,6 +43,7 @@ async function main() {
     logging: { ...fileConfig.logging, ...envConfig.logging },
     filters: fileConfig.filters, // Filters only from file
     client_validation: { ...fileConfig.client_validation, ...envConfig.client_validation },
+    analyzers: fileConfig.analyzers, // Analyzers only from file
   };
 
   // Initialize logger
@@ -150,6 +153,14 @@ async function main() {
     logger.info({ failClosed: config.client_validation.fail_closed }, 'Client validation enabled');
   }
 
+  // Initialize analyzer engine (if enabled)
+  if (config.analyzers?.enabled) {
+    const analyzerStorage = createAnalyzerStorage();
+    const analyzerEngine = initializeAnalyzerEngine(config, logger, analyzerStorage);
+    await analyzerEngine.initialize();
+    logger.info('Analyzer engine initialized');
+  }
+
   // Create and start proxy server
   const server = await createProxyServer({
     config,
@@ -165,6 +176,13 @@ async function main() {
 
     await server.close();
     logger.info('HTTP server closed');
+
+    // Stop analyzer engine
+    const analyzerEngine = getAnalyzerEngine();
+    if (analyzerEngine) {
+      analyzerEngine.stop();
+      logger.info('Analyzer engine stopped');
+    }
 
     closeGeoIP();
     await closeDatabase();
