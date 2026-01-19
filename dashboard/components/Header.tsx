@@ -8,6 +8,7 @@ const navLinks = [
   { href: '/alerts', label: 'Alerts' },
   { href: '/stats', label: 'Statistics' },
   { href: '/decisions', label: 'Decisions' },
+  { href: '/analyzers', label: 'Analyzers' },
 ];
 
 export function Header() {

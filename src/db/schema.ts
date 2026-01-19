@@ -122,6 +122,50 @@ export const validatedClients = sqliteTable(
   })
 );
 
+// Analyzer run history
+export const analyzerRuns = sqliteTable(
+  'analyzer_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    analyzerId: text('analyzer_id').notNull(),
+    startedAt: text('started_at').notNull(),
+    completedAt: text('completed_at'),
+    status: text('status').notNull(), // 'running', 'success', 'error'
+    logsFetched: integer('logs_fetched').default(0),
+    alertsGenerated: integer('alerts_generated').default(0),
+    decisionsPushed: integer('decisions_pushed').default(0),
+    errorMessage: text('error_message'),
+    resultsJson: text('results_json'), // JSON array of detection results
+    pushResultsJson: text('push_results_json'), // JSON array of push results
+  },
+  (table) => ({
+    analyzerIdIdx: index('idx_analyzer_runs_analyzer_id').on(table.analyzerId),
+    startedAtIdx: index('idx_analyzer_runs_started_at').on(table.startedAt),
+  })
+);
+
+// Analyzer detection results (individual alerts)
+export const analyzerResults = sqliteTable(
+  'analyzer_results',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id')
+      .notNull()
+      .references(() => analyzerRuns.id, { onDelete: 'cascade' }),
+    sourceIp: text('source_ip').notNull(),
+    distinctCount: integer('distinct_count').notNull(),
+    totalCount: integer('total_count').notNull(),
+    firstSeen: text('first_seen'),
+    lastSeen: text('last_seen'),
+    decisionPushed: integer('decision_pushed', { mode: 'boolean' }).default(false),
+    decisionId: text('decision_id'), // ID returned by LAPI
+  },
+  (table) => ({
+    runIdIdx: index('idx_analyzer_results_run_id').on(table.runId),
+    sourceIpIdx: index('idx_analyzer_results_source_ip').on(table.sourceIp),
+  })
+);
+
 // Types for inserting
 export type InsertAlert = typeof alerts.$inferInsert;
 export type SelectAlert = typeof alerts.$inferSelect;
@@ -129,3 +173,7 @@ export type InsertDecision = typeof decisions.$inferInsert;
 export type SelectDecision = typeof decisions.$inferSelect;
 export type InsertValidatedClient = typeof validatedClients.$inferInsert;
 export type SelectValidatedClient = typeof validatedClients.$inferSelect;
+export type InsertAnalyzerRun = typeof analyzerRuns.$inferInsert;
+export type SelectAnalyzerRun = typeof analyzerRuns.$inferSelect;
+export type InsertAnalyzerResult = typeof analyzerResults.$inferInsert;
+export type SelectAnalyzerResult = typeof analyzerResults.$inferSelect;
