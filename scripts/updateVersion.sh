@@ -177,8 +177,9 @@ update_helm_version() {
     return 1
   fi
 
-  # Use sed to update the version line (only the chart version, not appVersion)
+  # Update both version and appVersion to keep them in sync
   sed -i "s/^version: .*/version: $version/" "$file"
+  sed -i "s/^appVersion: .*/appVersion: \"$version\"/" "$file"
 
   echo -e "  ${GREEN}✓${NC} Updated $file"
 }
