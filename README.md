@@ -403,17 +403,9 @@ The dashboard includes an **Analyzers** page showing:
 
 To enable GeoIP enrichment, you need a GeoIP database in MMDB format. Several options are available:
 
-### Option 1: MaxMind GeoLite2 (free, requires account)
+### Option 1: DB-IP Lite (recommended)
 
-1. Create a free account at [MaxMind](https://www.maxmind.com/en/geolite2/signup)
-2. Download `GeoLite2-City.mmdb`
-3. Rename it to `geoip-city.mmdb` and place it in `./data/`
-
-License: [GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula) - Attribution required
-
-### Option 2: DB-IP Lite (free, no account required) - Recommended
-
-Download from [DB-IP Lite](https://db-ip.com/db/download/ip-to-city-lite) (updated monthly, includes IPv4 + IPv6):
+Download from [DB-IP Lite](https://db-ip.com/db/download/ip-to-city-lite) (free, no account required, updated monthly, includes IPv4 + IPv6):
 
 ```bash
 ./scripts/update-geoip.sh
@@ -422,6 +414,14 @@ Download from [DB-IP Lite](https://db-ip.com/db/download/ip-to-city-lite) (updat
 Run this script monthly to keep the database up to date.
 
 License: CC BY 4.0 - Attribution required
+
+### Option 2: MaxMind GeoLite2 (requires account)
+
+1. Create a free account at [MaxMind](https://www.maxmind.com/en/geolite2/signup)
+2. Download `GeoLite2-City.mmdb`
+3. Rename it to `geoip-city.mmdb` and place it in `./data/`
+
+License: [GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula) - Attribution required
 
 ## Development
 
