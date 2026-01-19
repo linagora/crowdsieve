@@ -5,6 +5,14 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-01-19
+
+### Fixed
+
+#### Helm Chart
+
+- **Filter rules schema**: Update default filter rules to use the new schema format (`filter` with `field`/`op` instead of `expression`)
+
 ## [0.1.9] - 2026-01-19
 
 ### Added

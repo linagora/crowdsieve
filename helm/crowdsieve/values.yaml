@@ -207,39 +207,36 @@ crowdsieve:
     rules:
       # Block alerts without decisions
       00-no-decision.yaml: |
-        name: "no-decision"
+        name: no-decision
+        enabled: true
         description: "Block alerts without decisions"
-        expression:
-          empty:
-            field: "decisions"
+        filter:
+          field: decisions
+          op: empty
 
       # Block simulated alerts
       01-simulated.yaml: |
-        name: "simulated"
+        name: simulated
+        enabled: true
         description: "Block simulated alerts"
-        expression:
-          eq:
-            field: "simulated"
-            value: true
+        filter:
+          field: simulated
+          op: eq
+          value: true
 
       # Block internal IP ranges
       10-internal-ips.yaml: |
-        name: "internal-ips"
-        description: "Block alerts from internal IP ranges"
-        expression:
-          or:
-            - cidr:
-                field: "source.ip"
-                value: "10.0.0.0/8"
-            - cidr:
-                field: "source.ip"
-                value: "172.16.0.0/12"
-            - cidr:
-                field: "source.ip"
-                value: "192.168.0.0/16"
-            - cidr:
-                field: "source.ip"
-                value: "127.0.0.0/8"
+        name: internal-ips
+        enabled: true
+        description: "Block internal IP ranges"
+        filter:
+          field: source.ip
+          op: cidr
+          value:
+            - "10.0.0.0/8"
+            - "172.16.0.0/12"
+            - "192.168.0.0/16"
+            - "127.0.0.0/8"
 
   # ---------------------------------------------------------------------------
   # Analyzers Configuration (Log Analysis)
