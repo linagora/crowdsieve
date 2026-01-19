@@ -2,6 +2,34 @@ apiVersion: v1
 entries:
   crowdsieve:
   - apiVersion: v2
+    appVersion: 0.1.10
+    created: "2026-01-19T16:53:40.776906925Z"
+    dependencies:
+    - condition: crowdsec.enabled
+      name: crowdsec
+      repository: https://crowdsecurity.github.io/helm-charts
+      version: 0.17.0
+    description: A Helm chart for deploying CrowdSieve with CrowdSec - filtering proxy
+      for CrowdSec CAPI
+    digest: e2dce1ff1911a6d7f1e6f54a94f54a4821fe8205c0989a716f6a649516486158
+    home: https://github.com/linagora/crowdsieve
+    keywords:
+    - crowdsec
+    - crowdsieve
+    - security
+    - filtering
+    - proxy
+    maintainers:
+    - name: yadd
+      url: https://github.com/linagora/crowdsieve
+    name: crowdsieve
+    sources:
+    - https://github.com/linagora/crowdsieve
+    type: application
+    urls:
+    - https://github.com/linagora/crowdsieve/releases/download/crowdsieve-0.1.10/crowdsieve-0.1.10.tgz
+    version: 0.1.10
+  - apiVersion: v2
     appVersion: 0.1.9
     created: "2026-01-19T16:26:12.09025891Z"
     dependencies:
@@ -281,4 +309,4 @@ entries:
     urls:
     - https://github.com/linagora/crowdsieve/releases/download/crowdsieve-0.1.0/crowdsieve-0.1.0.tgz
     version: 0.1.0
-generated: "2026-01-19T16:26:12.090313351Z"
+generated: "2026-01-19T16:53:40.776957108Z"
