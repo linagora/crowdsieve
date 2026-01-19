@@ -242,6 +242,81 @@ crowdsieve:
                 value: "127.0.0.0/8"
 
   # ---------------------------------------------------------------------------
+  # Analyzers Configuration (Log Analysis)
+  # ---------------------------------------------------------------------------
+  analyzers:
+    # -- Enable log analyzers
+    enabled: false
+    # -- Default interval between analyzer runs
+    defaultInterval: "3h"
+    # -- Default lookback period for log queries
+    defaultLookback: "3h"
+    # -- Default targets for pushing decisions
+    defaultTargets: "all"
+
+    # -- Global whitelist: IPs and CIDR ranges to ignore in all analyzers
+    whitelist:
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+      - "127.0.0.1"
+      - "::1"
+
+    # -- Log sources (referenced by analyzer rules)
+    # Credentials should use environment variable references: ${VAR_NAME}
+    sources: {}
+    # Example:
+    # grafana-prod:
+    #   type: "loki"
+    #   grafana_url: "${GRAFANA_URL}"
+    #   token: "${GRAFANA_TOKEN}"
+    #   datasource_uid: "logs-prod"
+
+    # -- Analyzer rules as YAML (will be placed in analyzers.d/)
+    rules: {}
+    # Example:
+    # smtp-credential-stuffing.yaml: |
+    #   id: "smtp-credential-stuffing"
+    #   name: "SMTP Credential Stuffing Detection"
+    #   enabled: true
+    #   schedule:
+    #     interval: "3h"
+    #     lookback: "3h"
+    #   source:
+    #     ref: "grafana-prod"
+    #     query: '{app="tmail"} |= "SMTP Authentication failed"'
+    #     max_lines: 5000
+    #   extraction:
+    #     format: "json"
+    #     fields:
+    #       source_ip: "mdc.remoteIP"
+    #       username: "mdc.username"
+    #   detection:
+    #     groupby: "source_ip"
+    #     distinct: "username"
+    #     threshold: 6
+    #     operator: ">="
+    #   decision:
+    #     type: "ban"
+    #     duration: "24h"
+    #     scope: "ip"
+    #     scenario: "crowdsieve/smtp-credential-stuffing"
+    #   targets:
+    #     - "all"
+
+    # -- Extra environment variables for analyzer credentials
+    # These will be added to the CrowdSieve container
+    extraEnv: []
+    # Example:
+    # - name: GRAFANA_URL
+    #   value: "https://grafana.example.com"
+    # - name: GRAFANA_TOKEN
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: grafana-credentials
+    #       key: token
+
+  # ---------------------------------------------------------------------------
   # Persistence
   # ---------------------------------------------------------------------------
   persistence:
