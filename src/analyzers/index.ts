@@ -103,24 +103,25 @@ export class AnalyzerEngine {
     // Schedule first run immediately, then at intervals
     const runAnalyzer = async () => {
       await this.runAnalyzer(analyzer);
-      // Update next run time
+      // Update next run time after each execution completes
       this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
     };
 
-    // Run immediately on startup
+    // Run immediately on startup (nextRun will be set after completion)
     runAnalyzer().catch((err) => {
       this.logger.error({ analyzer: analyzer.id, err }, 'Analyzer run failed');
+      // Still set next run time even on failure
+      this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
     });
 
     // Then schedule recurring runs
     const timer = setInterval(() => {
       runAnalyzer().catch((err) => {
         this.logger.error({ analyzer: analyzer.id, err }, 'Analyzer run failed');
+        // Still set next run time even on failure
+        this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
       });
     }, intervalMs);
-
-    // Set initial next run time
-    this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
 
     // Unref to not block process exit
     if (timer.unref) {
