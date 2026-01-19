@@ -88,16 +88,19 @@ export class AnalyzerEngine {
       'Analyzer engine initialized'
     );
 
-    // Start schedulers for each analyzer
-    for (const analyzer of this.analyzers) {
-      this.startScheduler(analyzer);
+    // Start schedulers for each analyzer with staggered initial runs
+    // to avoid thundering herd on Grafana/Loki
+    for (let i = 0; i < this.analyzers.length; i++) {
+      this.startScheduler(this.analyzers[i], i);
     }
   }
 
   /**
    * Start a scheduler for an analyzer
+   * @param analyzer - The analyzer configuration
+   * @param index - Index of the analyzer (used for staggering initial runs)
    */
-  private startScheduler(analyzer: AnalyzerConfig): void {
+  private startScheduler(analyzer: AnalyzerConfig, index: number = 0): void {
     const intervalMs = parseDuration(analyzer.schedule.interval);
 
     // Schedule first run immediately, then at intervals
@@ -107,29 +110,39 @@ export class AnalyzerEngine {
       this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
     };
 
-    // Run immediately on startup (nextRun will be set after completion)
-    runAnalyzer().catch((err) => {
-      this.logger.error({ analyzer: analyzer.id, err }, 'Analyzer run failed');
-      // Still set next run time even on failure
-      this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
-    });
+    // Stagger initial runs to avoid thundering herd on startup
+    // Each analyzer waits (index * 5 seconds) + random jitter (0-5 seconds)
+    const staggerMs = index * 5000 + Math.floor(Math.random() * 5000);
+    this.nextRuns.set(analyzer.id, new Date(Date.now() + staggerMs));
 
-    // Then schedule recurring runs
-    const timer = setInterval(() => {
+    setTimeout(() => {
       runAnalyzer().catch((err) => {
         this.logger.error({ analyzer: analyzer.id, err }, 'Analyzer run failed');
         // Still set next run time even on failure
         this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
       });
-    }, intervalMs);
 
-    // Unref to not block process exit
-    if (timer.unref) {
-      timer.unref();
-    }
+      // Then schedule recurring runs
+      const timer = setInterval(() => {
+        runAnalyzer().catch((err) => {
+          this.logger.error({ analyzer: analyzer.id, err }, 'Analyzer run failed');
+          // Still set next run time even on failure
+          this.nextRuns.set(analyzer.id, new Date(Date.now() + intervalMs));
+        });
+      }, intervalMs);
 
-    this.schedulers.set(analyzer.id, timer);
-    this.logger.info({ analyzer: analyzer.id, intervalMs }, 'Analyzer scheduler started');
+      // Unref to not block process exit
+      if (timer.unref) {
+        timer.unref();
+      }
+
+      this.schedulers.set(analyzer.id, timer);
+    }, staggerMs);
+
+    this.logger.info(
+      { analyzer: analyzer.id, intervalMs, initialDelayMs: staggerMs },
+      'Analyzer scheduler started'
+    );
   }
 
   /**

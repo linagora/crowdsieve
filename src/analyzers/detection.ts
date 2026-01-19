@@ -79,7 +79,9 @@ function expandIPv6(ip: string): string {
       colonParts.pop();
       const hex1 = ((ipv4Parts[0] << 8) | ipv4Parts[1]).toString(16).padStart(4, '0');
       const hex2 = ((ipv4Parts[2] << 8) | ipv4Parts[3]).toString(16).padStart(4, '0');
-      ip = colonParts.join(':') + ':' + hex1 + ':' + hex2;
+      // Handle edge case where prefix is empty (e.g., just an IPv4 address passed incorrectly)
+      const prefix = colonParts.join(':');
+      ip = (prefix || ':') + ':' + hex1 + ':' + hex2;
     }
   }
 

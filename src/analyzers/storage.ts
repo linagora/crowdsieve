@@ -37,7 +37,10 @@ export function createAnalyzerStorage(): AnalyzerStorage {
         result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
       }
 
-      const runId = result?.id || 0;
+      if (!result || typeof result.id !== 'number') {
+        throw new Error('Failed to insert analyzer run: no run ID returned from database');
+      }
+      const runId = result.id;
 
       // Store individual results
       // Note: decisionPushed is set to true if at least one LAPI server successfully received the decisions
