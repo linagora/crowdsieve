@@ -20,7 +20,8 @@ export async function GET(
 
     const data = await res.json();
     return NextResponse.json(data);
-  } catch {
+  } catch (error) {
+    console.error('Error fetching analyzer:', error);
     return NextResponse.json({ error: 'Failed to fetch analyzer' }, { status: 500 });
   }
 }

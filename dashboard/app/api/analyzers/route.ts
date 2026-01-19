@@ -16,7 +16,8 @@ export async function GET() {
 
     const data = await res.json();
     return NextResponse.json(data);
-  } catch {
+  } catch (error) {
+    console.error('Error fetching analyzers:', error);
     return NextResponse.json({ error: 'Failed to fetch analyzers' }, { status: 500 });
   }
 }

@@ -859,7 +859,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const { id } = request.params;
-      const limit = Math.min(parseInt(request.query.limit || '10', 10), 100);
+      const parsedLimit = parseInt(request.query.limit || '10', 10);
+      const limit = Math.min(Math.max(isNaN(parsedLimit) ? 10 : parsedLimit, 1), 100);
 
       const analyzer = engine.getAnalyzer(id);
       if (!analyzer) {

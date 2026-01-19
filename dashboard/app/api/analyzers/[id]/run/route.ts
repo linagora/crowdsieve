@@ -23,7 +23,8 @@ export async function POST(
 
     const data = await res.json();
     return NextResponse.json(data);
-  } catch {
+  } catch (error) {
+    console.error('Error triggering analyzer run:', error);
     return NextResponse.json({ error: 'Failed to trigger analyzer run' }, { status: 500 });
   }
 }

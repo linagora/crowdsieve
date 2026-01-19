@@ -40,10 +40,10 @@ export function createAnalyzerStorage(): AnalyzerStorage {
       const runId = result?.id || 0;
 
       // Store individual results
-      for (const detection of run.results) {
-        // Find if this result was pushed successfully
-        const pushed = run.pushResults.some((pr) => pr.success);
+      // Note: decisionPushed is set to true if at least one LAPI server successfully received the decisions
+      const anyPushSucceeded = run.pushResults.some((pr) => pr.success);
 
+      for (const detection of run.results) {
         const resultInsert = db.insert(schema.analyzerResults).values({
           runId,
           sourceIp: detection.groupValue,
@@ -51,7 +51,7 @@ export function createAnalyzerStorage(): AnalyzerStorage {
           totalCount: detection.totalCount,
           firstSeen: detection.firstSeen,
           lastSeen: detection.lastSeen,
-          decisionPushed: pushed,
+          decisionPushed: anyPushSucceeded,
         } as typeof schema.analyzerResults.$inferInsert);
 
         if (isPostgres) {
@@ -81,18 +81,35 @@ export function createAnalyzerStorage(): AnalyzerStorage {
         rows = (query as unknown as { all(): typeof rows }).all();
       }
 
-      return rows.map((row) => ({
-        analyzerId: row.analyzerId,
-        startedAt: row.startedAt,
-        completedAt: row.completedAt || '',
-        status: row.status as 'success' | 'error',
-        logsFetched: row.logsFetched || 0,
-        alertsGenerated: row.alertsGenerated || 0,
-        decisionsPushed: row.decisionsPushed || 0,
-        errorMessage: row.errorMessage || undefined,
-        results: row.resultsJson ? JSON.parse(row.resultsJson) : [],
-        pushResults: row.pushResultsJson ? JSON.parse(row.pushResultsJson) : [],
-      }));
+      return rows.map((row) => {
+        let results = [];
+        let pushResults = [];
+
+        try {
+          results = row.resultsJson ? JSON.parse(row.resultsJson) : [];
+        } catch {
+          // Corrupted JSON, return empty array
+        }
+
+        try {
+          pushResults = row.pushResultsJson ? JSON.parse(row.pushResultsJson) : [];
+        } catch {
+          // Corrupted JSON, return empty array
+        }
+
+        return {
+          analyzerId: row.analyzerId,
+          startedAt: row.startedAt,
+          completedAt: row.completedAt || '',
+          status: row.status as 'success' | 'error',
+          logsFetched: row.logsFetched || 0,
+          alertsGenerated: row.alertsGenerated || 0,
+          decisionsPushed: row.decisionsPushed || 0,
+          errorMessage: row.errorMessage || undefined,
+          results,
+          pushResults,
+        };
+      });
     },
 
     async getLatestRun(analyzerId) {
