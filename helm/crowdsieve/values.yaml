@@ -193,14 +193,9 @@ crowdsieve:
   # ---------------------------------------------------------------------------
   geoip:
     # -- Enable GeoIP enrichment
+    # Uses DB-IP City Lite (CC BY 4.0) - no account required
+    # https://db-ip.com/db/lite.php
     enabled: false
-    # -- MaxMind license key for downloading GeoLite2-City.mmdb
-    # Get a free license key at https://www.maxmind.com/en/geolite2/signup
-    # NOTE: The license key is stored in a Kubernetes Secret but will be
-    # visible in the init container's environment (pod spec). For sensitive
-    # environments, consider pre-downloading the database and mounting it
-    # via a PVC or using an external secrets manager.
-    maxmindLicenseKey: ""
 
   # ---------------------------------------------------------------------------
   # Filters Configuration

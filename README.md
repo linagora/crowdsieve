@@ -389,7 +389,7 @@ The dashboard includes an **Analyzers** page showing:
 | ----------------- | --------------------------- | ----------------------------------------------------- |
 | `CONFIG_PATH`     | `./config/filters.yaml`     | Path to config file                                   |
 | `DATABASE_PATH`   | `./data/crowdsieve.db`      | Path to SQLite database                               |
-| `GEOIP_DB_PATH`   | `./data/GeoLite2-City.mmdb` | Path to GeoIP database                                |
+| `GEOIP_DB_PATH`   | `./data/geoip-city.mmdb`    | Path to GeoIP database                                |
 | `PROXY_PORT`      | `8080`                      | Proxy listen port                                     |
 | `DASHBOARD_PORT`  | `3000`                      | Dashboard listen port                                 |
 | `LOG_LEVEL`       | `info`                      | Log level (debug, info, warn, error)                  |
@@ -401,11 +401,27 @@ The dashboard includes an **Analyzers** page showing:
 
 ## GeoIP Database
 
-To enable GeoIP enrichment, download the MaxMind GeoLite2-City database:
+To enable GeoIP enrichment, you need a GeoIP database in MMDB format. Several options are available:
+
+### Option 1: MaxMind GeoLite2 (free, requires account)
 
 1. Create a free account at [MaxMind](https://www.maxmind.com/en/geolite2/signup)
 2. Download `GeoLite2-City.mmdb`
-3. Place it in `./data/GeoLite2-City.mmdb`
+3. Rename it to `geoip-city.mmdb` and place it in `./data/`
+
+License: [GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula) - Attribution required
+
+### Option 2: DB-IP Lite (free, no account required) - Recommended
+
+Download from [DB-IP Lite](https://db-ip.com/db/download/ip-to-city-lite) (updated monthly, includes IPv4 + IPv6):
+
+```bash
+./scripts/update-geoip.sh
+```
+
+Run this script monthly to keep the database up to date.
+
+License: CC BY 4.0 - Attribution required
 
 ## Development
 

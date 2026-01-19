@@ -12,7 +12,7 @@ import { initializeAnalyzerEngine, getAnalyzerEngine } from './analyzers/index.j
 import { createAnalyzerStorage } from './analyzers/storage.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
-const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/GeoLite2-City.mmdb';
+const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/geoip-city.mmdb';
 
 /**
  * Generate a secure random API key if not provided.

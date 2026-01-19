@@ -96,7 +96,7 @@ USER crowdsec
 ENV NODE_ENV=production
 ENV CONFIG_PATH=/app/config/filters.yaml
 ENV DATABASE_PATH=/app/data/crowdsieve.db
-ENV GEOIP_DB_PATH=/app/data/GeoLite2-City.mmdb
+ENV GEOIP_DB_PATH=/app/data/geoip-city.mmdb
 ENV PROXY_PORT=8080
 ENV DASHBOARD_PORT=3000
 ENV HOSTNAME=0.0.0.0

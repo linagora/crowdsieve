@@ -42,25 +42,15 @@ spec:
           command:
             - sh
             - -c
-            # NOTE: MaxMind does not provide checksums for GeoLite2 free databases.
-            # The download is done over HTTPS which provides transport security.
-            # For additional integrity verification, consider using a paid GeoIP2
-            # database which includes SHA256 checksums.
             - |
-              if [ ! -f /data/GeoLite2-City.mmdb ]; then
-                echo "Downloading GeoLite2-City.mmdb..."
-                curl -sL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz" | tar -xzf - --strip-components=1 -C /tmp
-                mv /tmp/GeoLite2-City.mmdb /data/
+              if [ ! -f /data/geoip-city.mmdb ]; then
+                YEAR_MONTH=$(date +%Y-%m)
+                echo "Downloading DB-IP City Lite ($YEAR_MONTH)..."
+                curl -fsSL "https://download.db-ip.com/free/dbip-city-lite-${YEAR_MONTH}.mmdb.gz" | gunzip > /data/geoip-city.mmdb
                 echo "GeoIP database downloaded successfully"
               else
                 echo "GeoIP database already exists"
               fi
-          env:
-            - name: MAXMIND_LICENSE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "crowdsieve.fullname" . }}-geoip
-                  key: license-key
           volumeMounts:
             - name: data
               mountPath: /data
@@ -146,7 +136,7 @@ spec:
             # GeoIP configuration
             {{- if .Values.crowdsieve.geoip.enabled }}
             - name: GEOIP_DB_PATH
-              value: "/app/data/GeoLite2-City.mmdb"
+              value: "/app/data/geoip-city.mmdb"
             {{- end }}
             # Rate limiting
             - name: RATE_LIMIT_MAX

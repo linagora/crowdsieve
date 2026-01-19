@@ -133,8 +133,7 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.storage.postgres.poolSize` | Connection pool size | `10` |
 | `crowdsieve.storage.postgres.existingSecret` | Use existing secret | `""` |
 | `crowdsieve.storage.postgres.passwordKey` | Key in existing secret | `password` |
-| `crowdsieve.geoip.enabled` | Enable GeoIP enrichment | `false` |
-| `crowdsieve.geoip.maxmindLicenseKey` | MaxMind license key | `""` |
+| `crowdsieve.geoip.enabled` | Enable GeoIP enrichment (uses DB-IP City Lite) | `false` |
 | `crowdsieve.persistence.enabled` | Enable persistence | `true` |
 | `crowdsieve.persistence.size` | PVC size | `1Gi` |
 | `crowdsieve.filters.mode` | Filter mode: `block` or `allow` | `block` |
@@ -495,20 +494,15 @@ crowdsec:
 
 ### GeoIP Enrichment
 
-To enable GeoIP enrichment, you need a MaxMind license key:
-
-1. Sign up at https://www.maxmind.com/en/geolite2/signup
-2. Generate a license key in your account
-3. Add it to your values:
+To enable GeoIP enrichment using [DB-IP City Lite](https://db-ip.com/db/lite.php) (CC BY 4.0, no account required):
 
 ```yaml
 crowdsieve:
   geoip:
     enabled: true
-    maxmindLicenseKey: "your-license-key"
 ```
 
-The GeoIP database will be downloaded automatically during pod initialization.
+The database is downloaded automatically during pod initialization and updated on each pod restart.
 
 ### Dashboard LAPI Integration
 
