@@ -136,7 +136,11 @@ const AnalyzersGlobalConfigSchema = z.object({
   config_dir: z.string().default('./config/analyzers.d'),
   default_interval: z.string().regex(DurationRegex).default('3h'),
   default_lookback: z.string().regex(DurationRegex).default('3h'),
-  default_targets: z.union([z.literal('all'), z.array(z.string())]).default('all'),
+  // default_targets accepts 'all' or array, but normalizes to array for type consistency
+  default_targets: z
+    .union([z.literal('all'), z.array(z.string())])
+    .default('all')
+    .transform((val) => (val === 'all' ? ['all'] : val)),
   // Global whitelist: IPs and CIDR ranges to ignore in all analyzers
   whitelist: z.array(z.string()).default([]),
   sources: z.record(SourceSchema).default({}),
