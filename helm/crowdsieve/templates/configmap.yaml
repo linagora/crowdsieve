@@ -54,4 +54,28 @@ data:
         {{- end }}
       {{- end }}
     {{- end }}
+
+    {{- if .Values.crowdsieve.analyzers.enabled }}
+    analyzers:
+      enabled: true
+      config_dir: "/app/config/analyzers.d"
+      default_interval: {{ .Values.crowdsieve.analyzers.defaultInterval | quote }}
+      default_lookback: {{ .Values.crowdsieve.analyzers.defaultLookback | quote }}
+      default_targets: {{ .Values.crowdsieve.analyzers.defaultTargets | quote }}
+      {{- if .Values.crowdsieve.analyzers.whitelist }}
+      whitelist:
+        {{- range .Values.crowdsieve.analyzers.whitelist }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.crowdsieve.analyzers.sources }}
+      sources:
+        {{- range $name, $source := .Values.crowdsieve.analyzers.sources }}
+        {{ $name }}:
+          {{- range $fieldName, $fieldVal := $source }}
+          {{ $fieldName }}: {{ $fieldVal | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
 {{- end }}

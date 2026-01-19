@@ -492,6 +492,62 @@ crowdsec:
 
 > **Note:** The `AGENT_USERNAME` and `AGENT_PASSWORD` environment variables are conventions supported by the official CrowdSec Docker image for configuring agent authentication credentials.
 
+### Log Analyzers
+
+CrowdSieve can periodically fetch logs from Grafana/Loki, apply detection rules, and push ban decisions to your CrowdSec LAPI servers.
+
+```yaml
+crowdsieve:
+  analyzers:
+    enabled: true
+
+    # Define log sources
+    sources:
+      grafana-prod:
+        type: "loki"
+        grafana_url: "${GRAFANA_URL}"
+        token: "${GRAFANA_TOKEN}"
+        datasource_uid: "logs-prod"
+
+    # Analyzer rules
+    rules:
+      smtp-credential-stuffing.yaml: |
+        id: "smtp-credential-stuffing"
+        name: "SMTP Credential Stuffing Detection"
+        enabled: true
+        schedule:
+          interval: "3h"
+          lookback: "3h"
+        source:
+          ref: "grafana-prod"
+          query: '{app="tmail"} |= "SMTP Authentication failed"'
+          max_lines: 5000
+        extraction:
+          format: "json"
+          fields:
+            source_ip: "mdc.remoteIP"
+            username: "mdc.username"
+        detection:
+          groupby: "source_ip"
+          distinct: "username"
+          threshold: 6
+          operator: ">="
+        decision:
+          type: "ban"
+          duration: "24h"
+          scope: "ip"
+          scenario: "crowdsieve/smtp-credential-stuffing"
+        targets:
+          - "all"
+
+    # Grafana credentials (creates a Secret automatically)
+    grafana:
+      url: "https://grafana.example.com"
+      token: "glsa_xxx"
+```
+
+> **Note:** The `grafana` config creates a Secret and injects `GRAFANA_URL` and `GRAFANA_TOKEN` environment variables automatically. These names must match the `${GRAFANA_URL}` and `${GRAFANA_TOKEN}` placeholders used in the sources configuration.
+
 ### GeoIP Enrichment
 
 To enable GeoIP enrichment using [DB-IP City Lite](https://db-ip.com/db/lite.php) (CC BY 4.0, no account required):
