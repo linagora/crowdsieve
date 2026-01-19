@@ -249,9 +249,6 @@ export function parseAnalyzersGlobalConfig(config: unknown): AnalyzersGlobalConf
 /**
  * Resolve a source reference to an actual source configuration
  */
-export function resolveSource(
-  ref: string,
-  sources: Record<string, Source>
-): Source | null {
+export function resolveSource(ref: string, sources: Record<string, Source>): Source | null {
   return sources[ref] || null;
 }

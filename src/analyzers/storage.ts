@@ -74,7 +74,7 @@ export function createAnalyzerStorage(): AnalyzerStorage {
         .orderBy(desc(schema.analyzerRuns.startedAt))
         .limit(limit);
 
-      let rows: typeof schema.analyzerRuns.$inferSelect[];
+      let rows: (typeof schema.analyzerRuns.$inferSelect)[];
       if (isPostgres) {
         rows = await query;
       } else {

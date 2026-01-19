@@ -51,11 +51,7 @@ export class AnalyzerEngine {
   private lastRuns: Map<string, AnalyzerRunResult> = new Map();
   private nextRuns: Map<string, Date> = new Map();
 
-  constructor(
-    config: Config,
-    logger: Logger,
-    storage?: AnalyzerStorage
-  ) {
+  constructor(config: Config, logger: Logger, storage?: AnalyzerStorage) {
     this.globalConfig = config.analyzers as AnalyzersGlobalConfig;
     this.sources = this.globalConfig.sources || {};
     this.lapiServers = config.lapi_servers || [];
@@ -132,10 +128,7 @@ export class AnalyzerEngine {
     }
 
     this.schedulers.set(analyzer.id, timer);
-    this.logger.info(
-      { analyzer: analyzer.id, intervalMs },
-      'Analyzer scheduler started'
-    );
+    this.logger.info({ analyzer: analyzer.id, intervalMs }, 'Analyzer scheduler started');
   }
 
   /**
@@ -166,10 +159,7 @@ export class AnalyzerEngine {
         throw new Error(`Failed to fetch logs: ${fetchResult.error}`);
       }
 
-      this.logger.info(
-        { analyzer: analyzer.id, logs: fetchResult.logs.length },
-        'Logs fetched'
-      );
+      this.logger.info({ analyzer: analyzer.id, logs: fetchResult.logs.length }, 'Logs fetched');
 
       // Analyze logs (with global whitelist)
       const whitelist = this.globalConfig.whitelist || [];
@@ -269,10 +259,7 @@ export class AnalyzerEngine {
         await this.storage.storeAnalyzerRun(result);
       }
 
-      this.logger.error(
-        { analyzer: analyzer.id, error: errorMessage },
-        'Analyzer run failed'
-      );
+      this.logger.error({ analyzer: analyzer.id, error: errorMessage }, 'Analyzer run failed');
 
       return result;
     }

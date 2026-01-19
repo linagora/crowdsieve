@@ -141,7 +141,11 @@ async function pushToServer(
   server: LapiServer,
   alerts: object[],
   timeoutMs: number,
-  logger: { error: (obj: object, msg: string) => void; debug: (obj: object, msg: string) => void; info: (obj: object, msg: string) => void }
+  logger: {
+    error: (obj: object, msg: string) => void;
+    debug: (obj: object, msg: string) => void;
+    info: (obj: object, msg: string) => void;
+  }
 ): Promise<PushResult> {
   // Check if machine credentials are configured
   if (!server.machine_id || !server.password) {
@@ -240,17 +244,20 @@ export async function pushDecisions(
   targets: string[],
   lapiServers: LapiServer[],
   timeoutMs: number,
-  logger: { error: (obj: object, msg: string) => void; debug: (obj: object, msg: string) => void; info: (obj: object, msg: string) => void }
+  logger: {
+    error: (obj: object, msg: string) => void;
+    debug: (obj: object, msg: string) => void;
+    info: (obj: object, msg: string) => void;
+  }
 ): Promise<PushResult[]> {
   if (results.length === 0) {
     return [];
   }
 
   // Determine which servers to push to
-  const targetServers =
-    targets.includes('all')
-      ? lapiServers.filter((s) => s.machine_id && s.password)
-      : lapiServers.filter((s) => targets.includes(s.name) && s.machine_id && s.password);
+  const targetServers = targets.includes('all')
+    ? lapiServers.filter((s) => s.machine_id && s.password)
+    : lapiServers.filter((s) => targets.includes(s.name) && s.machine_id && s.password);
 
   if (targetServers.length === 0) {
     logger.error(

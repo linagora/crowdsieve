@@ -45,7 +45,7 @@ function parseCIDR(cidr: string): { ip: string; prefixLength: number } | null {
 function ipToBigInt(ip: string): bigint {
   if (net.isIPv4(ip)) {
     const parts = ip.split('.').map(Number);
-    return BigInt(parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]);
+    return BigInt((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]);
   } else if (net.isIPv6(ip)) {
     // Expand IPv6 to full form
     const expanded = expandIPv6(ip);
@@ -83,10 +83,13 @@ function expandIPv6(ip: string): string {
     const missing = 8 - left.length - right.length;
     const middle = Array(missing).fill('0000');
     const full = [...left, ...middle, ...right];
-    return full.map(p => p.padStart(4, '0')).join(':');
+    return full.map((p) => p.padStart(4, '0')).join(':');
   }
 
-  return ip.split(':').map(p => p.padStart(4, '0')).join(':');
+  return ip
+    .split(':')
+    .map((p) => p.padStart(4, '0'))
+    .join(':');
 }
 
 /**
@@ -107,7 +110,10 @@ function isIPInCIDR(ip: string, cidr: string): boolean {
 
   const bits = isIPv4 ? 32 : 128;
   const shift = BigInt(bits - parsed.prefixLength);
-  const mask = shift >= BigInt(bits) ? BigInt(0) : ((BigInt(1) << BigInt(bits)) - BigInt(1)) ^ ((BigInt(1) << shift) - BigInt(1));
+  const mask =
+    shift >= BigInt(bits)
+      ? BigInt(0)
+      : ((BigInt(1) << BigInt(bits)) - BigInt(1)) ^ ((BigInt(1) << shift) - BigInt(1));
 
   return (ipNum & mask) === (cidrNum & mask);
 }
@@ -141,11 +147,7 @@ export function isWhitelisted(ip: string, whitelist: string[]): boolean {
 /**
  * Compare a value against a threshold using the specified operator
  */
-function compareWithThreshold(
-  value: number,
-  threshold: number,
-  operator: string
-): boolean {
+function compareWithThreshold(value: number, threshold: number, operator: string): boolean {
   switch (operator) {
     case '>':
       return value > threshold;

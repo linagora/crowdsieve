@@ -129,15 +129,11 @@ function AnalyzerCard({
           )}
         </div>
       ) : (
-        <div className="border-t pt-3 mt-3 text-sm text-gray-500 italic">
-          No runs yet
-        </div>
+        <div className="border-t pt-3 mt-3 text-sm text-gray-500 italic">No runs yet</div>
       )}
 
       {analyzer.nextRun && (
-        <div className="mt-3 text-xs text-gray-500">
-          Next run: {formatDate(analyzer.nextRun)}
-        </div>
+        <div className="mt-3 text-xs text-gray-500">Next run: {formatDate(analyzer.nextRun)}</div>
       )}
 
       <button
@@ -196,15 +192,13 @@ export function AnalyzersContent({ data }: AnalyzersContentProps) {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
           <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Analyzer Engine Disabled
-          </h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Analyzer Engine Disabled</h2>
           <p className="text-gray-600">
             The analyzer engine is not enabled. Add the following to your{' '}
             <code className="bg-gray-100 px-2 py-1 rounded">config/filters.yaml</code>:
           </p>
           <pre className="mt-4 bg-gray-800 text-green-400 p-4 rounded text-left text-sm overflow-x-auto">
-{`analyzers:
+            {`analyzers:
   enabled: true
   config_dir: "./config/analyzers.d"
   sources:
@@ -225,9 +219,7 @@ export function AnalyzersContent({ data }: AnalyzersContentProps) {
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Analyzers</h1>
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
           <Activity className="w-12 h-12 text-blue-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            No Analyzers Configured
-          </h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">No Analyzers Configured</h2>
           <p className="text-gray-600">
             Create analyzer configuration files in{' '}
             <code className="bg-gray-100 px-2 py-1 rounded">config/analyzers.d/</code>

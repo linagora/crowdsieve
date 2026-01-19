@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { apiBase } = getApiConfig();
   const { id } = await params;
   const searchParams = request.nextUrl.searchParams;

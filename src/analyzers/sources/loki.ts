@@ -35,10 +35,7 @@ function getNestedValue(obj: unknown, path: string): unknown {
 /**
  * Extract configured fields from a parsed JSON log entry
  */
-function extractFields(
-  parsed: unknown,
-  extraction: Extraction
-): Record<string, unknown> {
+function extractFields(parsed: unknown, extraction: Extraction): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const [outputField, sourcePath] of Object.entries(extraction.fields)) {

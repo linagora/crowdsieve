@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { apiBase } = getApiConfig();
   const { id } = await params;
 
@@ -15,10 +12,7 @@ export async function POST(
     });
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: 'Failed to trigger analyzer run' },
-        { status: res.status }
-      );
+      return NextResponse.json({ error: 'Failed to trigger analyzer run' }, { status: res.status });
     }
 
     const data = await res.json();
