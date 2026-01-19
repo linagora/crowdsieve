@@ -45,7 +45,14 @@ function parseCIDR(cidr: string): { ip: string; prefixLength: number } | null {
 function ipToBigInt(ip: string): bigint {
   if (net.isIPv4(ip)) {
     const parts = ip.split('.').map(Number);
-    return BigInt((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]);
+    // Use BigInt arithmetic to avoid signed 32-bit integer overflow issues
+    // (e.g., 192.168.1.1 would produce negative number with bitwise ops)
+    return (
+      (BigInt(parts[0]) << BigInt(24)) +
+      (BigInt(parts[1]) << BigInt(16)) +
+      (BigInt(parts[2]) << BigInt(8)) +
+      BigInt(parts[3])
+    );
   } else if (net.isIPv6(ip)) {
     // Expand IPv6 to full form
     const expanded = expandIPv6(ip);
