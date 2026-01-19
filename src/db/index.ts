@@ -207,7 +207,7 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       total_count INTEGER NOT NULL,
       first_seen TEXT,
       last_seen TEXT,
-      decision_pushed INTEGER DEFAULT 0,
+      decision_pushed INTEGER DEFAULT 0, -- boolean stored as INTEGER (0/1) in SQLite
       decision_id TEXT
     );
 

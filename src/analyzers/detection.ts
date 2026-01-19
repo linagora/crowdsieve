@@ -63,14 +63,17 @@ function ipToBigInt(ip: string): bigint {
  * Expand an IPv6 address to full form (8 groups of 4 hex digits)
  */
 function expandIPv6(ip: string): string {
-  // Handle IPv4-mapped IPv6
-  if (ip.includes('.')) {
-    const parts = ip.split(':');
-    const ipv4 = parts.pop()!;
-    const ipv4Parts = ipv4.split('.').map(Number);
-    const hex1 = ((ipv4Parts[0] << 8) | ipv4Parts[1]).toString(16).padStart(4, '0');
-    const hex2 = ((ipv4Parts[2] << 8) | ipv4Parts[3]).toString(16).padStart(4, '0');
-    ip = parts.join(':') + ':' + hex1 + ':' + hex2;
+  // Handle IPv4-mapped IPv6 (e.g., ::ffff:192.168.1.1)
+  const colonParts = ip.split(':');
+  const lastPart = colonParts[colonParts.length - 1];
+  if (lastPart && lastPart.includes('.')) {
+    const ipv4Parts = lastPart.split('.').map(Number);
+    if (ipv4Parts.length === 4 && ipv4Parts.every((p) => p >= 0 && p <= 255)) {
+      colonParts.pop();
+      const hex1 = ((ipv4Parts[0] << 8) | ipv4Parts[1]).toString(16).padStart(4, '0');
+      const hex2 = ((ipv4Parts[2] << 8) | ipv4Parts[3]).toString(16).padStart(4, '0');
+      ip = colonParts.join(':') + ':' + hex1 + ':' + hex2;
+    }
   }
 
   const parts = ip.split('::');

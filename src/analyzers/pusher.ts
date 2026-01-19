@@ -82,7 +82,8 @@ async function getMachineToken(
 function buildAlertPayload(
   results: DetectionResult[],
   decision: Decision,
-  analyzerId: string
+  analyzerId: string,
+  analyzerVersion: string
 ): object[] {
   const timestamp = new Date().toISOString();
   const scenarioHash = createHash('sha256').update(decision.scenario).digest('hex');
@@ -90,7 +91,7 @@ function buildAlertPayload(
   return results.map((result) => ({
     scenario: decision.scenario,
     scenario_hash: scenarioHash,
-    scenario_version: CROWDSIEVE_VERSION,
+    scenario_version: analyzerVersion,
     message: `${decision.reason} (${result.distinctCount} distinct values)`,
     events_count: result.totalCount,
     start_at: result.firstSeen,
@@ -225,6 +226,7 @@ async function pushToServer(
  * @param results - Detection results to push
  * @param decision - Decision configuration
  * @param analyzerId - Analyzer ID for tracking
+ * @param analyzerVersion - Analyzer version for scenario_version
  * @param targets - Target servers ("all" or specific server names)
  * @param lapiServers - Available LAPI servers
  * @param timeoutMs - Request timeout in milliseconds
@@ -234,6 +236,7 @@ export async function pushDecisions(
   results: DetectionResult[],
   decision: Decision,
   analyzerId: string,
+  analyzerVersion: string,
   targets: string[],
   lapiServers: LapiServer[],
   timeoutMs: number,
@@ -258,7 +261,7 @@ export async function pushDecisions(
   }
 
   // Build alert payloads
-  const alerts = buildAlertPayload(results, decision, analyzerId);
+  const alerts = buildAlertPayload(results, decision, analyzerId, analyzerVersion);
 
   // Push to all target servers in parallel
   const pushResults = await Promise.all(

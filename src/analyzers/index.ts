@@ -188,12 +188,12 @@ export class AnalyzerEngine {
       // Push decisions if there are alerts
       let pushResults: PushResult[] = [];
       if (analysisResult.alerts.length > 0) {
-        const targets = analyzer.targets.length > 0 ? analyzer.targets : ['all'];
         pushResults = await pushDecisions(
           analysisResult.alerts,
           analyzer.decision,
           analyzer.id,
-          targets,
+          analyzer.version,
+          analyzer.targets,
           this.lapiServers,
           this.timeoutMs,
           this.logger
