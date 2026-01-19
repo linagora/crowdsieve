@@ -39,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `POST /api/analyzers/:id/run` - Trigger manual run
 - **Database tables**: New `analyzer_runs` and `analyzer_results` tables for run history persistence
 - **Staggered startup**: Analyzers start with progressive delays to avoid thundering herd on Grafana/Loki
+- **GeoIP update script**: New `scripts/update-geoip.sh` for downloading DB-IP database
+
+### Changed
+
+- **GeoIP database**: Switch from MaxMind GeoLite2 to DB-IP Lite (CC BY 4.0)
+  - No account or license key required
+  - Rename default file from `GeoLite2-City.mmdb` to `geoip-city.mmdb`
+  - Helm chart downloads DB-IP on first pod start (no `maxmindLicenseKey` needed)
 
 ## [0.1.7] - 2026-01-16
 
