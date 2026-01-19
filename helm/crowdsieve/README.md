@@ -540,16 +540,13 @@ crowdsieve:
         targets:
           - "all"
 
-    # Environment variables for credentials
-    extraEnv:
-      - name: GRAFANA_URL
-        value: "https://grafana.example.com"
-      - name: GRAFANA_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: grafana-credentials
-            key: token
+    # Grafana credentials (creates a Secret automatically)
+    grafana:
+      url: "https://grafana.example.com"
+      token: "glsa_xxx"
 ```
+
+> **Note:** The `grafana` config creates a Secret and injects `GRAFANA_URL` and `GRAFANA_TOKEN` environment variables automatically. These names must match the `${GRAFANA_URL}` and `${GRAFANA_TOKEN}` placeholders used in the sources configuration.
 
 ### GeoIP Enrichment
 

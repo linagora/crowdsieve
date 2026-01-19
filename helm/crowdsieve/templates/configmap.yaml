@@ -72,10 +72,9 @@ data:
       sources:
         {{- range $name, $source := .Values.crowdsieve.analyzers.sources }}
         {{ $name }}:
-          type: {{ $source.type | quote }}
-          grafana_url: {{ $source.grafana_url | quote }}
-          token: {{ $source.token | quote }}
-          datasource_uid: {{ $source.datasource_uid | quote }}
+          {{- range $fieldName, $fieldVal := $source }}
+          {{ $fieldName }}: {{ $fieldVal | quote }}
+          {{- end }}
         {{- end }}
       {{- end }}
     {{- end }}

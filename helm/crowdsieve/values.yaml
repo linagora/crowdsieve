@@ -304,17 +304,21 @@ crowdsieve:
     #   targets:
     #     - "all"
 
+    # -- Grafana credentials for Loki sources (creates a Secret)
+    # When set, a Secret named <release>-crowdsieve-grafana is created
+    # and GRAFANA_URL/GRAFANA_TOKEN env vars are automatically added
+    grafana: {}
+    # Example:
+    # grafana:
+    #   url: "https://grafana.example.com"
+    #   token: "glsa_xxx"
+
     # -- Extra environment variables for analyzer credentials
     # These will be added to the CrowdSieve container
     extraEnv: []
     # Example:
-    # - name: GRAFANA_URL
-    #   value: "https://grafana.example.com"
-    # - name: GRAFANA_TOKEN
-    #   valueFrom:
-    #     secretKeyRef:
-    #       name: grafana-credentials
-    #       key: token
+    # - name: CUSTOM_VAR
+    #   value: "value"
 
   # ---------------------------------------------------------------------------
   # Persistence

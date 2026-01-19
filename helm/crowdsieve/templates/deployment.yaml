@@ -194,9 +194,24 @@ spec:
               value: "production"
             - name: HOSTNAME
               value: "0.0.0.0"
+            {{- if .Values.crowdsieve.analyzers.enabled }}
+            {{- if .Values.crowdsieve.analyzers.grafana }}
+            # Grafana credentials for analyzers
+            - name: GRAFANA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crowdsieve.fullname" . }}-grafana
+                  key: url
+            - name: GRAFANA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crowdsieve.fullname" . }}-grafana
+                  key: token
+            {{- end }}
             {{- with .Values.crowdsieve.analyzers.extraEnv }}
-            # Analyzer environment variables
+            # Extra analyzer environment variables
             {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- end }}
           livenessProbe:
             httpGet:
@@ -224,7 +239,7 @@ spec:
             - name: filters
               mountPath: /app/config/filters.d
               readOnly: true
-            {{- if and .Values.crowdsieve.analyzers.enabled .Values.crowdsieve.analyzers.rules }}
+            {{- if .Values.crowdsieve.analyzers.enabled }}
             - name: analyzers
               mountPath: /app/config/analyzers.d
               readOnly: true
@@ -238,7 +253,7 @@ spec:
         - name: filters
           configMap:
             name: {{ include "crowdsieve.fullname" . }}-filters
-        {{- if and .Values.crowdsieve.analyzers.enabled .Values.crowdsieve.analyzers.rules }}
+        {{- if .Values.crowdsieve.analyzers.enabled }}
         - name: analyzers
           configMap:
             name: {{ include "crowdsieve.fullname" . }}-analyzers
