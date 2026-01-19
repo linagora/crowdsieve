@@ -217,7 +217,8 @@ export function analyze(
 
     group.count++;
 
-    // Track timestamps
+    // Track timestamps (string comparison works because timestamps are ISO 8601 format,
+    // which is lexicographically sortable: "2024-01-01T00:00:00Z" < "2024-01-02T00:00:00Z")
     if (log.timestamp < group.firstSeen) {
       group.firstSeen = log.timestamp;
     }
