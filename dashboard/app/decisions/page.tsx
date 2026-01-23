@@ -70,13 +70,21 @@ function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardPro
           )}
         </div>
       </div>
-      <div className="mt-2 text-sm text-slate-600 flex gap-4">
-        <span>Duration: {decision.duration}</span>
-        {decision.until && (
-          <span>
-            {isExpired ? 'Expired' : 'Until'}: {new Date(decision.until).toLocaleString()}
+      <div className="mt-2 text-sm text-slate-600 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-medium">
+            {decision.scope}
           </span>
-        )}
+          <span className="font-mono">{decision.value}</span>
+        </div>
+        <div className="flex gap-4">
+          <span>Duration: {decision.duration}</span>
+          {decision.until && (
+            <span>
+              {isExpired ? 'Expired' : 'Until'}: {new Date(decision.until).toLocaleString()}
+            </span>
+          )}
+        </div>
       </div>
       {deleteError && <p className="mt-2 text-sm text-red-600">{deleteError}</p>}
     </div>
