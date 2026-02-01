@@ -5,6 +5,15 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-01
+
+### Added
+
+#### Dashboard
+
+- **Network/CIDR ban support**: Ban IP ranges using CIDR notation (e.g., 192.168.0.0/24) from the dashboard ban form
+- **Decision scope display**: Decision cards now display scope (ip/range) and value
+
 ## [0.1.10] - 2026-01-19
 
 ### Fixed
@@ -118,10 +127,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Dashboard environment variables in Docker**: Environment variables (`DASHBOARD_API_KEY`, `API_URL`) are now properly read at runtime instead of build time, fixing configuration issues in Docker standalone mode
 - **Dashboard error display**: Dashboard now shows clear error messages when API key is missing or rejected, instead of silently failing
-
-### Added
-
-- Security tests for batch size limit enforcement, IP address validation, fail-secure behavior, and CSRF protection
 
 ### Changed
 
