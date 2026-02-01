@@ -22,7 +22,9 @@ export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
  * Validate and parse an IP address or CIDR notation
  * Returns { valid: true, scope: 'ip'|'range', value: string } or { valid: false }
  */
-export function parseIpOrCidr(input: string): { valid: true; scope: 'ip' | 'range'; value: string } | { valid: false } {
+export function parseIpOrCidr(
+  input: string
+): { valid: true; scope: 'ip' | 'range'; value: string } | { valid: false } {
   const trimmed = input.trim();
 
   // Check for CIDR notation (contains /)
@@ -719,7 +721,10 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Post to LAPI /v1/alerts
       const lapiUrl = `${lapiServer.url}/v1/alerts`;
-      logger.info({ server: lapiServer.name, target: targetValue, scope: targetScope, duration }, 'Posting manual ban alert to LAPI');
+      logger.info(
+        { server: lapiServer.name, target: targetValue, scope: targetScope, duration },
+        'Posting manual ban alert to LAPI'
+      );
 
       const response = await fetch(lapiUrl, {
         method: 'POST',
@@ -745,7 +750,10 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const result = await response.json();
-      logger.info({ server: lapiServer.name, target: targetValue, scope: targetScope, result }, 'Manual ban alert posted successfully');
+      logger.info(
+        { server: lapiServer.name, target: targetValue, scope: targetScope, result },
+        'Manual ban alert posted successfully'
+      );
 
       return reply.send({
         success: true,
