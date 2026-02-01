@@ -20,6 +20,16 @@ describe('parseIpOrCidr', () => {
   });
 
   describe('valid CIDR', () => {
+    it('should parse IPv4 CIDR with whitespace', () => {
+      const result = parseIpOrCidr('  192.168.1.0/24  ');
+      expect(result).toEqual({ valid: true, scope: 'range', value: '192.168.1.0/24' });
+    });
+
+    it('should parse IPv6 CIDR with whitespace', () => {
+      const result = parseIpOrCidr('  2001:db8::/32  ');
+      expect(result).toEqual({ valid: true, scope: 'range', value: '2001:db8::/32' });
+    });
+
     it('should parse IPv4 CIDR', () => {
       const result = parseIpOrCidr('192.168.1.0/24');
       expect(result).toEqual({ valid: true, scope: 'range', value: '192.168.1.0/24' });
