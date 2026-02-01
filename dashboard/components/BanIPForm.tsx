@@ -120,8 +120,8 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
         setResult({
           success: allSuccess,
           message: allSuccess
-            ? `IP ${ip} banned on all ${results.length} servers`
-            : `IP ${ip} banned on ${successCount}/${results.length} servers`,
+            ? `${ip} banned on all ${results.length} servers`
+            : `${ip} banned on ${successCount}/${results.length} servers`,
           details: results,
         });
 
@@ -233,17 +233,20 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
 
         <div>
           <label htmlFor="ip" className="block text-sm font-medium text-slate-700 mb-1">
-            IP Address
+            IP Address or Network
           </label>
           <input
             type="text"
             id="ip"
             value={ip}
             onChange={(e) => setIp(e.target.value)}
-            placeholder="192.168.1.1 or 2001:db8::1"
+            placeholder="192.168.1.1, 2001:db8::1, or 10.0.0.0/8"
             className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary font-mono"
             required
           />
+          <p className="text-xs text-slate-500 mt-1">
+            Supports single IPs or CIDR notation (e.g., 192.168.1.0/24)
+          </p>
         </div>
 
         <div>
@@ -327,7 +330,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
           ) : (
             <>
               <Ban className="w-4 h-4 mr-2" />
-              Ban IP
+              Ban
             </>
           )}
         </Button>

@@ -18,6 +18,49 @@ export const DURATION_REGEX = /^\d+[smh]$/;
 export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
 
+/**
+ * Validate and parse an IP address or CIDR notation
+ * Returns { valid: true, scope: 'ip'|'range', value: string } or { valid: false }
+ */
+export function parseIpOrCidr(input: string): { valid: true; scope: 'ip' | 'range'; value: string } | { valid: false } {
+  const trimmed = input.trim();
+
+  // Check for CIDR notation (contains /)
+  if (trimmed.includes('/')) {
+    const parts = trimmed.split('/');
+    if (parts.length !== 2) {
+      return { valid: false };
+    }
+    const [ip, prefix] = parts;
+    const prefixNum = parseInt(prefix, 10);
+
+    // Validate IPv4 CIDR
+    if (net.isIPv4(ip)) {
+      if (isNaN(prefixNum) || prefixNum < 0 || prefixNum > 32) {
+        return { valid: false };
+      }
+      return { valid: true, scope: 'range', value: trimmed };
+    }
+
+    // Validate IPv6 CIDR
+    if (net.isIPv6(ip)) {
+      if (isNaN(prefixNum) || prefixNum < 0 || prefixNum > 128) {
+        return { valid: false };
+      }
+      return { valid: true, scope: 'range', value: trimmed };
+    }
+
+    return { valid: false };
+  }
+
+  // Check for single IP
+  if (net.isIP(trimmed)) {
+    return { valid: true, scope: 'ip', value: trimmed };
+  }
+
+  return { valid: false };
+}
+
 // JWT token cache for machine authentication
 interface TokenCacheEntry {
   token: string;
@@ -583,10 +626,12 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Invalid server name format' });
       }
 
-      // Validate IP address
-      if (!net.isIP(ip)) {
-        return reply.code(400).send({ error: 'Invalid IP address format' });
+      // Validate IP address or CIDR
+      const parsed = parseIpOrCidr(ip);
+      if (!parsed.valid) {
+        return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
       }
+      const { scope: targetScope, value: targetValue } = parsed;
 
       // Validate duration format
       if (!DURATION_REGEX.test(duration)) {
@@ -643,8 +688,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
           simulated: false,
           remediation: true,
           source: {
-            scope: 'ip',
-            value: ip,
+            scope: targetScope,
+            value: targetValue,
           },
           events: [
             {
@@ -654,8 +699,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
                 { key: 'reason', value: message },
               ],
               source: {
-                scope: 'ip',
-                value: ip,
+                scope: targetScope,
+                value: targetValue,
               },
             },
           ],
@@ -663,8 +708,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
             {
               duration,
               type: 'ban',
-              scope: 'ip',
-              value: ip,
+              scope: targetScope,
+              value: targetValue,
               origin: 'crowdsieve',
               scenario,
             },
@@ -674,7 +719,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Post to LAPI /v1/alerts
       const lapiUrl = `${lapiServer.url}/v1/alerts`;
-      logger.info({ server: lapiServer.name, ip, duration }, 'Posting manual ban alert to LAPI');
+      logger.info({ server: lapiServer.name, target: targetValue, scope: targetScope, duration }, 'Posting manual ban alert to LAPI');
 
       const response = await fetch(lapiUrl, {
         method: 'POST',
@@ -700,11 +745,11 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const result = await response.json();
-      logger.info({ server: lapiServer.name, ip, result }, 'Manual ban alert posted successfully');
+      logger.info({ server: lapiServer.name, target: targetValue, scope: targetScope, result }, 'Manual ban alert posted successfully');
 
       return reply.send({
         success: true,
-        message: `IP ${ip} banned for ${duration}`,
+        message: `${targetValue} banned for ${duration}`,
         server: lapiServer.name,
       });
     } catch (err) {
