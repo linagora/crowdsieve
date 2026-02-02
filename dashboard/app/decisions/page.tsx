@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search, Loader2, Shield, ShieldAlert, Globe, Server, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { DecisionSearchResponse, Decision } from '@/lib/types';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 interface DecisionCardProps {
   decision: Decision;
@@ -111,7 +112,9 @@ function DecisionSearchContent() {
       setResults(null);
 
       try {
-        const res = await fetch(`/api/decisions?ip=${encodeURIComponent(ipToSearch.trim())}`);
+        const res = await fetchWithAuth(
+          `/api/decisions?ip=${encodeURIComponent(ipToSearch.trim())}`
+        );
         const data = await res.json();
 
         if (!res.ok) {
@@ -131,9 +134,12 @@ function DecisionSearchContent() {
 
   const handleDeleteDecision = useCallback(
     async (decisionId: number, server: string) => {
-      const res = await fetch(`/api/decisions/${decisionId}?server=${encodeURIComponent(server)}`, {
-        method: 'DELETE',
-      });
+      const res = await fetchWithAuth(
+        `/api/decisions/${decisionId}?server=${encodeURIComponent(server)}`,
+        {
+          method: 'DELETE',
+        }
+      );
       const data = await res.json();
 
       if (!res.ok) {

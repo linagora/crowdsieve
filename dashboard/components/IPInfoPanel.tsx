@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Globe, Server, Building, Mail, Loader2 } from 'lucide-react';
 import type { IPInfo } from '@/lib/types';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 interface IPInfoPanelProps {
   ip: string;
@@ -25,7 +26,7 @@ export function IPInfoPanel({ ip }: IPInfoPanelProps) {
         setError(null);
 
         // Authentication is handled server-side by /api/ip-info/[ip]/route.ts
-        const res = await fetch(`/api/ip-info/${encodeURIComponent(ip)}`);
+        const res = await fetchWithAuth(`/api/ip-info/${encodeURIComponent(ip)}`);
 
         if (!res.ok) {
           throw new Error('Failed to fetch IP info');

@@ -1,4 +1,5 @@
 import type { StoredAlert, AlertStats } from './types';
+import { fetchWithAuth } from './fetchWithAuth';
 
 // Client-side API functions - these call Next.js API routes (not the backend directly)
 // This avoids CORS issues since requests stay same-origin
@@ -28,7 +29,7 @@ export async function fetchAlerts(params?: {
   if (params?.machineId) searchParams.set('machineId', params.machineId);
 
   // Calls Next.js API route which proxies to backend
-  const res = await fetch(`/api/alerts?${searchParams}`, {
+  const res = await fetchWithAuth(`/api/alerts?${searchParams}`, {
     cache: 'no-store',
   });
 
@@ -40,7 +41,7 @@ export async function fetchAlerts(params?: {
 }
 
 export async function fetchStats(): Promise<AlertStats> {
-  const res = await fetch('/api/stats', {
+  const res = await fetchWithAuth('/api/stats', {
     cache: 'no-store',
   });
 

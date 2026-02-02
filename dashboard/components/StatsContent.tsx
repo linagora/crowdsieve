@@ -6,6 +6,7 @@ import { BarChart } from '@/components/charts/BarChart';
 import { HorizontalBarChart } from '@/components/charts/HorizontalBarChart';
 import { TrendChart } from '@/components/charts/TrendChart';
 import type { TimeDistributionStats, DecisionStats } from '@/lib/types';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -37,10 +38,10 @@ export function StatsContent({ initialStats, initialDecisionStats }: StatsConten
       setLoading(true);
       try {
         const [distributionRes, decisionRes] = await Promise.all([
-          fetch(`/api/stats/distribution?period=${period}`, {
+          fetchWithAuth(`/api/stats/distribution?period=${period}`, {
             signal: abortController.signal,
           }),
-          fetch(`/api/stats/decisions?period=${period}`, {
+          fetchWithAuth(`/api/stats/decisions?period=${period}`, {
             signal: abortController.signal,
           }),
         ]);

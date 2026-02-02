@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Ban, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LapiServer, BanDecisionResponse } from '@/lib/types';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 const DEFAULT_DURATION = '4h';
 
@@ -40,7 +41,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
   useEffect(() => {
     const fetchServers = async () => {
       try {
-        const res = await fetch('/api/lapi-servers');
+        const res = await fetchWithAuth('/api/lapi-servers');
         if (res.ok) {
           const data: LapiServer[] = await res.json();
           setServers(data);
@@ -71,7 +72,7 @@ export function BanIPForm({ initialIp = '' }: BanIPFormProps) {
     serverName: string
   ): Promise<{ server: string; success: boolean; message: string }> => {
     try {
-      const res = await fetch('/api/decisions/ban', {
+      const res = await fetchWithAuth('/api/decisions/ban', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

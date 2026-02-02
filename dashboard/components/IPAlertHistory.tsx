@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { History, Loader2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { StoredAlert } from '@/lib/types';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 const PAGE_SIZE = 5;
 
@@ -51,7 +52,7 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
 
         // Fetch extra items: +1 for "has more" check, +1 in case current alert is in batch
         const fetchLimit = PAGE_SIZE + 2;
-        const res = await fetch(
+        const res = await fetchWithAuth(
           `/api/alerts?ip=${encodeURIComponent(ip)}&limit=${fetchLimit}&offset=${currentOffset}`
         );
 

@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { AnalyzersData, AnalyzerStatus } from '@/app/analyzers/page';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
 interface AnalyzersContentProps {
   data: AnalyzersData;
@@ -164,7 +165,7 @@ export function AnalyzersContent({ data }: AnalyzersContentProps) {
   const handleTrigger = async (id: string) => {
     setTriggeringId(id);
     try {
-      const res = await fetch(`/api/analyzers/${id}/run`, {
+      const res = await fetchWithAuth(`/api/analyzers/${id}/run`, {
         method: 'POST',
       });
 
