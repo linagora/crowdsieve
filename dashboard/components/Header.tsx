@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import { UserMenu } from './UserMenu';
 
 const navLinks = [
   { href: '/', label: 'Dashboard' },
@@ -21,7 +22,7 @@ export function Header() {
           <h1 className="text-xl font-bold">CrowdSieve</h1>
 
           {/* Desktop navigation */}
-          <nav className="hidden md:flex gap-4">
+          <nav className="hidden md:flex items-center gap-4">
             {navLinks.map((link) => (
               <a
                 key={link.href}
@@ -31,16 +32,20 @@ export function Header() {
                 {link.label}
               </a>
             ))}
+            <UserMenu />
           </nav>
 
           {/* Mobile menu button */}
-          <button
-            className="md:hidden p-2 hover:bg-white/10 rounded-lg transition-colors"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
-          >
-            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          <div className="flex items-center gap-2 md:hidden">
+            <UserMenu />
+            <button
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+            >
+              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile navigation */}

@@ -9,11 +9,11 @@ function showSessionExpiredOverlay() {
       <div style="background:white;padding:2rem;border-radius:0.5rem;text-align:center;
                   max-width:400px">
         <h2 style="margin:0 0 1rem;font-size:1.25rem">Session expired</h2>
-        <p style="margin:0 0 1.5rem;color:#666">Your session has expired. Please reload the page to re-authenticate.</p>
-        <button onclick="window.location.reload()"
+        <p style="margin:0 0 1.5rem;color:#666">Your session has expired. Please sign in again.</p>
+        <button onclick="window.location.href='/login?redirect=' + encodeURIComponent(window.location.pathname)"
                 style="padding:0.5rem 1.5rem;background:#2563eb;color:white;border:none;
                        border-radius:0.375rem;cursor:pointer;font-size:1rem">
-          Reload page
+          Sign in
         </button>
       </div>
     </div>`;
