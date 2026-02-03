@@ -150,7 +150,15 @@ export function useAlertFilters({
         }
       }
     },
-    [filters.since, filters.until, filters.scenario, filters.machineId, filters.status, limit, alerts]
+    [
+      filters.since,
+      filters.until,
+      filters.scenario,
+      filters.machineId,
+      filters.status,
+      limit,
+      alerts,
+    ]
   );
 
   // Fetch filtered alerts when filters change
