@@ -721,15 +721,62 @@ kubectl create secret generic my-session-secret \
 
 #### OIDC Provider Configuration
 
-When configuring your OIDC provider (e.g., Keycloak), use these settings:
+##### CrowdSieve Endpoints
 
-| Setting                            | Value                                                        |
-| ---------------------------------- | ------------------------------------------------------------ |
-| Root URL                           | `https://crowdsieve.example.com`                             |
-| Valid redirect URIs                | `https://crowdsieve.example.com/api/auth/callback/oidc`      |
-| Valid post logout redirect URIs    | `https://crowdsieve.example.com`                             |
-| Web origins                        | `https://crowdsieve.example.com`                             |
-| Back-channel logout URL (optional) | `https://crowdsieve.example.com/api/auth/backchannel-logout` |
+Replace `https://crowdsieve.example.com` with your actual dashboard URL:
+
+| Endpoint | URL | Description |
+|----------|-----|-------------|
+| Callback | `https://crowdsieve.example.com/api/auth/callback/oidc` | OAuth2 redirect after login |
+| JWKS | `https://crowdsieve.example.com/api/jwks` | Public keys for JWE/JWS |
+| Back-channel logout | `https://crowdsieve.example.com/api/auth/backchannel-logout` | SSO logout notification |
+
+##### Supported Algorithms
+
+| Type | Default | Options |
+|------|---------|---------|
+| JWS Signing | `RS256` | RS256, RS384, RS512, ES256, ES384, ES512, EdDSA |
+| JWE Key Encryption | `RSA-OAEP-256` | RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384, RSA-OAEP-512 |
+| JWE Content Encryption | `A256GCM` | A256GCM, A128GCM, A192GCM |
+| RSA Key Size | `2048` bits | 2048, 3072, 4096 |
+
+##### Keycloak Setup Example
+
+1. **Create a new client** in your realm:
+   - Client ID: `crowdsieve-dashboard`
+   - Client Protocol: `openid-connect`
+   - Access Type: `confidential`
+
+2. **Configure URLs** in the client settings:
+   | Setting | Value |
+   |---------|-------|
+   | Root URL | `https://crowdsieve.example.com` |
+   | Valid Redirect URIs | `https://crowdsieve.example.com/api/auth/callback/oidc` |
+   | Valid Post Logout Redirect URIs | `https://crowdsieve.example.com` |
+   | Web Origins | `https://crowdsieve.example.com` |
+
+3. **Enable Back-channel Logout** (optional, requires JWS):
+   - Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
+   - Back-channel logout session required: `ON`
+
+4. **Enable ID Token Encryption** (optional, requires JWE):
+   - Go to client > Keys tab
+   - Enable "Encrypt ID token"
+   - Import keys from JWKS URL: `https://crowdsieve.example.com/api/jwks`
+
+5. **Get credentials**:
+   - Go to client > Credentials tab
+   - Copy the "Secret" value for `oidc.clientSecret`
+
+##### Other Providers
+
+| Provider | Issuer URL Format |
+|----------|-------------------|
+| Keycloak | `https://keycloak.example.com/realms/{realm}` |
+| Auth0 | `https://{tenant}.auth0.com` |
+| Okta | `https://{domain}.okta.com` |
+| Google | `https://accounts.google.com` |
+| Azure AD | `https://login.microsoftonline.com/{tenant}/v2.0` |
 
 > **Warning:** Auto-generated session secrets change on each Helm upgrade, invalidating all user sessions. For production, always set `session.secret` or use `session.existingSecret`.
 
