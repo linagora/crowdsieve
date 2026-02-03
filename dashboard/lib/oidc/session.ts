@@ -24,11 +24,21 @@ export interface SessionData {
   codeVerifier?: string;
 }
 
+// Determine if cookies should be secure (HTTPS only)
+// Can be overridden via SESSION_COOKIE_SECURE env var for reverse proxy setups
+function isSecureCookie(): boolean {
+  const envValue = process.env.SESSION_COOKIE_SECURE;
+  if (envValue !== undefined) {
+    return envValue === 'true' || envValue === '1';
+  }
+  return process.env.NODE_ENV === 'production';
+}
+
 const SESSION_OPTIONS = {
   cookieName: 'crowdsieve-session',
   password: '', // Will be set dynamically
   cookieOptions: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecureCookie(),
     httpOnly: true,
     sameSite: 'lax' as const,
     maxAge: 60 * 60 * 24 * 7, // 1 week
