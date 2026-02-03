@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSafeRedirect } from '@/lib/oidc/validation';
 
 /**
  * SECURITY: Middleware for OIDC authentication gate
@@ -50,11 +51,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const sessionCookie = request.cookies.get('crowdsieve-session');
   if (!sessionCookie) {
     // Redirect to login with the original path for post-login redirect
-    // SECURITY: pathname is already validated by Next.js URL parsing and starts with /
-    // The login page will re-validate the redirect parameter before using it
     const loginUrl = new URL('/login', request.url);
     const pathname = request.nextUrl.pathname;
-    if (pathname && pathname !== '/') {
+    // SECURITY: Validate pathname before adding to redirect parameter
+    if (isSafeRedirect(pathname) && pathname !== '/') {
       loginUrl.searchParams.set('redirect', pathname);
     }
     return NextResponse.redirect(loginUrl);
