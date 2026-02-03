@@ -1,18 +1,7 @@
 import { redirect } from 'next/navigation';
 import { isOidcEnabled } from '@/lib/oidc/config';
 import { isSessionValid } from '@/lib/oidc/session';
-
-// Regex to detect URL schemes (e.g., http:, https:, javascript:, data:)
-const UNSAFE_URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
-
-// Validate redirect path to prevent open redirect attacks
-function isSafeRedirect(path: string | undefined): path is string {
-  if (!path) return false;
-  // Reject any path that starts with a URL scheme
-  if (UNSAFE_URL_SCHEME.test(path)) return false;
-  // Must start with / (relative path) and not // (protocol-relative URL)
-  return path.startsWith('/') && !path.startsWith('//');
-}
+import { isSafeRedirect } from '@/lib/oidc/validation';
 
 export default async function LoginPage({
   searchParams,

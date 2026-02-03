@@ -350,15 +350,13 @@ describe('OIDC Client', () => {
 });
 
 describe('Open Redirect Prevention', () => {
-  // Regex to detect URL schemes (must match implementation in login page)
-  const UNSAFE_URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+  // Import the actual implementation to ensure tests match production behavior
+  let isSafeRedirect: (path: string | undefined) => path is string;
 
-  // Test the redirect validation logic used in login page
-  function isSafeRedirect(path: string | undefined): path is string {
-    if (!path) return false;
-    if (UNSAFE_URL_SCHEME.test(path)) return false;
-    return path.startsWith('/') && !path.startsWith('//');
-  }
+  beforeEach(async () => {
+    const validation = await import('../dashboard/lib/oidc/validation.js');
+    isSafeRedirect = validation.isSafeRedirect;
+  });
 
   it('should allow valid relative paths', () => {
     expect(isSafeRedirect('/')).toBe(true);
