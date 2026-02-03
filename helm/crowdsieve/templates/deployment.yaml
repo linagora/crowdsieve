@@ -90,6 +90,53 @@ spec:
             - name: CORS_ORIGIN
               value: {{ .Values.crowdsieve.dashboard.corsOrigin | quote }}
             {{- end }}
+            {{- if .Values.crowdsieve.dashboard.oidc.enabled }}
+            # OIDC Configuration
+            - name: OIDC_ISSUER
+              value: {{ .Values.crowdsieve.dashboard.oidc.issuer | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.crowdsieve.dashboard.oidc.clientId | quote }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.crowdsieve.dashboard.oidc.existingSecret }}
+                  name: {{ .Values.crowdsieve.dashboard.oidc.existingSecret }}
+                  {{- else }}
+                  name: {{ include "crowdsieve.fullname" . }}-oidc
+                  {{- end }}
+                  key: {{ .Values.crowdsieve.dashboard.oidc.clientSecretKey | default "client-secret" }}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.crowdsieve.dashboard.oidc.session.existingSecret }}
+                  name: {{ .Values.crowdsieve.dashboard.oidc.session.existingSecret }}
+                  {{- else }}
+                  name: {{ include "crowdsieve.fullname" . }}-oidc
+                  {{- end }}
+                  key: {{ .Values.crowdsieve.dashboard.oidc.session.secretKey | default "session-secret" }}
+            - name: SESSION_COOKIE_SECURE
+              value: {{ .Values.crowdsieve.dashboard.oidc.session.cookieSecure | quote }}
+            {{- if .Values.crowdsieve.dashboard.oidc.keys.jwsEnabled }}
+            - name: JWS_ENABLED
+              value: "true"
+            - name: JWS_KEY_ALG
+              value: {{ .Values.crowdsieve.dashboard.oidc.keys.jwsAlgorithm | quote }}
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.oidc.keys.jweEnabled }}
+            - name: JWE_ENABLED
+              value: "true"
+            - name: JWE_KEY_ALG
+              value: {{ .Values.crowdsieve.dashboard.oidc.keys.jweAlgorithm | quote }}
+            {{- end }}
+            {{- if or .Values.crowdsieve.dashboard.oidc.keys.jwsEnabled .Values.crowdsieve.dashboard.oidc.keys.jweEnabled }}
+            - name: JWE_KEYS_PATH
+              value: "/app/data/jwks.json"
+            {{- if .Values.crowdsieve.dashboard.oidc.keys.rotationDays }}
+            - name: JWE_KEY_ROTATION_DAYS
+              value: {{ .Values.crowdsieve.dashboard.oidc.keys.rotationDays | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             # Logging configuration
             - name: LOG_LEVEL
               value: {{ .Values.crowdsieve.logging.level | quote }}

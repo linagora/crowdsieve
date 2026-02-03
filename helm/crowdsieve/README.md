@@ -120,6 +120,18 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.proxy.forwardEnabled` | Forward alerts to CAPI | `true` |
 | `crowdsieve.dashboard.port` | Dashboard port | `3000` |
 | `crowdsieve.dashboard.apiKey` | API key for dashboard auth | `""` |
+| `crowdsieve.dashboard.oidc.enabled` | Enable OIDC authentication | `false` |
+| `crowdsieve.dashboard.oidc.issuer` | OIDC Issuer URL | `""` |
+| `crowdsieve.dashboard.oidc.clientId` | OIDC Client ID | `""` |
+| `crowdsieve.dashboard.oidc.clientSecret` | OIDC Client Secret | `""` |
+| `crowdsieve.dashboard.oidc.existingSecret` | Use existing secret for OIDC | `""` |
+| `crowdsieve.dashboard.oidc.session.secret` | Session secret (auto-generated if empty) | `""` |
+| `crowdsieve.dashboard.oidc.session.cookieSecure` | Session cookie secure flag | `true` |
+| `crowdsieve.dashboard.oidc.keys.jwsEnabled` | Enable JWS signing | `false` |
+| `crowdsieve.dashboard.oidc.keys.jwsAlgorithm` | JWS signing algorithm | `RS256` |
+| `crowdsieve.dashboard.oidc.keys.jweEnabled` | Enable JWE encryption | `false` |
+| `crowdsieve.dashboard.oidc.keys.jweAlgorithm` | JWE encryption algorithm | `RSA-OAEP-256` |
+| `crowdsieve.dashboard.oidc.keys.rotationDays` | Key rotation interval in days | `""` |
 | `crowdsieve.logging.level` | Log level | `info` |
 | `crowdsieve.storage.type` | Storage backend: `sqlite` or `postgres` | `sqlite` |
 | `crowdsieve.storage.retentionDays` | Alert retention days | `30` |
@@ -626,6 +638,97 @@ crowdsieve:
         hosts:
           - crowdsieve.example.com
 ```
+
+### OIDC Authentication
+
+You can secure the dashboard with OIDC authentication. When enabled, users must authenticate via your OIDC provider (Keycloak, Auth0, Okta, etc.) to access the dashboard.
+
+#### Basic OIDC Configuration
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: "https://auth.example.com/realms/production"
+      clientId: "crowdsieve-dashboard"
+      clientSecret: "your-client-secret"
+      session:
+        secret: "32-chars-minimum-secret-here!!"
+        cookieSecure: true  # Set to false for HTTP (development only)
+```
+
+#### OIDC with JWS/JWE (Back-channel Logout and Encrypted Tokens)
+
+For advanced OIDC features like back-channel logout or encrypted ID tokens:
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: "https://auth.example.com/realms/production"
+      clientId: "crowdsieve-dashboard"
+      clientSecret: "your-client-secret"
+      session:
+        secret: "32-chars-minimum-secret-here!!"
+        cookieSecure: true
+      keys:
+        jwsEnabled: true        # Required for back-channel logout
+        jwsAlgorithm: "RS256"
+        jweEnabled: true        # For encrypted ID tokens
+        jweAlgorithm: "RSA-OAEP-256"
+        rotationDays: 30        # Auto-rotate keys every 30 days
+```
+
+> **Note:** When JWS or JWE is enabled, keys are stored at `/app/data/jwks.json` on the PVC. This ensures keys persist across pod restarts.
+
+#### Using Existing Secrets
+
+For production deployments, store OIDC credentials in pre-created Kubernetes secrets:
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: "https://auth.example.com/realms/production"
+      clientId: "crowdsieve-dashboard"
+      existingSecret: "my-oidc-credentials"
+      clientSecretKey: "client-secret"  # Key in the secret
+      session:
+        existingSecret: "my-session-secret"
+        secretKey: "session-secret"     # Key in the secret
+        cookieSecure: true
+```
+
+Create the secrets:
+
+```bash
+# OIDC client secret
+kubectl create secret generic my-oidc-credentials \
+  --from-literal=client-secret='your-client-secret' \
+  -n security
+
+# Session secret
+kubectl create secret generic my-session-secret \
+  --from-literal=session-secret='32-chars-minimum-secret-here!!' \
+  -n security
+```
+
+#### OIDC Provider Configuration
+
+When configuring your OIDC provider (e.g., Keycloak), use these settings:
+
+| Setting | Value |
+|---------|-------|
+| Root URL | `https://crowdsieve.example.com` |
+| Valid redirect URIs | `https://crowdsieve.example.com/api/auth/callback/oidc` |
+| Valid post logout redirect URIs | `https://crowdsieve.example.com` |
+| Web origins | `https://crowdsieve.example.com` |
+| Back-channel logout URL (optional) | `https://crowdsieve.example.com/api/auth/backchannel-logout` |
+
+> **Warning:** Auto-generated session secrets change on each Helm upgrade, invalidating all user sessions. For production, always set `session.secret` or use `session.existingSecret`.
 
 ## Accessing the Dashboard
 
