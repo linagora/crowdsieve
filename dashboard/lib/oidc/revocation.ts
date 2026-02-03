@@ -69,12 +69,24 @@ export function cleanupRevocations(): void {
   for (const [sid, info] of revokedSessions) {
     if (info.revokedAt < cutoff) {
       revokedSessions.delete(sid);
-      revokedByUser.get(info.sub)?.delete(sid);
+      const userSids = revokedByUser.get(info.sub);
+      if (userSids) {
+        userSids.delete(sid);
+        // Clean up empty Sets to prevent memory leak
+        if (userSids.size === 0) {
+          revokedByUser.delete(info.sub);
+        }
+      }
     }
   }
 }
 
 // Run cleanup periodically (every hour)
-if (typeof setInterval !== 'undefined') {
-  setInterval(cleanupRevocations, 60 * 60 * 1000);
+// Only in Node.js runtime, not Edge runtime
+if (typeof globalThis !== 'undefined' && typeof (globalThis as NodeJS.Global).setInterval === 'function') {
+  try {
+    setInterval(cleanupRevocations, 60 * 60 * 1000);
+  } catch {
+    // Edge runtime doesn't support long-running timers
+  }
 }
