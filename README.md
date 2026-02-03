@@ -214,6 +214,7 @@ This is useful for:
 Secure dashboard access with OpenID Connect. See the [OIDC Authentication documentation](./doc/oidc-authentication.md) for detailed setup instructions.
 
 Quick start:
+
 ```bash
 OIDC_ISSUER=https://auth.example.com/realms/myrealm
 OIDC_CLIENT_ID=crowdsieve-dashboard

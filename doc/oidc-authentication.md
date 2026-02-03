@@ -4,28 +4,22 @@ CrowdSieve supports OpenID Connect (OIDC) authentication for the dashboard. When
 
 ## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Authentication Flow                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  User ──► Dashboard ──► OIDC Provider ──► Dashboard ──► Session Created │
-│                              │                                           │
-│                              ▼                                           │
-│                    ┌─────────────────┐                                   │
-│                    │ Authentication  │                                   │
-│                    │ - client_secret │  (default)                        │
-│                    │ - private_key_jwt│  (with JWS)                      │
-│                    └─────────────────┘                                   │
-│                              │                                           │
-│                              ▼                                           │
-│                    ┌─────────────────┐                                   │
-│                    │   ID Token      │                                   │
-│                    │ - Plain JWT     │  (default)                        │
-│                    │ - Encrypted JWE │  (with JWE)                       │
-│                    └─────────────────┘                                   │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Authentication Flow
+        User([User]) --> Dashboard
+        Dashboard --> |1. Redirect|Provider[OIDC Provider]
+        Provider --> |2. Authenticate|Auth{Authentication}
+        Auth --> |client_secret|Secret[Shared Secret]
+        Auth --> |private_key_jwt|JWT[Signed JWT]
+        Secret --> Token
+        JWT --> Token{ID Token}
+        Token --> |Plain|Plain[JWT]
+        Token --> |Encrypted|JWE[JWE]
+        Plain --> |3. Callback|Dashboard
+        JWE --> |3. Callback|Dashboard
+        Dashboard --> |4. Session|Session([Session Created])
+    end
 ```
 
 ## Configuration
