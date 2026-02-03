@@ -13,6 +13,10 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Push decisions to all your CrowdSec LAPI servers
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
+- **OIDC Authentication**: Secure dashboard access with OpenID Connect ([documentation](./doc/oidc-authentication.md))
+  - Support for any OIDC provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.)
+  - Private Key JWT authentication (`private_key_jwt`) for enhanced security
+  - Encrypted tokens (JWE) and back-channel logout support
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
@@ -24,18 +28,19 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 ### A Paradigm Shift in Alert Management
 
 Traditional CrowdSec architecture embeds intelligence in each scenario to determine which alerts are "significant enough" to be sent to the Central API (CAPI). This means:
+
 - Local filtering happens at the scenario level
 - Only high-confidence alerts reach the central console
 - Internal IPs or minor events are typically discarded before you can see them
 
 **Crowdsieve changes this approach:**
 
-| Traditional CrowdSec | With Crowdsieve |
-|---------------------|-----------------|
-| Filtering in scenarios | Filtering in proxy |
-| Limited local visibility | Full local visibility |
-| All alerts go to CAPI | Selective CAPI forwarding |
-| Internal IPs discarded | Internal IPs visible locally |
+| Traditional CrowdSec     | With Crowdsieve              |
+| ------------------------ | ---------------------------- |
+| Filtering in scenarios   | Filtering in proxy           |
+| Limited local visibility | Full local visibility        |
+| All alerts go to CAPI    | Selective CAPI forwarding    |
+| Internal IPs discarded   | Internal IPs visible locally |
 
 ### Key Benefits
 
@@ -150,21 +155,24 @@ To view decisions and enable manual IP banning from the dashboard, configure you
 lapi_servers:
   - name: 'server1'
     url: 'http://localhost:8081'
-    api_key: 'your-bouncer-api-key'      # For reading decisions
-    machine_id: 'crowdsieve'             # For manual banning (optional)
-    password: 'your-machine-password'    # For manual banning (optional)
+    api_key: 'your-bouncer-api-key' # For reading decisions
+    machine_id: 'crowdsieve' # For manual banning (optional)
+    password: 'your-machine-password' # For manual banning (optional)
   - name: 'server2'
     url: 'http://192.168.1.10:8080'
     api_key: 'another-bouncer-key'
 ```
 
 **Bouncer API key** (required): For querying decisions. Generate with:
+
 ```bash
 cscli bouncers add crowdsieve-dashboard
 ```
+
 See [CrowdSec bouncers documentation](https://docs.crowdsec.net/docs/cscli/cscli_bouncers_add/).
 
 **Machine credentials** (optional): For manual banning from the dashboard. Register a machine with:
+
 ```bash
 # Interactive (will prompt for password)
 cscli machines add crowdsieve
@@ -172,6 +180,7 @@ cscli machines add crowdsieve
 # Or with auto-generated password (note it down for config)
 cscli machines add crowdsieve --auto
 ```
+
 See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli_machines_add/).
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
@@ -185,24 +194,40 @@ lapi_servers:
   - name: 'server1'
     url: 'http://localhost:8081'
     api_key: '${LAPI_API_KEY}'
-    machine_id: '${LAPI_MACHINE_ID:-crowdsieve}'  # With default value
+    machine_id: '${LAPI_MACHINE_ID:-crowdsieve}' # With default value
     password: '${LAPI_PASSWORD}'
 ```
 
 Syntax:
+
 - `${VAR_NAME}` - Replaced with the environment variable value (empty string if not set)
 - `${VAR_NAME:-default}` - Replaced with the env var value, or `default` if not set
 
 This is useful for:
+
 - Docker/Kubernetes deployments with secrets
 - Keeping sensitive data out of config files
 - CI/CD pipelines
+
+### OIDC Authentication
+
+Secure dashboard access with OpenID Connect. See the [OIDC Authentication documentation](./doc/oidc-authentication.md) for detailed setup instructions.
+
+Quick start:
+
+```bash
+OIDC_ISSUER=https://auth.example.com/realms/myrealm
+OIDC_CLIENT_ID=crowdsieve-dashboard
+OIDC_CLIENT_SECRET=your-client-secret
+SESSION_SECRET=$(openssl rand -hex 32)
+```
 
 ### Decision Search
 
 The dashboard includes a **Decisions** page (accessible from the navigation) that lets you search for active decisions on any IP address across all configured LAPI servers.
 
 Features:
+
 - Search by IP address (IPv4 or IPv6)
 - Results grouped by server
 - Shared decisions (from CAPI/blocklists) are deduplicated and shown separately
@@ -255,17 +280,17 @@ filter:
 
 ## Filter Operators
 
-| Operator                | Description            |
-| ----------------------- | ---------------------- |
-| `eq`, `ne`              | Equals / Not equals    |
-| `gt`, `gte`, `lt`, `lte`| Numeric comparisons    |
-| `in`, `not_in`          | Value in array         |
+| Operator                   | Description           |
+| -------------------------- | --------------------- |
+| `eq`, `ne`                 | Equals / Not equals   |
+| `gt`, `gte`, `lt`, `lte`   | Numeric comparisons   |
+| `in`, `not_in`             | Value in array        |
 | `contains`, `not_contains` | String/array contains |
-| `starts_with`, `ends_with` | String prefix/suffix |
-| `glob`, `regex`         | Pattern matching       |
-| `cidr`                  | IP in CIDR range(s)    |
-| `empty`, `not_empty`    | Check if empty         |
-| `and`, `or`, `not`      | Logical operators      |
+| `starts_with`, `ends_with` | String prefix/suffix  |
+| `glob`, `regex`            | Pattern matching      |
+| `cidr`                     | IP in CIDR range(s)   |
+| `empty`, `not_empty`       | Check if empty        |
+| `and`, `or`, `not`         | Logical operators     |
 
 ## Client Validation
 
@@ -300,12 +325,12 @@ analyzers:
 
   # Global whitelist: IPs and CIDR ranges to ignore in all analyzers
   whitelist:
-    - '10.0.0.0/8'        # Private networks
+    - '10.0.0.0/8' # Private networks
     - '172.16.0.0/12'
     - '192.168.0.0/16'
-    - '127.0.0.1'         # Localhost
-    - '::1'               # IPv6 localhost
-    - 'fc00::/7'          # IPv6 ULA
+    - '127.0.0.1' # Localhost
+    - '::1' # IPv6 localhost
+    - 'fc00::/7' # IPv6 ULA
 
   # Log sources (referenced by analyzers)
   sources:
@@ -327,11 +352,11 @@ name: 'SMTP Credential Stuffing Detection'
 enabled: true
 
 schedule:
-  interval: '3h'       # Run every 3 hours
-  lookback: '3h'       # Analyze last 3 hours of logs
+  interval: '3h' # Run every 3 hours
+  lookback: '3h' # Analyze last 3 hours of logs
 
 source:
-  ref: 'grafana-prod'  # Reference to global source
+  ref: 'grafana-prod' # Reference to global source
   query: '{app="tmail"} |= "SMTP Authentication failed"'
   max_lines: 5000
 
@@ -343,9 +368,9 @@ extraction:
     timestamp: 'timestamp'
 
 detection:
-  groupby: 'source_ip'    # Group logs by this field
-  distinct: 'username'    # Count distinct values
-  threshold: 6            # Alert if >= 6 distinct usernames
+  groupby: 'source_ip' # Group logs by this field
+  distinct: 'username' # Count distinct values
+  threshold: 6 # Alert if >= 6 distinct usernames
   operator: '>='
 
 decision:
@@ -356,12 +381,13 @@ decision:
   reason: 'Multiple distinct usernames attempted from single IP'
 
 targets:
-  - 'all'  # Push to all LAPI servers
+  - 'all' # Push to all LAPI servers
 ```
 
 ### Whitelist Support
 
 The global whitelist supports:
+
 - Individual IPs: `192.168.1.1`, `::1`
 - CIDR ranges: `10.0.0.0/8`, `2001:db8::/32`
 - IPv4 and IPv6
@@ -371,6 +397,7 @@ Whitelisted IPs are excluded from all analyzer detections, preventing false posi
 ### Analyzer Dashboard
 
 The dashboard includes an **Analyzers** page showing:
+
 - List of configured analyzers and their status
 - Last run results (logs fetched, alerts generated, decisions pushed)
 - Manual trigger for immediate execution
@@ -385,19 +412,19 @@ The dashboard includes an **Analyzers** page showing:
 
 ## Environment Variables
 
-| Variable          | Default                     | Description                                           |
-| ----------------- | --------------------------- | ----------------------------------------------------- |
-| `CONFIG_PATH`     | `./config/filters.yaml`     | Path to config file                                   |
-| `DATABASE_PATH`   | `./data/crowdsieve.db`      | Path to SQLite database                               |
-| `GEOIP_DB_PATH`   | `./data/geoip-city.mmdb`    | Path to GeoIP database                                |
-| `PROXY_PORT`      | `8080`                      | Proxy listen port                                     |
-| `DASHBOARD_PORT`  | `3000`                      | Dashboard listen port                                 |
-| `LOG_LEVEL`       | `info`                      | Log level (debug, info, warn, error)                  |
-| `LOG_FORMAT`      | `json`                      | Log format (json, pretty)                             |
-| `FORWARD_ENABLED` | `true`                      | Set to `false` to disable CAPI forwarding (test mode) |
-| `CLIENT_VALIDATION_ENABLED` | `false`         | Enable client validation against CAPI                 |
-| `CLIENT_VALIDATION_CACHE_TTL` | `604800`      | Cache TTL for validated clients (seconds)             |
-| `CLIENT_VALIDATION_FAIL_CLOSED` | `false`     | Reject requests when CAPI is unavailable              |
+| Variable                        | Default                  | Description                                           |
+| ------------------------------- | ------------------------ | ----------------------------------------------------- |
+| `CONFIG_PATH`                   | `./config/filters.yaml`  | Path to config file                                   |
+| `DATABASE_PATH`                 | `./data/crowdsieve.db`   | Path to SQLite database                               |
+| `GEOIP_DB_PATH`                 | `./data/geoip-city.mmdb` | Path to GeoIP database                                |
+| `PROXY_PORT`                    | `8080`                   | Proxy listen port                                     |
+| `DASHBOARD_PORT`                | `3000`                   | Dashboard listen port                                 |
+| `LOG_LEVEL`                     | `info`                   | Log level (debug, info, warn, error)                  |
+| `LOG_FORMAT`                    | `json`                   | Log format (json, pretty)                             |
+| `FORWARD_ENABLED`               | `true`                   | Set to `false` to disable CAPI forwarding (test mode) |
+| `CLIENT_VALIDATION_ENABLED`     | `false`                  | Enable client validation against CAPI                 |
+| `CLIENT_VALIDATION_CACHE_TTL`   | `604800`                 | Cache TTL for validated clients (seconds)             |
+| `CLIENT_VALIDATION_FAIL_CLOSED` | `false`                  | Reject requests when CAPI is unavailable              |
 
 ## GeoIP Database
 

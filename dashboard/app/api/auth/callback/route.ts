@@ -26,6 +26,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const baseUrl = getBaseUrl();
 
     // Exchange authorization code for tokens
+    // Note: private_key_jwt authentication is configured at discovery time in getOidcClient()
     const tokens = await client.authorizationCodeGrant(oidcClient, new URL(request.url), {
       pkceCodeVerifier: codeVerifier,
       expectedState: state,

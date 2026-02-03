@@ -98,11 +98,12 @@ crowdsec:
 
 ```yaml
 capiCredentials:
-  login: "your-machine-id"
-  password: "your-machine-password"
+  login: 'your-machine-id'
+  password: 'your-machine-password'
 ```
 
 To get your credentials:
+
 ```bash
 # Register with CrowdSec Central API
 cscli capi register
@@ -113,52 +114,64 @@ cat /etc/crowdsec/online_api_credentials.yaml
 
 ### Key Values
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `crowdsieve.enabled` | Enable CrowdSieve | `true` |
-| `crowdsieve.proxy.capiUrl` | URL of CrowdSec CAPI | `https://api.crowdsec.net` |
-| `crowdsieve.proxy.forwardEnabled` | Forward alerts to CAPI | `true` |
-| `crowdsieve.dashboard.port` | Dashboard port | `3000` |
-| `crowdsieve.dashboard.apiKey` | API key for dashboard auth | `""` |
-| `crowdsieve.logging.level` | Log level | `info` |
-| `crowdsieve.storage.type` | Storage backend: `sqlite` or `postgres` | `sqlite` |
-| `crowdsieve.storage.retentionDays` | Alert retention days | `30` |
-| `crowdsieve.storage.postgres.host` | PostgreSQL host | `""` |
-| `crowdsieve.storage.postgres.port` | PostgreSQL port | `5432` |
-| `crowdsieve.storage.postgres.database` | PostgreSQL database | `""` |
-| `crowdsieve.storage.postgres.user` | PostgreSQL user | `""` |
-| `crowdsieve.storage.postgres.password` | PostgreSQL password | `""` |
-| `crowdsieve.storage.postgres.ssl` | Enable SSL | `false` |
-| `crowdsieve.storage.postgres.sslRejectUnauthorized` | Reject unauthorized SSL certs | `true` |
-| `crowdsieve.storage.postgres.poolSize` | Connection pool size | `10` |
-| `crowdsieve.storage.postgres.existingSecret` | Use existing secret | `""` |
-| `crowdsieve.storage.postgres.passwordKey` | Key in existing secret | `password` |
-| `crowdsieve.geoip.enabled` | Enable GeoIP enrichment (uses DB-IP City Lite) | `false` |
-| `crowdsieve.persistence.enabled` | Enable persistence | `true` |
-| `crowdsieve.persistence.size` | PVC size | `1Gi` |
-| `crowdsieve.filters.mode` | Filter mode: `block` or `allow` | `block` |
-| `crowdsieve.filters.rules` | Filter rules | See values.yaml |
-| `crowdsieve.lapiServers.autoConfigureLocal` | Auto-configure connection to local LAPI | `true` |
-| `crowdsieve.lapiServers.servers` | Additional LAPI servers to connect to | `[]` |
-| `crowdsec.enabled` | Enable CrowdSec subchart | `true` |
-| `crowdsec.lapi.database.type` | CrowdSec LAPI storage backend: `sqlite` or `postgres` | `sqlite` |
-| `crowdsec.lapi.database.postgres.host` | CrowdSec PostgreSQL host | `""` |
-| `crowdsec.lapi.database.postgres.port` | CrowdSec PostgreSQL port | `5432` |
-| `crowdsec.lapi.database.postgres.database` | CrowdSec PostgreSQL database | `crowdsec` |
-| `crowdsec.lapi.database.postgres.user` | CrowdSec PostgreSQL user | `crowdsec` |
-| `crowdsec.lapi.database.postgres.password` | CrowdSec PostgreSQL password | `""` |
-| `crowdsec.lapi.database.postgres.sslmode` | CrowdSec PostgreSQL SSL mode | `disable` |
-| `crowdsec.lapi.database.postgres.existingSecret` | Use existing secret | `""` |
-| `crowdsec.lapi.database.postgres.passwordKey` | Key in existing secret | `password` |
-| `crowdsec.lapi.bouncers` | List of bouncers to pre-register | `[]` |
-| `crowdsec.lapi.machines` | List of machines to pre-register | `[]` |
-| `crowdsec.lapi.credentials.username` | Agent username | `""` |
-| `crowdsec.lapi.credentials.password` | Agent password | `""` |
-| `crowdsec.lapi.credentials.existingSecret` | Use existing secret for credentials | `""` |
-| `crowdsec.lapi.credentials.usernameKey` | Username key in existing secret | `username` |
-| `crowdsec.lapi.credentials.passwordKey` | Password key in existing secret | `password` |
-| `capiCredentials.login` | CrowdSec machine ID | `""` |
-| `capiCredentials.password` | CrowdSec password | `""` |
+| Parameter                                           | Description                                           | Default                    |
+| --------------------------------------------------- | ----------------------------------------------------- | -------------------------- |
+| `crowdsieve.enabled`                                | Enable CrowdSieve                                     | `true`                     |
+| `crowdsieve.proxy.capiUrl`                          | URL of CrowdSec CAPI                                  | `https://api.crowdsec.net` |
+| `crowdsieve.proxy.forwardEnabled`                   | Forward alerts to CAPI                                | `true`                     |
+| `crowdsieve.dashboard.port`                         | Dashboard port                                        | `3000`                     |
+| `crowdsieve.dashboard.apiKey`                       | API key for dashboard auth                            | `""`                       |
+| `crowdsieve.dashboard.oidc.enabled`                 | Enable OIDC authentication                            | `false`                    |
+| `crowdsieve.dashboard.oidc.issuer`                  | OIDC Issuer URL                                       | `""`                       |
+| `crowdsieve.dashboard.oidc.clientId`                | OIDC Client ID                                        | `""`                       |
+| `crowdsieve.dashboard.oidc.clientSecret`            | OIDC Client Secret                                    | `""`                       |
+| `crowdsieve.dashboard.oidc.existingSecret`          | Use existing secret for OIDC                          | `""`                       |
+| `crowdsieve.dashboard.oidc.session.secret`          | Session secret (auto-generated if empty)              | `""`                       |
+| `crowdsieve.dashboard.oidc.session.cookieSecure`    | Session cookie secure flag                            | `true`                     |
+| `crowdsieve.dashboard.oidc.keys.jwsEnabled`         | Enable private_key_jwt auth (replaces client_secret)  | `false`                    |
+| `crowdsieve.dashboard.oidc.keys.jwsAlgorithm`       | JWS signing algorithm                                 | `RS256`                    |
+| `crowdsieve.dashboard.oidc.keys.jweEnabled`         | Enable JWE encryption                                 | `false`                    |
+| `crowdsieve.dashboard.oidc.keys.jweAlgorithm`       | JWE encryption algorithm                              | `RSA-OAEP-256`             |
+| `crowdsieve.dashboard.oidc.keys.rotationDays`       | Key rotation interval in days                         | `""`                       |
+| `crowdsieve.logging.level`                          | Log level                                             | `info`                     |
+| `crowdsieve.storage.type`                           | Storage backend: `sqlite` or `postgres`               | `sqlite`                   |
+| `crowdsieve.storage.retentionDays`                  | Alert retention days                                  | `30`                       |
+| `crowdsieve.storage.postgres.host`                  | PostgreSQL host                                       | `""`                       |
+| `crowdsieve.storage.postgres.port`                  | PostgreSQL port                                       | `5432`                     |
+| `crowdsieve.storage.postgres.database`              | PostgreSQL database                                   | `""`                       |
+| `crowdsieve.storage.postgres.user`                  | PostgreSQL user                                       | `""`                       |
+| `crowdsieve.storage.postgres.password`              | PostgreSQL password                                   | `""`                       |
+| `crowdsieve.storage.postgres.ssl`                   | Enable SSL                                            | `false`                    |
+| `crowdsieve.storage.postgres.sslRejectUnauthorized` | Reject unauthorized SSL certs                         | `true`                     |
+| `crowdsieve.storage.postgres.poolSize`              | Connection pool size                                  | `10`                       |
+| `crowdsieve.storage.postgres.existingSecret`        | Use existing secret                                   | `""`                       |
+| `crowdsieve.storage.postgres.passwordKey`           | Key in existing secret                                | `password`                 |
+| `crowdsieve.geoip.enabled`                          | Enable GeoIP enrichment (uses DB-IP City Lite)        | `false`                    |
+| `crowdsieve.persistence.enabled`                    | Enable persistence                                    | `true`                     |
+| `crowdsieve.persistence.size`                       | PVC size                                              | `1Gi`                      |
+| `crowdsieve.filters.mode`                           | Filter mode: `block` or `allow`                       | `block`                    |
+| `crowdsieve.filters.rules`                          | Filter rules                                          | See values.yaml            |
+| `crowdsieve.lapiServers.autoConfigureLocal`         | Auto-configure connection to local LAPI               | `true`                     |
+| `crowdsieve.lapiServers.servers`                    | Additional LAPI servers to connect to                 | `[]`                       |
+| `crowdsec.enabled`                                  | Enable CrowdSec subchart                              | `true`                     |
+| `crowdsec.lapi.database.type`                       | CrowdSec LAPI storage backend: `sqlite` or `postgres` | `sqlite`                   |
+| `crowdsec.lapi.database.postgres.host`              | CrowdSec PostgreSQL host                              | `""`                       |
+| `crowdsec.lapi.database.postgres.port`              | CrowdSec PostgreSQL port                              | `5432`                     |
+| `crowdsec.lapi.database.postgres.database`          | CrowdSec PostgreSQL database                          | `crowdsec`                 |
+| `crowdsec.lapi.database.postgres.user`              | CrowdSec PostgreSQL user                              | `crowdsec`                 |
+| `crowdsec.lapi.database.postgres.password`          | CrowdSec PostgreSQL password                          | `""`                       |
+| `crowdsec.lapi.database.postgres.sslmode`           | CrowdSec PostgreSQL SSL mode                          | `disable`                  |
+| `crowdsec.lapi.database.postgres.existingSecret`    | Use existing secret                                   | `""`                       |
+| `crowdsec.lapi.database.postgres.passwordKey`       | Key in existing secret                                | `password`                 |
+| `crowdsec.lapi.bouncers`                            | List of bouncers to pre-register                      | `[]`                       |
+| `crowdsec.lapi.machines`                            | List of machines to pre-register                      | `[]`                       |
+| `crowdsec.lapi.credentials.username`                | Agent username                                        | `""`                       |
+| `crowdsec.lapi.credentials.password`                | Agent password                                        | `""`                       |
+| `crowdsec.lapi.credentials.existingSecret`          | Use existing secret for credentials                   | `""`                       |
+| `crowdsec.lapi.credentials.usernameKey`             | Username key in existing secret                       | `username`                 |
+| `crowdsec.lapi.credentials.passwordKey`             | Password key in existing secret                       | `password`                 |
+| `capiCredentials.login`                             | CrowdSec machine ID                                   | `""`                       |
+| `capiCredentials.password`                          | CrowdSec password                                     | `""`                       |
 
 ### Filter Configuration
 
@@ -167,7 +180,7 @@ Filters are defined in `crowdsieve.filters.rules` as a map of filename to YAML c
 ```yaml
 crowdsieve:
   filters:
-    mode: "block"  # "block" = matching alerts filtered, "allow" = only matching forwarded
+    mode: 'block' # "block" = matching alerts filtered, "allow" = only matching forwarded
     rules:
       # Block alerts without decisions
       00-no-decision.yaml: |
@@ -199,17 +212,17 @@ By default, CrowdSieve uses SQLite for storage. For production deployments with 
 
 ```yaml
 crowdsieve:
-  replicaCount: 3  # Safe to scale with PostgreSQL
+  replicaCount: 3 # Safe to scale with PostgreSQL
   storage:
-    type: "postgres"
+    type: 'postgres'
     postgres:
-      host: "postgres.database.svc.cluster.local"
+      host: 'postgres.database.svc.cluster.local'
       port: 5432
-      database: "crowdsieve"
-      user: "crowdsieve"
-      password: "your-secure-password"
+      database: 'crowdsieve'
+      user: 'crowdsieve'
+      password: 'your-secure-password'
       ssl: true
-      sslRejectUnauthorized: true  # Set to false for self-signed certs
+      sslRejectUnauthorized: true # Set to false for self-signed certs
       poolSize: 10
 ```
 
@@ -218,13 +231,13 @@ crowdsieve:
 ```yaml
 crowdsieve:
   storage:
-    type: "postgres"
+    type: 'postgres'
     postgres:
-      host: "postgres.database.svc.cluster.local"
-      database: "crowdsieve"
-      user: "crowdsieve"
-      existingSecret: "my-postgres-credentials"
-      passwordKey: "password"  # Key in the secret
+      host: 'postgres.database.svc.cluster.local'
+      database: 'crowdsieve'
+      user: 'crowdsieve'
+      existingSecret: 'my-postgres-credentials'
+      passwordKey: 'password' # Key in the secret
 ```
 
 **Note:** When using PostgreSQL, the PVC for SQLite is not needed:
@@ -232,7 +245,7 @@ crowdsieve:
 ```yaml
 crowdsieve:
   persistence:
-    enabled: false  # Not needed for PostgreSQL
+    enabled: false # Not needed for PostgreSQL
 ```
 
 ### CrowdSec LAPI PostgreSQL Backend
@@ -246,16 +259,16 @@ By default, CrowdSec LAPI uses SQLite for its internal database. For High Availa
 ```yaml
 crowdsec:
   lapi:
-    replicas: 2  # Safe to scale with PostgreSQL
+    replicas: 2 # Safe to scale with PostgreSQL
     database:
-      type: "postgres"
+      type: 'postgres'
       postgres:
-        host: "postgres.database.svc.cluster.local"
+        host: 'postgres.database.svc.cluster.local'
         port: 5432
-        database: "crowdsec"
-        user: "crowdsec"
-        password: "your-secure-password"
-        sslmode: "disable"  # or: require, verify-ca, verify-full
+        database: 'crowdsec'
+        user: 'crowdsec'
+        password: 'your-secure-password'
+        sslmode: 'disable' # or: require, verify-ca, verify-full
 ```
 
 #### Step 2: Configure extraVolumes, extraVolumeMounts and env
@@ -274,7 +287,7 @@ crowdsec:
       - name: DB_PASSWORD
         valueFrom:
           secretKeyRef:
-            name: my-release-crowdsieve-crowdsec-postgres  # <release-name>-crowdsieve-crowdsec-postgres
+            name: my-release-crowdsieve-crowdsec-postgres # <release-name>-crowdsieve-crowdsec-postgres
             key: password
 
     extraVolumeMounts:
@@ -291,11 +304,11 @@ crowdsec:
     extraVolumes:
       - name: online-api-credentials
         configMap:
-          name: my-release-crowdsieve-capi-credentials  # <release-name>-crowdsieve-capi-credentials
+          name: my-release-crowdsieve-capi-credentials # <release-name>-crowdsieve-capi-credentials
       # Add the db-config volume for PostgreSQL
       - name: db-config
         configMap:
-          name: my-release-crowdsieve-crowdsec-db-config  # <release-name>-crowdsieve-crowdsec-db-config
+          name: my-release-crowdsieve-crowdsec-db-config # <release-name>-crowdsieve-crowdsec-db-config
 ```
 
 #### Using an existing secret for CrowdSec PostgreSQL
@@ -304,13 +317,13 @@ crowdsec:
 crowdsec:
   lapi:
     database:
-      type: "postgres"
+      type: 'postgres'
       postgres:
-        host: "postgres.database.svc.cluster.local"
-        database: "crowdsec"
-        user: "crowdsec"
-        existingSecret: "my-crowdsec-db-credentials"
-        passwordKey: "password"
+        host: 'postgres.database.svc.cluster.local'
+        database: 'crowdsec'
+        user: 'crowdsec'
+        existingSecret: 'my-crowdsec-db-credentials'
+        passwordKey: 'password'
 
     env:
       - name: DB_PASSWORD
@@ -330,10 +343,10 @@ You can pre-register bouncers with API keys that will be available when CrowdSec
 crowdsec:
   lapi:
     bouncers:
-      - name: "nginx"
-        key: "my-secret-bouncer-key-123"
-      - name: "traefik"
-        key: "another-bouncer-key-456"
+      - name: 'nginx'
+        key: 'my-secret-bouncer-key-123'
+      - name: 'traefik'
+        key: 'another-bouncer-key-456'
 ```
 
 #### Step 2: Configure environment variables
@@ -372,10 +385,10 @@ Unlike bouncers, machines require a registration script because CrowdSec Docker 
 crowdsec:
   lapi:
     machines:
-      - name: "server-1"
-        password: "secure-password-for-server-1"
-      - name: "server-2"
-        password: "secure-password-for-server-2"
+      - name: 'server-1'
+        password: 'secure-password-for-server-1'
+      - name: 'server-2'
+        password: 'secure-password-for-server-2'
 ```
 
 #### Step 2: Configure volumes, mounts, env, and lifecycle
@@ -419,7 +432,8 @@ crowdsec:
     lifecycle:
       postStart:
         exec:
-          command: ["/bin/sh", "-c", "nohup /scripts/register-machines.sh > /tmp/machines.log 2>&1 &"]
+          command:
+            ['/bin/sh', '-c', 'nohup /scripts/register-machines.sh > /tmp/machines.log 2>&1 &']
 ```
 
 #### Step 3: Connect remote agents
@@ -445,8 +459,8 @@ You can configure custom credentials for agents (watchers) connecting to LAPI in
 crowdsec:
   lapi:
     credentials:
-      username: "my-agent"
-      password: "my-secure-password"
+      username: 'my-agent'
+      password: 'my-secure-password'
 ```
 
 #### Step 2: Configure environment variables
@@ -473,9 +487,9 @@ crowdsec:
 crowdsec:
   lapi:
     credentials:
-      existingSecret: "my-agent-credentials"
-      usernameKey: "username"
-      passwordKey: "password"
+      existingSecret: 'my-agent-credentials'
+      usernameKey: 'username'
+      passwordKey: 'password'
 
     env:
       - name: AGENT_USERNAME
@@ -504,10 +518,10 @@ crowdsieve:
     # Define log sources
     sources:
       grafana-prod:
-        type: "loki"
-        grafana_url: "${GRAFANA_URL}"
-        token: "${GRAFANA_TOKEN}"
-        datasource_uid: "logs-prod"
+        type: 'loki'
+        grafana_url: '${GRAFANA_URL}'
+        token: '${GRAFANA_TOKEN}'
+        datasource_uid: 'logs-prod'
 
     # Analyzer rules
     rules:
@@ -542,8 +556,8 @@ crowdsieve:
 
     # Grafana credentials (creates a Secret automatically)
     grafana:
-      url: "https://grafana.example.com"
-      token: "glsa_xxx"
+      url: 'https://grafana.example.com'
+      token: 'glsa_xxx'
 ```
 
 > **Note:** The `grafana` config creates a Secret and injects `GRAFANA_URL` and `GRAFANA_TOKEN` environment variables automatically. These names must match the `${GRAFANA_URL}` and `${GRAFANA_TOKEN}` placeholders used in the sources configuration.
@@ -575,14 +589,15 @@ By default (`lapiServers.autoConfigureLocal: true`), the chart automatically con
 crowdsec:
   lapi:
     bouncers:
-      - name: "dashboard"
-        key: "my-bouncer-key"    # Used for reading decisions
+      - name: 'dashboard'
+        key: 'my-bouncer-key' # Used for reading decisions
     machines:
-      - name: "crowdsieve"
-        password: "my-password"  # Used for creating bans
+      - name: 'crowdsieve'
+        password: 'my-password' # Used for creating bans
 ```
 
 This will automatically:
+
 1. Configure CrowdSieve to connect to the local LAPI
 2. Use the first bouncer's API key for reading decisions
 3. Use the first machine's credentials for creating manual bans
@@ -594,13 +609,13 @@ To connect to additional or external LAPI servers:
 ```yaml
 crowdsieve:
   lapiServers:
-    autoConfigureLocal: true  # Keep local LAPI connection
+    autoConfigureLocal: true # Keep local LAPI connection
     servers:
-      - name: "remote-lapi"
-        url: "https://remote-lapi.example.com:8080"
-        apiKey: "bouncer-key-for-reading"
-        machineId: "crowdsieve-remote"
-        password: "machine-password"
+      - name: 'remote-lapi'
+        url: 'https://remote-lapi.example.com:8080'
+        apiKey: 'bouncer-key-for-reading'
+        machineId: 'crowdsieve-remote'
+        password: 'machine-password'
 ```
 
 > **Note:** For the dashboard to show decisions and enable manual banning, you need both a bouncer key (for reading) and machine credentials (for writing). Without machine credentials, only decision viewing is available.
@@ -613,9 +628,9 @@ To expose the dashboard via Ingress:
 crowdsieve:
   ingress:
     enabled: true
-    className: "nginx"
+    className: 'nginx'
     annotations:
-      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      cert-manager.io/cluster-issuer: 'letsencrypt-prod'
     hosts:
       - host: crowdsieve.example.com
         paths:
@@ -626,6 +641,194 @@ crowdsieve:
         hosts:
           - crowdsieve.example.com
 ```
+
+### OIDC Authentication
+
+You can secure the dashboard with OIDC authentication. When enabled, users must authenticate via your OIDC provider (Keycloak, Auth0, Okta, etc.) to access the dashboard.
+
+#### Basic OIDC Configuration
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: 'https://auth.example.com/realms/production'
+      clientId: 'crowdsieve-dashboard'
+      clientSecret: 'your-client-secret'
+      session:
+        secret: '32-chars-minimum-secret-here!!'
+        cookieSecure: true # Set to false for HTTP (development only)
+```
+
+#### OIDC with Private Key JWT Authentication
+
+Use `private_key_jwt` instead of `client_secret` for stronger authentication:
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: 'https://auth.example.com/realms/production'
+      clientId: 'crowdsieve-dashboard'
+      # No clientSecret needed - private_key_jwt is used instead
+      session:
+        secret: '32-chars-minimum-secret-here!!'
+        cookieSecure: true
+      keys:
+        jwsEnabled: true # Enable private_key_jwt authentication
+        jwsAlgorithm: 'RS256'
+        rotationDays: 30 # Auto-rotate keys every 30 days
+```
+
+> **Note:** When `jwsEnabled: true`, `clientSecret` is **ignored** and `private_key_jwt` authentication is used instead. The provider must be configured to accept this authentication method and import CrowdSieve's public keys from `/api/jwks`.
+
+#### OIDC with Encrypted Tokens (JWE)
+
+Enable JWE to decrypt encrypted tokens from the provider (ID tokens and back-channel logout tokens):
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: 'https://auth.example.com/realms/production'
+      clientId: 'crowdsieve-dashboard'
+      clientSecret: 'your-client-secret'
+      session:
+        secret: '32-chars-minimum-secret-here!!'
+        cookieSecure: true
+      keys:
+        jweEnabled: true # Enable JWE decryption
+        jweAlgorithm: 'RSA-OAEP-256'
+        rotationDays: 30
+```
+
+> **Note:** When JWS or JWE is enabled, keys are stored at `/app/data/jwks.json` on the PVC. This ensures keys persist across pod restarts.
+
+#### Using Existing Secrets
+
+For production deployments, store OIDC credentials in pre-created Kubernetes secrets:
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: 'https://auth.example.com/realms/production'
+      clientId: 'crowdsieve-dashboard'
+      existingSecret: 'my-oidc-credentials'
+      clientSecretKey: 'client-secret' # Key in the secret
+      session:
+        existingSecret: 'my-session-secret'
+        secretKey: 'session-secret' # Key in the secret
+        cookieSecure: true
+```
+
+Create the secrets:
+
+```bash
+# OIDC client secret
+kubectl create secret generic my-oidc-credentials \
+  --from-literal=client-secret='your-client-secret' \
+  -n security
+
+# Session secret
+kubectl create secret generic my-session-secret \
+  --from-literal=session-secret='32-chars-minimum-secret-here!!' \
+  -n security
+```
+
+#### OIDC Provider Configuration
+
+##### CrowdSieve Endpoints
+
+Replace `https://crowdsieve.example.com` with your actual dashboard URL:
+
+| Endpoint            | URL                                                          | Description                 |
+| ------------------- | ------------------------------------------------------------ | --------------------------- |
+| Callback            | `https://crowdsieve.example.com/api/auth/callback/oidc`      | OAuth2 redirect after login |
+| JWKS                | `https://crowdsieve.example.com/api/jwks`                    | Public keys for JWE/JWS     |
+| Back-channel logout | `https://crowdsieve.example.com/api/auth/backchannel-logout` | SSO logout notification     |
+
+##### Supported Algorithms
+
+| Type                   | Default        | Options                                            |
+| ---------------------- | -------------- | -------------------------------------------------- |
+| JWS Signing            | `RS256`        | RS256, RS384, RS512, ES256, ES384, ES512, EdDSA    |
+| JWE Key Encryption     | `RSA-OAEP-256` | RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384, RSA-OAEP-512 |
+| JWE Content Encryption | `A256GCM`      | A256GCM, A128GCM, A192GCM                          |
+| RSA Key Size           | `2048` bits    | 2048, 3072, 4096                                   |
+
+##### LemonLDAP::NG Setup Example
+
+1. **Create a new OpenID Connect Relying Party** in the Manager:
+   - Go to `OpenID Connect Relying Parties` > `Add a new Relying Party`
+   - Client ID: `crowdsieve-dashboard`
+
+2. **Configure the Relying Party** in the `Options` tab:
+   | Setting | Value |
+   |---------|-------|
+   | Allowed redirection addresses | `https://crowdsieve.example.com/api/auth/callback/oidc` |
+   | Allowed post-logout redirection addresses | `https://crowdsieve.example.com` |
+
+3. **Configure authentication** in the `Security` tab:
+   - **With client_secret:** Set authentication method to `client_secret_post` or `client_secret_basic`, and set a client secret
+   - **With private_key_jwt (JWS):** Set authentication method to `private_key_jwt`, and import public key from `https://crowdsieve.example.com/api/jwks`
+
+4. **Enable Back-channel Logout** (optional):
+   - In `Logout` tab, set Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
+
+5. **Enable ID Token Encryption** (optional, requires JWE):
+   - In `Security` tab, enable "Encrypt ID token"
+   - Set ID token encryption algorithm: `RSA-OAEP-256`
+   - Set ID token encryption content algorithm: `A256GCM`
+   - Import public key from: `https://crowdsieve.example.com/api/jwks`
+
+6. **Get the issuer URL**:
+   - Issuer URL format: `https://auth.example.com` (your LemonLDAP::NG portal URL)
+
+##### Keycloak Setup Example
+
+1. **Create a new client** in your realm:
+   - Client ID: `crowdsieve-dashboard`
+   - Client Protocol: `openid-connect`
+   - Access Type: `confidential`
+
+2. **Configure URLs** in the client settings:
+   | Setting | Value |
+   |---------|-------|
+   | Root URL | `https://crowdsieve.example.com` |
+   | Valid Redirect URIs | `https://crowdsieve.example.com/api/auth/callback/oidc` |
+   | Valid Post Logout Redirect URIs | `https://crowdsieve.example.com` |
+   | Web Origins | `https://crowdsieve.example.com` |
+
+3. **Configure authentication** in the Credentials tab:
+   - **With client_secret:** Use "Client Id and Secret" and copy the secret
+   - **With private_key_jwt (JWS):** Use "Signed JWT", import JWKS from `https://crowdsieve.example.com/api/jwks`
+
+4. **Enable Back-channel Logout** (optional):
+   - Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
+   - Back-channel logout session required: `ON`
+
+5. **Enable ID Token Encryption** (optional, requires JWE):
+   - Go to client > Keys tab
+   - Enable "Encrypt ID token"
+   - Import keys from JWKS URL: `https://crowdsieve.example.com/api/jwks`
+
+##### Other Providers
+
+| Provider      | Issuer URL Format                                 |
+| ------------- | ------------------------------------------------- |
+| LemonLDAP::NG | `https://auth.example.com`                        |
+| Keycloak      | `https://keycloak.example.com/realms/{realm}`     |
+| Auth0         | `https://{tenant}.auth0.com`                      |
+| Okta          | `https://{domain}.okta.com`                       |
+| Google        | `https://accounts.google.com`                     |
+| Azure AD      | `https://login.microsoftonline.com/{tenant}/v2.0` |
+
+> **Warning:** Auto-generated session secrets change on each Helm upgrade, invalidating all user sessions. For production, always set `session.secret` or use `session.existingSecret`.
 
 ## Accessing the Dashboard
 
@@ -676,11 +879,13 @@ kubectl delete pvc -l app.kubernetes.io/instance=crowdsieve -n security
 ### CrowdSec not sending alerts to CrowdSieve
 
 1. Check the ConfigMap exists:
+
    ```bash
    kubectl get configmap -n security | grep capi-credentials
    ```
 
 2. Verify the credentials in the ConfigMap:
+
    ```bash
    kubectl get configmap crowdsieve-crowdsieve-capi-credentials -o yaml -n security
    ```
@@ -693,6 +898,7 @@ kubectl delete pvc -l app.kubernetes.io/instance=crowdsieve -n security
 ### Dashboard not accessible
 
 1. Check CrowdSieve pod status:
+
    ```bash
    kubectl get pods -l app.kubernetes.io/name=crowdsieve -n security
    ```

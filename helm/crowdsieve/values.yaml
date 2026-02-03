@@ -96,6 +96,50 @@ crowdsieve:
     # -- CORS origin (leave empty for restrictive mode)
     corsOrigin: ""
 
+    # ---------------------------------------------------------------------------
+    # OIDC Configuration (Optional)
+    # ---------------------------------------------------------------------------
+    # When configured, users must authenticate via OIDC to access the dashboard.
+    # If not configured, the dashboard is publicly accessible (current behavior).
+    oidc:
+      # -- Enable OIDC authentication
+      enabled: false
+      # -- OIDC Issuer URL (e.g., https://auth.example.com/realms/myrealm)
+      issuer: ""
+      # -- OIDC Client ID
+      clientId: ""
+      # -- OIDC Client Secret (stored in Secret)
+      clientSecret: ""
+      # -- Use existing secret for OIDC credentials
+      existingSecret: ""
+      # -- Key in existing secret for client secret
+      clientSecretKey: "client-secret"
+
+      # Session configuration
+      session:
+        # -- Session secret (auto-generated if empty, 32+ chars recommended)
+        # WARNING: Auto-generated secrets change on each Helm upgrade, invalidating sessions
+        secret: ""
+        # -- Use existing secret for session secret
+        existingSecret: ""
+        # -- Key in existing secret for session secret
+        secretKey: "session-secret"
+        # -- Session cookie secure flag (true for HTTPS, false for HTTP)
+        cookieSecure: true
+
+      # JWS/JWE Configuration (for private_key_jwt auth and encrypted tokens)
+      keys:
+        # -- Enable private_key_jwt authentication (uses JWS instead of client_secret)
+        jwsEnabled: false
+        # -- JWS signing algorithm (RS256, RS384, RS512, ES256, ES384, ES512, EdDSA)
+        jwsAlgorithm: "RS256"
+        # -- Enable JWE encryption
+        jweEnabled: false
+        # -- JWE encryption algorithm (RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384, RSA-OAEP-512)
+        jweAlgorithm: "RSA-OAEP-256"
+        # -- Key rotation interval in days (empty = no automatic rotation)
+        rotationDays: ""
+
   # ---------------------------------------------------------------------------
   # LAPI Servers Configuration (for dashboard features)
   # ---------------------------------------------------------------------------

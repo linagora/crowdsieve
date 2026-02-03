@@ -24,6 +24,7 @@ const PUBLIC_PATHS = [
   '/api/auth/logout',
   '/api/auth/session',
   '/api/auth/backchannel-logout',
+  '/api/jwks', // JWKS endpoint for OIDC provider to get our encryption keys
 ];
 
 function isPublicPath(pathname: string): boolean {
