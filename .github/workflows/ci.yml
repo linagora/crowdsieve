@@ -200,9 +200,21 @@ jobs:
             sleep 2
           done
 
-      - name: Configure LemonLDAP::NG
-        working-directory: tests/e2e
-        run: ./configure-llng.sh
+      - name: Verify OIDC discovery
+        run: |
+          echo "Checking OIDC discovery endpoint..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:19080/.well-known/openid-configuration | jq -e '.issuer' > /dev/null 2>&1; then
+              echo "OIDC discovery is working"
+              curl -s http://localhost:19080/.well-known/openid-configuration | jq '{issuer, token_endpoint, jwks_uri}'
+              exit 0
+            fi
+            echo "Attempt $i: OIDC not ready yet..."
+            sleep 2
+          done
+          echo "OIDC discovery failed"
+          docker logs llng-oidc-test 2>&1 | tail -50
+          exit 1
 
       - name: Run E2E OIDC tests
         working-directory: tests/e2e

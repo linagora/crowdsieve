@@ -28,6 +28,7 @@ services:
     volumes:
       - llng-data:/var/lib/lemonldap-ng/conf
       - llng-sessions:/var/lib/lemonldap-ng/sessions
+      - ./llng-init/00-configure-oidc.sh:/etc/cont-init.d/00-configure-oidc.sh:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 5s

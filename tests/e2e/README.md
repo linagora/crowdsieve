@@ -40,25 +40,24 @@ Tests the full OIDC authentication flow with:
 ### Running the Tests
 
 ```bash
-# 1. Start the test environment
+# 1. Start the test environment (OIDC is auto-configured via s6 init script)
 cd tests/e2e
 docker compose -f docker-compose.oidc.yaml up -d --build
 
 # 2. Wait for services to be healthy
 docker compose -f docker-compose.oidc.yaml ps
 
-# 3. Configure LemonLDAP::NG as OIDC provider
-./configure-llng.sh
-
-# 4. Run automated tests
+# 3. Run automated tests
 ./test-oidc.sh
 
-# 5. (Optional) Manual browser test
+# 4. (Optional) Manual browser test
 # Open http://localhost:13000 and login with dwho/dwho
 
-# 6. Cleanup
+# 5. Cleanup
 docker compose -f docker-compose.oidc.yaml down -v
 ```
+
+Note: OIDC provider configuration is automatic via the s6 init script mounted at `/etc/cont-init.d/00-configure-oidc.sh`. The `configure-llng.sh` script is kept for manual testing/debugging.
 
 ### What Gets Tested
 
@@ -145,5 +144,6 @@ docker exec llng-oidc-test curl -s http://dashboard.example.com:3000/api/jwks
 | File | Description |
 |------|-------------|
 | `docker-compose.oidc.yaml` | Docker Compose configuration for test environment |
-| `configure-llng.sh` | Script to configure LLNG as OIDC provider |
+| `llng-init/00-configure-oidc.sh` | s6 init script to auto-configure LLNG OIDC provider |
+| `configure-llng.sh` | Manual configuration script (for debugging) |
 | `test-oidc.sh` | Automated test script |
