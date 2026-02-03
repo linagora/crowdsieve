@@ -756,7 +756,7 @@ Replace `https://crowdsieve.example.com` with your actual dashboard URL:
    - Authentication method: `client_secret_post` or `client_secret_basic`
    - Client secret: Generate or set a secure secret
 
-4. **Enable Back-channel Logout** (optional, requires JWS):
+4. **Enable Back-channel Logout** (optional):
    - In `Logout` tab, set Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
 
 5. **Enable ID Token Encryption** (optional, requires JWE):
@@ -783,7 +783,7 @@ Replace `https://crowdsieve.example.com` with your actual dashboard URL:
    | Valid Post Logout Redirect URIs | `https://crowdsieve.example.com` |
    | Web Origins | `https://crowdsieve.example.com` |
 
-3. **Enable Back-channel Logout** (optional, requires JWS):
+3. **Enable Back-channel Logout** (optional):
    - Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
    - Back-channel logout session required: `ON`
 
