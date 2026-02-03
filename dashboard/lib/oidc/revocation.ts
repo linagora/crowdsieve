@@ -92,10 +92,7 @@ export function cleanupRevocations(): void {
 
 // Run cleanup periodically (every hour)
 // Only in Node.js runtime, not Edge runtime
-if (
-  typeof globalThis !== 'undefined' &&
-  typeof (globalThis as NodeJS.Global).setInterval === 'function'
-) {
+if (typeof setInterval === 'function') {
   try {
     setInterval(cleanupRevocations, 60 * 60 * 1000);
   } catch {
