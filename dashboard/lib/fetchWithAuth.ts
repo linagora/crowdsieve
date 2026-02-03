@@ -56,7 +56,11 @@ export async function fetchWithAuth(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
-  const res = await fetch(input, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
+  const res = await fetch(input, { ...init, headers, redirect: 'follow' });
   if (res.status === 401 || res.status === 403) {
     showSessionExpiredOverlay();
     return new Promise(() => {});
