@@ -1,4 +1,4 @@
-import { eq, desc, and, or, gte, lte, like, sql } from 'drizzle-orm';
+import { eq, desc, and, or, gt, gte, lte, like, sql } from 'drizzle-orm';
 import net from 'net';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
@@ -68,6 +68,7 @@ export interface AlertStorage {
   markAlertsForwarded(indices: number[]): Promise<void>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
   getAlertById(id: number): Promise<SelectAlert | null>;
+  hasAlertsNewerThan(timestamp: Date): Promise<boolean>;
   getStats(since?: Date): Promise<AlertStats>;
   getTimeDistributionStats(since?: Date): Promise<TimeDistributionStats>;
   getDecisionStats(since?: Date): Promise<DecisionStats>;
@@ -254,6 +255,23 @@ export function createStorage(): AlertStorage {
       } else {
         const result = (query as unknown as { get(): SelectAlert | undefined }).get();
         return result || null;
+      }
+    },
+
+    async hasAlertsNewerThan(timestamp) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const query = db
+        .select({ count: sql<number>`1` })
+        .from(schema.alerts)
+        .where(gt(schema.alerts.receivedAt, timestamp.toISOString()))
+        .limit(1);
+
+      if (isPostgres) {
+        const rows = await query;
+        return rows.length > 0;
+      } else {
+        const result = (query as unknown as { get(): { count: number } | undefined }).get();
+        return result !== undefined;
       }
     },
 

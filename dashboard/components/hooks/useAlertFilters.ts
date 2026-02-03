@@ -39,6 +39,13 @@ export function useAlertFilters({
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
+  // Track the most recent alert timestamp for optimized refresh
+  const getLatestTimestamp = (alertList: StoredAlert[]): string | null => {
+    if (alertList.length === 0) return null;
+    // Alerts are sorted by receivedAt DESC, so first one is most recent
+    return alertList[0].receivedAt;
+  };
+
   // Keep a stable reference to initialAlerts to avoid unnecessary re-fetches
   const initialAlertsRef = useRef(initialAlerts);
   initialAlertsRef.current = initialAlerts;
@@ -99,6 +106,11 @@ export function useAlertFilters({
       setError(null);
 
       try {
+        // For auto-refresh without filters, use newerThan optimization
+        // This returns [] if no new alerts, or the 100 most recent if there are new ones
+        const latestTimestamp =
+          isAutoRefresh && !hasServerFilters ? getLatestTimestamp(alerts) : null;
+
         const result = await fetchAlerts({
           limit,
           since: filters.since?.toISOString(),
@@ -107,7 +119,15 @@ export function useAlertFilters({
           machineId: filters.machineId || undefined,
           filtered: filters.status === 'filtered' ? true : undefined,
           forwardedToCapi: filters.status === 'forwarded' ? true : undefined,
+          newerThan: latestTimestamp || undefined,
         });
+
+        // If using newerThan optimization and result is empty, nothing new - skip state update
+        if (latestTimestamp && result.length === 0) {
+          setLastUpdated(new Date());
+          return;
+        }
+
         setAlerts(result);
         setLastUpdated(new Date());
       } catch (err) {
@@ -130,7 +150,7 @@ export function useAlertFilters({
         }
       }
     },
-    [filters.since, filters.until, filters.scenario, filters.machineId, filters.status, limit]
+    [filters.since, filters.until, filters.scenario, filters.machineId, filters.status, limit, alerts]
   );
 
   // Fetch filtered alerts when filters change

@@ -14,6 +14,7 @@ export async function fetchAlerts(params?: {
   since?: string;
   until?: string;
   machineId?: string;
+  newerThan?: string; // Optimization: return [] if no alerts newer than this timestamp
 }): Promise<StoredAlert[]> {
   const searchParams = new URLSearchParams();
 
@@ -27,6 +28,7 @@ export async function fetchAlerts(params?: {
   if (params?.since) searchParams.set('since', params.since);
   if (params?.until) searchParams.set('until', params.until);
   if (params?.machineId) searchParams.set('machineId', params.machineId);
+  if (params?.newerThan) searchParams.set('newerThan', params.newerThan);
 
   // Calls Next.js API route which proxies to backend
   const res = await fetchWithAuth(`/api/alerts?${searchParams}`, {

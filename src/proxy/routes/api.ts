@@ -189,6 +189,7 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
       ip?: string;
       since?: string;
       until?: string;
+      newerThan?: string; // Optimization: return [] if no alerts newer than this timestamp
     };
   }>('/api/alerts', async (request, reply) => {
     try {
@@ -254,6 +255,26 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
         if (until < minAllowedDate || until > maxAllowedDate) {
           return reply.code(400).send({ error: 'Until date out of acceptable range' });
         }
+      }
+
+      // newerThan optimization: check if there are any alerts newer than this timestamp
+      // If not, return [] immediately without querying all alerts
+      let newerThan: Date | undefined;
+      if (request.query.newerThan) {
+        newerThan = new Date(request.query.newerThan);
+        if (isNaN(newerThan.getTime())) {
+          return reply.code(400).send({ error: 'Invalid newerThan date format' });
+        }
+        if (newerThan < minAllowedDate || newerThan > maxAllowedDate) {
+          return reply.code(400).send({ error: 'newerThan date out of acceptable range' });
+        }
+
+        // Check if any alerts exist newer than this timestamp
+        const hasNewer = await storage.hasAlertsNewerThan(newerThan);
+        if (!hasNewer) {
+          return reply.send([]);
+        }
+        // If there are newer alerts, continue to fetch the full result set
       }
 
       const query = {
