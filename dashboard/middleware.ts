@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * SECURITY: Middleware for OIDC authentication gate
+ *
+ * This middleware runs in Edge Runtime and performs lightweight session checks.
+ * Full session validation (expiration, revocation) happens in page/API routes
+ * because Edge Runtime has limited crypto capabilities.
+ *
+ * Security considerations:
+ * - Only checks cookie presence, not validity (defense in depth with route checks)
+ * - Public paths are explicitly allowlisted to prevent auth bypass
+ * - Redirect parameter uses pathname only (validated in login page to prevent open redirect)
+ */
+
 // Public paths that don't require authentication
+// SECURITY: Be careful adding paths - they bypass authentication
 const PUBLIC_PATHS = [
   '/login',
   '/api/auth/login',

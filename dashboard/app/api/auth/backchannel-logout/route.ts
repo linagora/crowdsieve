@@ -3,9 +3,22 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { isOidcEnabled, getOidcConfig } from '@/lib/oidc/config';
 import { revokeSession, revokeAllUserSessions } from '@/lib/oidc/revocation';
 
-// Back-channel logout endpoint
-// This is called directly by the OIDC provider when a user logs out
-// See: https://openid.net/specs/openid-connect-backchannel-1_0.html
+/**
+ * SECURITY: Back-channel logout endpoint (OIDC spec compliant)
+ *
+ * This endpoint is called directly by the OIDC provider when a user logs out.
+ * It receives a signed JWT (logout_token) that we verify before revoking sessions.
+ *
+ * Security validations performed:
+ * 1. JWT signature verification using provider's JWKS
+ * 2. Issuer validation (must match configured OIDC issuer)
+ * 3. Audience validation (must match our client_id)
+ * 4. Event claim validation (must contain backchannel-logout event)
+ * 5. Nonce rejection (spec requires no nonce in logout tokens)
+ * 6. jti tracking (prevents replay attacks)
+ *
+ * See: https://openid.net/specs/openid-connect-backchannel-1_0.html
+ */
 
 interface LogoutTokenPayload {
   iss: string;

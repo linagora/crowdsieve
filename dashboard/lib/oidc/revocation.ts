@@ -1,6 +1,20 @@
-// In-memory session revocation store
-// In production, this should be backed by Redis or a database for persistence across restarts
-// and for multi-instance deployments
+/**
+ * SECURITY: In-memory session revocation store for back-channel logout
+ *
+ * This module tracks revoked sessions to support OIDC back-channel logout.
+ * When the OIDC provider sends a logout token, we mark the session as revoked
+ * so subsequent requests with that session are rejected.
+ *
+ * LIMITATIONS (production considerations):
+ * - In-memory only: revocations are lost on server restart
+ * - Single instance: not shared across multiple servers
+ * - For production, consider Redis or database-backed storage
+ *
+ * SECURITY NOTES:
+ * - Revocations are checked on every authenticated request (via isSessionValid)
+ * - TTL prevents unbounded memory growth from revocation records
+ * - The '*' marker in revokedByUser enables "logout all sessions for user" feature
+ */
 
 interface RevokedSession {
   sid: string;
@@ -83,7 +97,10 @@ export function cleanupRevocations(): void {
 
 // Run cleanup periodically (every hour)
 // Only in Node.js runtime, not Edge runtime
-if (typeof globalThis !== 'undefined' && typeof (globalThis as NodeJS.Global).setInterval === 'function') {
+if (
+  typeof globalThis !== 'undefined' &&
+  typeof (globalThis as NodeJS.Global).setInterval === 'function'
+) {
   try {
     setInterval(cleanupRevocations, 60 * 60 * 1000);
   } catch {
