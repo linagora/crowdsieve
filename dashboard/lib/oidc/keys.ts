@@ -39,14 +39,16 @@ interface StoredKey {
 }
 
 interface StoredKeySet {
-  signing: {
+  signing?: {
     next: StoredKey;
     current: StoredKey;
     previous: StoredKey | null;
+    algorithm?: string; // Added to detect algorithm changes
   };
-  encryption: {
+  encryption?: {
     current: StoredKey;
     previous: StoredKey | null;
+    algorithm?: string; // Added to detect algorithm changes
   };
   lastRotation: number;
 }
@@ -166,20 +168,22 @@ async function saveKeysToFile(path: string): Promise<void> {
       lastRotation: Date.now(),
     };
 
-    // Save signing keys if available
+    // Save signing keys if available (include algorithm for mismatch detection)
     if (signingKeys) {
       data.signing = {
         next: await serializeKey(signingKeys.next),
         current: await serializeKey(signingKeys.current),
         previous: signingKeys.previous ? await serializeKey(signingKeys.previous) : null,
+        algorithm: getSigningAlgorithm(),
       };
     }
 
-    // Save encryption keys if available
+    // Save encryption keys if available (include algorithm for mismatch detection)
     if (encryptionKeys) {
       data.encryption = {
         current: await serializeKey(encryptionKeys.current),
         previous: encryptionKeys.previous ? await serializeKey(encryptionKeys.previous) : null,
+        algorithm: getEncryptionAlgorithm(),
       };
     }
 
@@ -256,8 +260,25 @@ async function doInitializeKeys(): Promise<void> {
       const sigAlg = getSigningAlgorithm();
       const encAlg = getEncryptionAlgorithm();
 
-      // Load signing keys if present and JWS is enabled
-      if (jwsEnabled && stored.signing) {
+      // Check for algorithm mismatches and regenerate if needed
+      const sigAlgMismatch = stored.signing?.algorithm && stored.signing.algorithm !== sigAlg;
+      const encAlgMismatch = stored.encryption?.algorithm && stored.encryption.algorithm !== encAlg;
+
+      if (sigAlgMismatch) {
+        console.warn(
+          `Signing algorithm changed from ${stored.signing!.algorithm} to ${sigAlg}. ` +
+            'Regenerating signing keys.'
+        );
+      }
+      if (encAlgMismatch) {
+        console.warn(
+          `Encryption algorithm changed from ${stored.encryption!.algorithm} to ${encAlg}. ` +
+            'Regenerating encryption keys.'
+        );
+      }
+
+      // Load signing keys if present, JWS is enabled, and algorithm matches
+      if (jwsEnabled && stored.signing && !sigAlgMismatch) {
         signingKeys = {
           next: await deserializeKey(stored.signing.next, sigAlg),
           current: await deserializeKey(stored.signing.current, sigAlg),
@@ -267,8 +288,8 @@ async function doInitializeKeys(): Promise<void> {
         };
       }
 
-      // Load encryption keys if present and JWE is enabled
-      if (jweEnabled && stored.encryption) {
+      // Load encryption keys if present, JWE is enabled, and algorithm matches
+      if (jweEnabled && stored.encryption && !encAlgMismatch) {
         encryptionKeys = {
           current: await deserializeKey(stored.encryption.current, encAlg),
           previous: stored.encryption.previous
