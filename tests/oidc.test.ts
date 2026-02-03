@@ -348,10 +348,14 @@ describe('OIDC Client', () => {
 });
 
 describe('Open Redirect Prevention', () => {
+  // Regex to detect URL schemes (must match implementation in login page)
+  const UNSAFE_URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+
   // Test the redirect validation logic used in login page
   function isSafeRedirect(path: string | undefined): path is string {
     if (!path) return false;
-    return path.startsWith('/') && !path.startsWith('//') && !path.includes(':');
+    if (UNSAFE_URL_SCHEME.test(path)) return false;
+    return path.startsWith('/') && !path.startsWith('//');
   }
 
   it('should allow valid relative paths', () => {
@@ -359,6 +363,11 @@ describe('Open Redirect Prevention', () => {
     expect(isSafeRedirect('/dashboard')).toBe(true);
     expect(isSafeRedirect('/alerts/123')).toBe(true);
     expect(isSafeRedirect('/stats?filter=today')).toBe(true);
+  });
+
+  it('should allow paths with colons in query parameters', () => {
+    expect(isSafeRedirect('/time?hour=12:30:00')).toBe(true);
+    expect(isSafeRedirect('/search?q=foo:bar')).toBe(true);
   });
 
   it('should reject undefined or empty paths', () => {
@@ -376,10 +385,6 @@ describe('Open Redirect Prevention', () => {
   it('should reject protocol-relative URLs', () => {
     expect(isSafeRedirect('//evil.com')).toBe(false);
     expect(isSafeRedirect('//evil.com/path')).toBe(false);
-  });
-
-  it('should reject paths with embedded protocol', () => {
-    expect(isSafeRedirect('/redirect?url=https://evil.com')).toBe(false);
   });
 
   it('should reject paths not starting with /', () => {
