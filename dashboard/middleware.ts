@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Public paths that don't require authentication
 // SECURITY: Be careful adding paths - they bypass authentication
+// Note: favicon.ico and _next/static are handled by the matcher config below
 const PUBLIC_PATHS = [
   '/login',
   '/api/auth/login',
@@ -22,8 +23,6 @@ const PUBLIC_PATHS = [
   '/api/auth/logout',
   '/api/auth/session',
   '/api/auth/backchannel-logout',
-  '/_next',
-  '/favicon.ico',
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -50,9 +49,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Check for session cookie
   const sessionCookie = request.cookies.get('crowdsieve-session');
   if (!sessionCookie) {
-    // Redirect to login
+    // Redirect to login with the original path for post-login redirect
+    // SECURITY: pathname is already validated by Next.js URL parsing and starts with /
+    // The login page will re-validate the redirect parameter before using it
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', request.nextUrl.pathname);
+    const pathname = request.nextUrl.pathname;
+    if (pathname && pathname !== '/') {
+      loginUrl.searchParams.set('redirect', pathname);
+    }
     return NextResponse.redirect(loginUrl);
   }
 

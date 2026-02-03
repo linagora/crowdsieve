@@ -45,11 +45,14 @@ export default async function LoginPage({
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 text-sm">
-                {error === 'invalid_state' && 'Invalid authentication state. Please try again.'}
-                {error === 'no_claims' && 'Could not retrieve user information. Please try again.'}
-                {error === 'callback_failed' && 'Authentication failed. Please try again.'}
+                {error === 'invalid_state' &&
+                  'Invalid authentication state (AUTH_INVALID_STATE). Your sign-in session may have expired. Please try again.'}
+                {error === 'no_claims' &&
+                  'Could not retrieve user information from the identity provider (AUTH_NO_CLAIMS). Please try again or contact your administrator.'}
+                {error === 'callback_failed' &&
+                  'Authentication callback failed (AUTH_CALLBACK_FAILED). Please try again. If the problem persists, check the server logs.'}
                 {!['invalid_state', 'no_claims', 'callback_failed'].includes(error) &&
-                  'An error occurred during authentication.'}
+                  `Authentication error (${error}). Please try again or contact your administrator.`}
               </p>
             </div>
           )}

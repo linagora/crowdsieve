@@ -10,15 +10,29 @@ export interface SessionUser {
   picture?: string;
 }
 
+/**
+ * SessionData is stored in an encrypted httpOnly cookie via iron-session.
+ *
+ * SECURITY CONSIDERATIONS:
+ * - All data in this interface is stored client-side (in the encrypted cookie)
+ * - If SESSION_SECRET is compromised, tokens could be decrypted
+ * - For higher security requirements, consider storing tokens server-side
+ *   (in a database) and keeping only a session ID in the cookie
+ * - Tokens are cleared from the session once no longer needed
+ * - Session expiration is enforced on every request via isSessionValid()
+ */
 export interface SessionData {
   user?: SessionUser;
+  /** Access token from OIDC provider - stored client-side in encrypted cookie */
   accessToken?: string;
+  /** ID token (JWT) containing identity claims - treat as sensitive */
   idToken?: string;
+  /** Refresh token - highly sensitive, consider server-side storage for production */
   refreshToken?: string;
   expiresAt?: number;
-  // Session ID from OIDC (for back-channel logout)
+  /** Session ID from OIDC provider (for back-channel logout support) */
   sid?: string;
-  // OIDC state/nonce for verification during callback
+  // Temporary OIDC state for callback verification (cleared after use)
   state?: string;
   nonce?: string;
   codeVerifier?: string;

@@ -24,7 +24,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const baseUrl = getBaseUrl();
-    const redirectUri = `${baseUrl}/api/auth/callback`;
 
     // Exchange authorization code for tokens
     const tokens = await client.authorizationCodeGrant(oidcClient, new URL(request.url), {
@@ -66,6 +65,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     await session.save();
 
     // Redirect to home page
+    // SECURITY: We intentionally redirect to '/' and not to a user-supplied redirect
+    // parameter to avoid open redirect vulnerabilities. The login page handles
+    // redirect validation separately before initiating the auth flow.
     return NextResponse.redirect(new URL('/', baseUrl));
   } catch (error) {
     console.error('Callback error:', error);

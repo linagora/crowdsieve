@@ -35,9 +35,16 @@ export function UserMenu() {
     async function fetchSession() {
       try {
         const response = await fetch('/api/auth/session');
+        if (!response.ok) {
+          console.warn(`Session check failed: ${response.status} ${response.statusText}`);
+          setSession({ authenticated: false, user: null });
+          return;
+        }
         const data = await response.json();
         setSession(data);
-      } catch {
+      } catch (error) {
+        // Log error for debugging but don't disrupt user experience
+        console.warn('Failed to fetch session:', error);
         setSession({ authenticated: false, user: null });
       } finally {
         setIsLoading(false);
