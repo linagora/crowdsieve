@@ -334,6 +334,86 @@ describe('OIDC Client', () => {
   });
 });
 
+describe('JWE Key Management', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should return false when JWE is not enabled', async () => {
+    delete process.env.JWE_ENABLED;
+
+    const { isJweEnabled } = await import('../dashboard/lib/oidc/keys.js');
+    expect(isJweEnabled()).toBe(false);
+  });
+
+  it('should return true when JWE is enabled', async () => {
+    process.env.JWE_ENABLED = 'true';
+
+    const { isJweEnabled } = await import('../dashboard/lib/oidc/keys.js');
+    expect(isJweEnabled()).toBe(true);
+  });
+
+  it('should return null keys when JWE is not enabled', async () => {
+    delete process.env.JWE_ENABLED;
+
+    const { getEncryptionKeys } = await import('../dashboard/lib/oidc/keys.js');
+    const keys = await getEncryptionKeys();
+    expect(keys).toBeNull();
+  });
+
+  it('should generate keys when JWE is enabled', async () => {
+    process.env.JWE_ENABLED = 'true';
+
+    const { getEncryptionKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const keys = await getEncryptionKeys();
+    expect(keys).not.toBeNull();
+    expect(keys?.privateKey).toBeDefined();
+    expect(keys?.publicKey).toBeDefined();
+    expect(keys?.kid).toMatch(/^crowdsieve-enc-/);
+  });
+
+  it('should return empty JWKS when JWE is not enabled', async () => {
+    delete process.env.JWE_ENABLED;
+
+    const { getPublicJWKS } = await import('../dashboard/lib/oidc/keys.js');
+    const jwks = await getPublicJWKS();
+    expect(jwks).toEqual({ keys: [] });
+  });
+
+  it('should return JWKS with encryption key when JWE is enabled', async () => {
+    process.env.JWE_ENABLED = 'true';
+
+    const { getPublicJWKS, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const jwks = await getPublicJWKS();
+    expect(jwks.keys).toHaveLength(1);
+    expect(jwks.keys[0]).toHaveProperty('use', 'enc');
+    expect(jwks.keys[0]).toHaveProperty('alg', 'RSA-OAEP-256');
+    expect(jwks.keys[0]).toHaveProperty('kid');
+    expect(jwks.keys[0]).toHaveProperty('kty', 'RSA');
+  });
+
+  it('should cache keys between calls', async () => {
+    process.env.JWE_ENABLED = 'true';
+
+    const { getEncryptionKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const keys1 = await getEncryptionKeys();
+    const keys2 = await getEncryptionKeys();
+
+    expect(keys1?.kid).toBe(keys2?.kid);
+  });
+});
+
 describe('Open Redirect Prevention', () => {
   // Import the actual implementation to ensure tests match production behavior
   let isSafeRedirect: (path: string | undefined) => path is string;
