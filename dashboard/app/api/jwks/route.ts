@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getPublicJWKS, isJweEnabled } from '@/lib/oidc/keys';
+import { getPublicJWKS, isJweEnabled, isJwsEnabled } from '@/lib/oidc/keys';
 
-// JWKS endpoint for publishing CrowdSieve's public encryption key
-// The OIDC provider uses this to encrypt ID tokens (JWE) for CrowdSieve
+// JWKS endpoint for publishing CrowdSieve's public keys
+// Depending on configuration, the OIDC provider uses these keys for:
+// - Signing (JWS): back-channel logout verification
+// - Encryption (JWE): encrypting ID tokens for CrowdSieve
 
 export async function GET(): Promise<NextResponse> {
-  // Return empty JWKS if JWE is not enabled
-  if (!isJweEnabled()) {
+  // Return empty JWKS if neither JWS nor JWE is enabled
+  if (!isJwsEnabled() && !isJweEnabled()) {
     return NextResponse.json(
       { keys: [] },
       {

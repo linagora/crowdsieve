@@ -53,7 +53,7 @@ export async function getOidcClient(): Promise<client.Configuration | null> {
           client.enableDecryptingResponses(
             config,
             contentEncAlgs,
-            keys.privateKey as client.CryptoKey
+            keys.current.privateKey as client.CryptoKey
           );
           console.log('JWE decryption enabled for OIDC responses');
         }

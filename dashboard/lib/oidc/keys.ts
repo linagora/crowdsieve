@@ -1,6 +1,7 @@
 import { generateKeyPair, exportJWK, importJWK, KeyLike } from 'jose';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
+import { randomBytes } from 'crypto';
 
 /**
  * JWKS Key Management with Rotation Support
@@ -8,7 +9,7 @@ import { dirname } from 'path';
  * Signing keys: 3 keys published (next, current, previous) for seamless rotation
  * Encryption keys: 1 key published (current) + previous kept for decryption
  *
- * Key rotation happens automatically based on JWE_KEY_ROTATION_DAYS (default: 30)
+ * Key rotation happens automatically based on JWE_KEY_ROTATION_DAYS (no default, disabled if not configured)
  */
 
 // Key types
@@ -54,6 +55,7 @@ interface StoredKeySet {
 let signingKeys: SigningKeySet | null = null;
 let encryptionKeys: EncryptionKeySet | null = null;
 let lastRotationCheck: number = 0;
+let initPromise: Promise<void> | null = null; // Lock to prevent concurrent initialization
 
 // Configuration
 function getKeysPath(): string | null {
@@ -79,7 +81,7 @@ function getRotationDays(): number | null {
 
 function generateKid(prefix: string): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 8);
+  const random = randomBytes(6).toString('hex');
   return `crowdsieve-${prefix}-${timestamp}-${random}`;
 }
 
@@ -151,7 +153,8 @@ async function loadKeysFromFile(path: string): Promise<StoredKeySet | null> {
 }
 
 async function saveKeysToFile(path: string): Promise<void> {
-  if (!signingKeys || !encryptionKeys) return;
+  // Save if we have at least one key set
+  if (!signingKeys && !encryptionKeys) return;
 
   try {
     const dir = dirname(path);
@@ -159,18 +162,26 @@ async function saveKeysToFile(path: string): Promise<void> {
       mkdirSync(dir, { recursive: true });
     }
 
-    const data: StoredKeySet = {
-      signing: {
+    const data: Partial<StoredKeySet> & { lastRotation: number } = {
+      lastRotation: Date.now(),
+    };
+
+    // Save signing keys if available
+    if (signingKeys) {
+      data.signing = {
         next: await serializeKey(signingKeys.next),
         current: await serializeKey(signingKeys.current),
         previous: signingKeys.previous ? await serializeKey(signingKeys.previous) : null,
-      },
-      encryption: {
+      };
+    }
+
+    // Save encryption keys if available
+    if (encryptionKeys) {
+      data.encryption = {
         current: await serializeKey(encryptionKeys.current),
         previous: encryptionKeys.previous ? await serializeKey(encryptionKeys.previous) : null,
-      },
-      lastRotation: Date.now(),
-    };
+      };
+    }
 
     writeFileSync(path, JSON.stringify(data, null, 2), { mode: 0o600 });
     console.log('Keys saved to:', path);
@@ -218,9 +229,25 @@ async function rotateKeys(): Promise<void> {
   console.log('Key rotation complete');
 }
 
-// Initialize keys
+// Initialize keys with lock to prevent concurrent initialization
 async function initializeKeys(): Promise<void> {
+  // Use promise-based lock to prevent race conditions
+  if (initPromise) {
+    return initPromise;
+  }
+
+  initPromise = doInitializeKeys();
+  try {
+    await initPromise;
+  } finally {
+    initPromise = null;
+  }
+}
+
+async function doInitializeKeys(): Promise<void> {
   const keysPath = getKeysPath();
+  const jwsEnabled = isJwsEnabled();
+  const jweEnabled = isJweEnabled();
 
   // Try to load from file
   if (keysPath) {
@@ -229,20 +256,26 @@ async function initializeKeys(): Promise<void> {
       const sigAlg = getSigningAlgorithm();
       const encAlg = getEncryptionAlgorithm();
 
-      signingKeys = {
-        next: await deserializeKey(stored.signing.next, sigAlg),
-        current: await deserializeKey(stored.signing.current, sigAlg),
-        previous: stored.signing.previous
-          ? await deserializeKey(stored.signing.previous, sigAlg)
-          : null,
-      };
+      // Load signing keys if present and JWS is enabled
+      if (jwsEnabled && stored.signing) {
+        signingKeys = {
+          next: await deserializeKey(stored.signing.next, sigAlg),
+          current: await deserializeKey(stored.signing.current, sigAlg),
+          previous: stored.signing.previous
+            ? await deserializeKey(stored.signing.previous, sigAlg)
+            : null,
+        };
+      }
 
-      encryptionKeys = {
-        current: await deserializeKey(stored.encryption.current, encAlg),
-        previous: stored.encryption.previous
-          ? await deserializeKey(stored.encryption.previous, encAlg)
-          : null,
-      };
+      // Load encryption keys if present and JWE is enabled
+      if (jweEnabled && stored.encryption) {
+        encryptionKeys = {
+          current: await deserializeKey(stored.encryption.current, encAlg),
+          previous: stored.encryption.previous
+            ? await deserializeKey(stored.encryption.previous, encAlg)
+            : null,
+        };
+      }
 
       console.log('Keys loaded from:', keysPath);
 
@@ -251,29 +284,56 @@ async function initializeKeys(): Promise<void> {
         await rotateKeys();
       }
 
+      // Generate missing keys if a feature was just enabled
+      let needsSave = false;
+      if (jwsEnabled && !signingKeys) {
+        const [sigNext, sigCurrent] = await Promise.all([
+          generateSigningKey(),
+          generateSigningKey(),
+        ]);
+        signingKeys = { next: sigNext, current: sigCurrent, previous: null };
+        needsSave = true;
+      }
+      if (jweEnabled && !encryptionKeys) {
+        encryptionKeys = { current: await generateEncryptionKey(), previous: null };
+        needsSave = true;
+      }
+      if (needsSave) {
+        await saveKeysToFile(keysPath);
+      }
+
       return;
     }
   }
 
-  // Generate new keys
+  // Generate new keys only for enabled features
   console.log('Generating new key sets...');
 
-  const [sigNext, sigCurrent, encCurrent] = await Promise.all([
-    generateSigningKey(),
-    generateSigningKey(),
-    generateEncryptionKey(),
-  ]);
+  const promises: Promise<KeyWithMetadata>[] = [];
+  if (jwsEnabled) {
+    promises.push(generateSigningKey(), generateSigningKey());
+  }
+  if (jweEnabled) {
+    promises.push(generateEncryptionKey());
+  }
 
-  signingKeys = {
-    next: sigNext,
-    current: sigCurrent,
-    previous: null,
-  };
+  const keys = await Promise.all(promises);
+  let idx = 0;
 
-  encryptionKeys = {
-    current: encCurrent,
-    previous: null,
-  };
+  if (jwsEnabled) {
+    signingKeys = {
+      next: keys[idx++],
+      current: keys[idx++],
+      previous: null,
+    };
+  }
+
+  if (jweEnabled) {
+    encryptionKeys = {
+      current: keys[idx++],
+      previous: null,
+    };
+  }
 
   // Save to file
   if (keysPath) {
@@ -312,6 +372,19 @@ export async function getSigningKeys(): Promise<SigningKeySet | null> {
 export async function getEncryptionKeys(): Promise<EncryptionKeySet | null> {
   if (!isJweEnabled()) {
     return null;
+  }
+
+  // Check for rotation periodically (every hour)
+  const now = Date.now();
+  if (encryptionKeys && now - lastRotationCheck > 60 * 60 * 1000) {
+    lastRotationCheck = now;
+    const keysPath = getKeysPath();
+    if (keysPath) {
+      const stored = await loadKeysFromFile(keysPath);
+      if (stored && shouldRotate(stored.lastRotation)) {
+        await rotateKeys();
+      }
+    }
   }
 
   if (!encryptionKeys) {
@@ -410,7 +483,8 @@ export async function getPublicJWKS(): Promise<{ keys: object[] }> {
  * Force key rotation (for manual rotation or testing)
  */
 export async function forceRotation(): Promise<void> {
-  if (!signingKeys && !encryptionKeys) {
+  // Initialize if needed for enabled features
+  if ((!signingKeys && isJwsEnabled()) || (!encryptionKeys && isJweEnabled())) {
     await initializeKeys();
   }
   await rotateKeys();
@@ -423,4 +497,5 @@ export function clearKeysCache(): void {
   signingKeys = null;
   encryptionKeys = null;
   lastRotationCheck = 0;
+  initPromise = null;
 }

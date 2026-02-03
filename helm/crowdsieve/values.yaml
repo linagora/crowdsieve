@@ -118,7 +118,7 @@ crowdsieve:
       # Session configuration
       session:
         # -- Session secret (auto-generated if empty, 32+ chars recommended)
-        # WARNING: Auto-generated secrets change on pod restart, invalidating sessions
+        # WARNING: Auto-generated secrets change on each Helm upgrade, invalidating sessions
         secret: ""
         # -- Use existing secret for session secret
         existingSecret: ""
