@@ -1,0 +1,91 @@
+# E2E Test: OIDC Authentication with JWS (private_key_jwt) and JWE (encrypted tokens)
+#
+# This setup tests CrowdSieve dashboard OIDC integration with:
+# - LemonLDAP::NG as OIDC provider
+# - private_key_jwt client authentication (JWS)
+# - Encrypted ID tokens (JWE)
+# - Back-channel logout
+#
+# Usage:
+#   cd tests/e2e
+#   docker compose -f docker-compose.oidc.yaml up -d --build
+#   ./configure-llng.sh
+#   ./test-oidc.sh
+#   docker compose -f docker-compose.oidc.yaml down -v
+
+services:
+  # LemonLDAP::NG - OIDC Provider
+  llng:
+    image: yadd/lemonldap-ng-portal:latest
+    container_name: llng-oidc-test
+    environment:
+      # Use the container network hostname for OIDC issuer
+      - PORTAL=http://llng
+      - LOGLEVEL=debug
+      - LOGGER=stderr
+    ports:
+      - "19080:80"
+    volumes:
+      - llng-data:/var/lib/lemonldap-ng/conf
+      - llng-sessions:/var/lib/lemonldap-ng/sessions
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - oidc-test
+
+  # CrowdSieve Dashboard with OIDC
+  crowdsieve:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: crowdsieve-oidc-test
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      # Dashboard API
+      - DASHBOARD_API_KEY=test-e2e-key
+      # OIDC Configuration - use container network name
+      - OIDC_ISSUER=http://llng
+      - OIDC_CLIENT_ID=crowdsieve-test
+      # No client secret - using private_key_jwt
+      - SESSION_SECRET=e2e-test-session-secret-32-chars!!
+      - SESSION_COOKIE_SECURE=false
+      - NEXTAUTH_URL=http://localhost:13000
+      # JWS: Enable private_key_jwt authentication
+      - JWS_ENABLED=true
+      - JWS_KEY_ALG=RS256
+      # JWE: Enable encrypted tokens
+      - JWE_ENABLED=true
+      - JWE_KEY_ALG=RSA-OAEP-256
+      - JWE_CONTENT_ALGS=A256GCM
+      # Key persistence
+      - JWE_KEYS_PATH=/app/data/jwks.json
+    ports:
+      - "13000:3000"
+      - "18080:8080"
+    volumes:
+      - crowdsieve-data:/app/data
+    depends_on:
+      llng:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - oidc-test
+
+volumes:
+  llng-data:
+  llng-sessions:
+  crowdsieve-data:
+
+networks:
+  oidc-test:
+    driver: bridge
