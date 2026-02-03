@@ -131,11 +131,11 @@ crowdsieve:
       keys:
         # -- Enable private_key_jwt authentication (uses JWS instead of client_secret)
         jwsEnabled: false
-        # -- JWS signing algorithm (RS256, RS384, RS512, ES256, ES384, ES512)
+        # -- JWS signing algorithm (RS256, RS384, RS512, ES256, ES384, ES512, EdDSA)
         jwsAlgorithm: "RS256"
         # -- Enable JWE encryption
         jweEnabled: false
-        # -- JWE encryption algorithm (RSA-OAEP-256, RSA-OAEP, A256KW)
+        # -- JWE encryption algorithm (RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384, RSA-OAEP-512)
         jweAlgorithm: "RSA-OAEP-256"
         # -- Key rotation interval in days (empty = no automatic rotation)
         rotationDays: ""
