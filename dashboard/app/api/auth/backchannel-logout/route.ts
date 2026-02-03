@@ -20,12 +20,34 @@ interface LogoutTokenPayload {
   nonce?: string;
 }
 
-// Cache the JWKS getter
-let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
+// Cache the JWKS getter per issuer (createRemoteJWKSet handles key caching internally)
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+// Track used jtis to prevent replay attacks (with expiration)
+const usedJtis = new Map<string, number>();
+const JTI_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+function isJtiUsed(jti: string): boolean {
+  const now = Date.now();
+  // Clean up expired jtis periodically
+  if (usedJtis.size > 100) {
+    for (const [key, expiry] of usedJtis) {
+      if (expiry < now) {
+        usedJtis.delete(key);
+      }
+    }
+  }
+  return usedJtis.has(jti) && usedJtis.get(jti)! > now;
+}
+
+function markJtiUsed(jti: string): void {
+  usedJtis.set(jti, Date.now() + JTI_EXPIRY_MS);
+}
 
 async function getJWKS(issuer: string): Promise<ReturnType<typeof createRemoteJWKSet>> {
-  if (jwksCache) {
-    return jwksCache;
+  const cached = jwksCache.get(issuer);
+  if (cached) {
+    return cached;
   }
 
   // Fetch the OpenID configuration to get the JWKS URI
@@ -41,8 +63,10 @@ async function getJWKS(issuer: string): Promise<ReturnType<typeof createRemoteJW
     throw new Error('No jwks_uri in OpenID configuration');
   }
 
-  jwksCache = createRemoteJWKSet(new URL(jwksUri));
-  return jwksCache;
+  // createRemoteJWKSet handles key caching and rotation internally
+  const jwks = createRemoteJWKSet(new URL(jwksUri));
+  jwksCache.set(issuer, jwks);
+  return jwks;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -88,6 +112,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.error('Logout token must not contain nonce');
       return new NextResponse('Invalid logout_token: contains nonce', { status: 400 });
     }
+
+    // Validate jti to prevent replay attacks
+    if (!claims.jti) {
+      console.error('Logout token missing jti');
+      return new NextResponse('Invalid logout_token: missing jti', { status: 400 });
+    }
+    if (isJtiUsed(claims.jti)) {
+      console.error('Logout token jti already used (replay attack?)');
+      return new NextResponse('Invalid logout_token: jti already used', { status: 400 });
+    }
+    markJtiUsed(claims.jti);
 
     // Extract sub and sid from the logout token
     const sub = claims.sub;
