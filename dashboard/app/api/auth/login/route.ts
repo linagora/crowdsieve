@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcClient } from '@/lib/oidc/client';
 import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
 import { getSession } from '@/lib/oidc/session';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   // Return 404 if OIDC is not enabled
   if (!isOidcEnabled()) {
     return new NextResponse('Not Found', { status: 404 });
