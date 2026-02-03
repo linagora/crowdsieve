@@ -11,25 +11,27 @@ sequenceDiagram
     participant Provider as OIDC Provider
 
     User->>Dashboard: 1. Access dashboard
-    Dashboard->>Provider: 2. Redirect to login
-    Provider->>Provider: 3. User authenticates
-    Provider->>Dashboard: 4. Authorization code
+    Dashboard->>User: 2. Redirect to provider
+    User->>Provider: 3. Follow redirect
+    User->>Provider: 4. Authenticate (login)
+    Provider->>User: 5. Redirect with auth code
+    User->>Dashboard: 6. Callback with auth code
 
     alt client_secret (default)
-        Dashboard->>Provider: 5a. Exchange code + client_secret
+        Dashboard->>Provider: 7a. Exchange code + client_secret
     else private_key_jwt (JWS enabled)
-        Dashboard->>Provider: 5b. Exchange code + signed JWT
+        Dashboard->>Provider: 7b. Exchange code + signed JWT
     end
 
     alt Plain token (default)
-        Provider->>Dashboard: 6a. ID Token (JWT)
+        Provider->>Dashboard: 8a. ID Token (JWT)
     else Encrypted token (JWE enabled)
-        Provider->>Dashboard: 6b. ID Token (JWE)
+        Provider->>Dashboard: 8b. ID Token (JWE)
         Dashboard->>Dashboard: Decrypt with private key
     end
 
-    Dashboard->>Dashboard: 7. Create session
-    Dashboard->>User: 8. Authenticated
+    Dashboard->>Dashboard: 9. Create session
+    Dashboard->>User: 10. Authenticated
 ```
 
 ## Configuration
