@@ -50,6 +50,12 @@ export function useAlertFilters({
   const initialAlertsRef = useRef(initialAlerts);
   initialAlertsRef.current = initialAlerts;
 
+  // Keep a stable reference to alerts for auto-refresh timestamp lookup
+  // This prevents doFetch from depending on alerts state, which would cause
+  // an infinite loop: doFetch changes -> useEffect runs -> setAlerts -> doFetch changes
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
+
   // Compute time bounds - prefer stats bounds (covers all data) over initial alerts
   const timeBounds = useMemo(() => {
     // Use stats time bounds if available (covers all alerts in database)
@@ -108,8 +114,9 @@ export function useAlertFilters({
       try {
         // For auto-refresh without filters, use newerThan optimization
         // This returns [] if no new alerts, or the 100 most recent if there are new ones
+        // Use alertsRef to avoid dependency on alerts state (would cause infinite loop)
         const latestTimestamp =
-          isAutoRefresh && !hasServerFilters ? getLatestTimestamp(alerts) : null;
+          isAutoRefresh && !hasServerFilters ? getLatestTimestamp(alertsRef.current) : null;
 
         const result = await fetchAlerts({
           limit,
@@ -157,7 +164,8 @@ export function useAlertFilters({
       filters.machineId,
       filters.status,
       limit,
-      alerts,
+      // Note: alerts is intentionally NOT in dependencies - we use alertsRef
+      // to avoid infinite loop: doFetch changes -> useEffect runs -> setAlerts -> doFetch changes
     ]
   );
 
