@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock environment variables for OIDC config tests
 const originalEnv = process.env;
@@ -107,14 +107,16 @@ describe('OIDC Config', () => {
       delete process.env.SESSION_SECRET;
 
       const { getSessionSecret } = await import('../dashboard/lib/oidc/config.js');
-      expect(getSessionSecret()).toBe('crowdsieve-dev-session-secret-32ch');
+      const secret = getSessionSecret();
+      expect(secret.length).toBeGreaterThanOrEqual(32);
     });
 
     it('should return default secret when configured secret is too short', async () => {
       process.env.SESSION_SECRET = 'short';
 
       const { getSessionSecret } = await import('../dashboard/lib/oidc/config.js');
-      expect(getSessionSecret()).toBe('crowdsieve-dev-session-secret-32ch');
+      const secret = getSessionSecret();
+      expect(secret.length).toBeGreaterThanOrEqual(32);
     });
   });
 

@@ -26,9 +26,9 @@ export function getSessionSecret(): string {
   if (secret && secret.length >= 32) {
     return secret;
   }
-  // Generate a default secret for development (not recommended for production)
-  // In production, SESSION_SECRET should be set explicitly
-  return 'crowdsieve-dev-session-secret-32ch';
+  // Default secret for development only (exactly 32 characters)
+  // WARNING: In production, SESSION_SECRET must be set explicitly
+  return 'crowdsieve-dev-secret-32-chars!!';
 }
 
 export function getBaseUrl(): string {
