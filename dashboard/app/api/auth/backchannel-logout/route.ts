@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { isOidcEnabled, getOidcConfig } from '@/lib/oidc/config';
 import { revokeSession, revokeAllUserSessions } from '@/lib/oidc/revocation';
+import { validateLogoutTokenClaims, LogoutTokenClaims } from '@/lib/oidc/validation';
 
 /**
  * SECURITY: Back-channel logout endpoint (OIDC spec compliant)
@@ -19,19 +20,6 @@ import { revokeSession, revokeAllUserSessions } from '@/lib/oidc/revocation';
  *
  * See: https://openid.net/specs/openid-connect-backchannel-1_0.html
  */
-
-interface LogoutTokenPayload {
-  iss: string;
-  sub?: string;
-  aud: string | string[];
-  iat: number;
-  jti: string;
-  sid?: string;
-  events: {
-    'http://schemas.openid.net/event/backchannel-logout': Record<string, never>;
-  };
-  nonce?: string;
-}
 
 // Cache the JWKS getter per issuer (createRemoteJWKSet handles key caching internally)
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
@@ -111,19 +99,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       audience: oidcConfig.clientId,
     });
 
-    const claims = payload as unknown as LogoutTokenPayload;
+    const claims = payload as unknown as LogoutTokenClaims;
 
-    // Validate logout token specific claims per spec
-    // Must contain the backchannel-logout event
-    if (!claims.events?.['http://schemas.openid.net/event/backchannel-logout']) {
-      console.error('Missing backchannel-logout event in logout token');
-      return new NextResponse('Invalid logout_token: missing event', { status: 400 });
-    }
-
-    // Must NOT contain a nonce claim
-    if (claims.nonce !== undefined) {
-      console.error('Logout token must not contain nonce');
-      return new NextResponse('Invalid logout_token: contains nonce', { status: 400 });
+    // Validate logout token claims per OIDC Back-Channel Logout spec
+    const validation = validateLogoutTokenClaims(claims);
+    if (!validation.valid) {
+      console.error(`Invalid logout token: ${validation.error}`);
+      return new NextResponse(`Invalid logout_token: ${validation.error}`, { status: 400 });
     }
 
     // Validate jti to prevent replay attacks
@@ -140,10 +122,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Extract sub and sid from the logout token
     const sub = claims.sub;
     const sid = claims.sid;
-
-    if (!sub && !sid) {
-      return new NextResponse('Logout token must contain sub or sid', { status: 400 });
-    }
 
     // Revoke the session(s)
     if (sid && sub) {

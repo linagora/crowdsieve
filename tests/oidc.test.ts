@@ -197,42 +197,18 @@ describe('Session Revocation', () => {
 });
 
 describe('Back-channel Logout Token Validation', () => {
-  interface LogoutTokenPayload {
-    iss: string;
-    sub?: string;
-    aud: string | string[];
-    iat: number;
-    jti: string;
-    sid?: string;
-    events: {
-      'http://schemas.openid.net/event/backchannel-logout': Record<string, never>;
-    };
-    nonce?: string;
-  }
+  // Import the actual implementation to ensure tests match production behavior
+  let validateLogoutTokenClaims: (
+    claims: Partial<import('../dashboard/lib/oidc/validation.js').LogoutTokenClaims>
+  ) => import('../dashboard/lib/oidc/validation.js').LogoutTokenValidationResult;
 
-  function validateLogoutToken(
-    claims: Partial<LogoutTokenPayload>
-  ): { valid: boolean; error?: string } {
-    // Must contain the backchannel-logout event
-    if (!claims.events?.['http://schemas.openid.net/event/backchannel-logout']) {
-      return { valid: false, error: 'missing event' };
-    }
-
-    // Must NOT contain a nonce claim
-    if (claims.nonce !== undefined) {
-      return { valid: false, error: 'contains nonce' };
-    }
-
-    // Must contain sub or sid
-    if (!claims.sub && !claims.sid) {
-      return { valid: false, error: 'must contain sub or sid' };
-    }
-
-    return { valid: true };
-  }
+  beforeEach(async () => {
+    const validation = await import('../dashboard/lib/oidc/validation.js');
+    validateLogoutTokenClaims = validation.validateLogoutTokenClaims;
+  });
 
   it('should accept valid logout token with sub and sid', () => {
-    const token: Partial<LogoutTokenPayload> = {
+    const token = {
       iss: 'https://auth.example.com',
       sub: 'user-123',
       sid: 'session-456',
@@ -244,11 +220,11 @@ describe('Back-channel Logout Token Validation', () => {
       },
     };
 
-    expect(validateLogoutToken(token)).toEqual({ valid: true });
+    expect(validateLogoutTokenClaims(token)).toEqual({ valid: true });
   });
 
   it('should accept valid logout token with only sub', () => {
-    const token: Partial<LogoutTokenPayload> = {
+    const token = {
       iss: 'https://auth.example.com',
       sub: 'user-123',
       aud: 'my-client',
@@ -259,11 +235,11 @@ describe('Back-channel Logout Token Validation', () => {
       },
     };
 
-    expect(validateLogoutToken(token)).toEqual({ valid: true });
+    expect(validateLogoutTokenClaims(token)).toEqual({ valid: true });
   });
 
   it('should accept valid logout token with only sid', () => {
-    const token: Partial<LogoutTokenPayload> = {
+    const token = {
       iss: 'https://auth.example.com',
       sid: 'session-456',
       aud: 'my-client',
@@ -274,24 +250,27 @@ describe('Back-channel Logout Token Validation', () => {
       },
     };
 
-    expect(validateLogoutToken(token)).toEqual({ valid: true });
+    expect(validateLogoutTokenClaims(token)).toEqual({ valid: true });
   });
 
   it('should reject token without backchannel-logout event', () => {
-    const token: Partial<LogoutTokenPayload> = {
+    const token = {
       iss: 'https://auth.example.com',
       sub: 'user-123',
       aud: 'my-client',
       iat: Date.now() / 1000,
       jti: 'unique-id',
-      events: {} as LogoutTokenPayload['events'],
+      events: {} as { 'http://schemas.openid.net/event/backchannel-logout': Record<string, never> },
     };
 
-    expect(validateLogoutToken(token)).toEqual({ valid: false, error: 'missing event' });
+    expect(validateLogoutTokenClaims(token)).toEqual({
+      valid: false,
+      error: 'missing backchannel-logout event',
+    });
   });
 
   it('should reject token with nonce', () => {
-    const token: Partial<LogoutTokenPayload> = {
+    const token = {
       iss: 'https://auth.example.com',
       sub: 'user-123',
       aud: 'my-client',
@@ -303,11 +282,14 @@ describe('Back-channel Logout Token Validation', () => {
       },
     };
 
-    expect(validateLogoutToken(token)).toEqual({ valid: false, error: 'contains nonce' });
+    expect(validateLogoutTokenClaims(token)).toEqual({
+      valid: false,
+      error: 'logout token must not contain nonce',
+    });
   });
 
   it('should reject token without sub or sid', () => {
-    const token: Partial<LogoutTokenPayload> = {
+    const token = {
       iss: 'https://auth.example.com',
       aud: 'my-client',
       iat: Date.now() / 1000,
@@ -317,7 +299,10 @@ describe('Back-channel Logout Token Validation', () => {
       },
     };
 
-    expect(validateLogoutToken(token)).toEqual({ valid: false, error: 'must contain sub or sid' });
+    expect(validateLogoutTokenClaims(token)).toEqual({
+      valid: false,
+      error: 'logout token must contain sub or sid',
+    });
   });
 });
 
