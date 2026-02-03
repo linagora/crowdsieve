@@ -1,4 +1,4 @@
-import { generateKeyPair, exportJWK, importJWK, KeyLike } from 'jose';
+import { generateKeyPair, exportJWK, importJWK, type CryptoKey as JoseCryptoKey } from 'jose';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { randomBytes } from 'crypto';
@@ -14,8 +14,8 @@ import { randomBytes } from 'crypto';
 
 // Key types
 export interface KeyWithMetadata {
-  privateKey: KeyLike;
-  publicKey: KeyLike;
+  privateKey: JoseCryptoKey;
+  publicKey: JoseCryptoKey;
   kid: string;
   createdAt: number;
 }
@@ -134,8 +134,8 @@ async function serializeKey(key: KeyWithMetadata): Promise<StoredKey> {
 
 async function deserializeKey(stored: StoredKey, alg: string): Promise<KeyWithMetadata> {
   return {
-    privateKey: (await importJWK(stored.privateKey, alg)) as KeyLike,
-    publicKey: (await importJWK(stored.publicKey, alg)) as KeyLike,
+    privateKey: (await importJWK(stored.privateKey, alg)) as JoseCryptoKey,
+    publicKey: (await importJWK(stored.publicKey, alg)) as JoseCryptoKey,
     kid: stored.kid,
     createdAt: stored.createdAt,
   };

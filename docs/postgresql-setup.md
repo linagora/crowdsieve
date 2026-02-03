@@ -34,17 +34,17 @@ CrowdSieve will automatically create the required tables if they don't exist.
 
 ## Configuration Options
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `STORAGE_TYPE` | Database backend (`sqlite` or `postgres`) | `sqlite` |
-| `POSTGRES_HOST` | PostgreSQL server hostname | `localhost` |
-| `POSTGRES_PORT` | PostgreSQL server port | `5432` |
-| `POSTGRES_DATABASE` | Database name | - |
-| `POSTGRES_USER` | Database user | - |
-| `POSTGRES_PASSWORD` | Database password | - |
-| `POSTGRES_SSL` | Enable SSL connection | `false` |
-| `POSTGRES_SSL_REJECT_UNAUTHORIZED` | Reject self-signed certificates | `true` |
-| `POSTGRES_POOL_SIZE` | Connection pool size | `10` |
+| Variable                           | Description                               | Default     |
+| ---------------------------------- | ----------------------------------------- | ----------- |
+| `STORAGE_TYPE`                     | Database backend (`sqlite` or `postgres`) | `sqlite`    |
+| `POSTGRES_HOST`                    | PostgreSQL server hostname                | `localhost` |
+| `POSTGRES_PORT`                    | PostgreSQL server port                    | `5432`      |
+| `POSTGRES_DATABASE`                | Database name                             | -           |
+| `POSTGRES_USER`                    | Database user                             | -           |
+| `POSTGRES_PASSWORD`                | Database password                         | -           |
+| `POSTGRES_SSL`                     | Enable SSL connection                     | `false`     |
+| `POSTGRES_SSL_REJECT_UNAUTHORIZED` | Reject self-signed certificates           | `true`      |
+| `POSTGRES_POOL_SIZE`               | Connection pool size                      | `10`        |
 
 > **Security note**: Set `POSTGRES_SSL_REJECT_UNAUTHORIZED=false` only when connecting to servers with self-signed certificates. This disables certificate validation and should not be used in production with untrusted networks.
 
@@ -171,6 +171,7 @@ node scripts/migrate-sqlite-to-postgres.js ./data/crowdsieve.db
 ```
 
 The script will:
+
 1. Read all data from the SQLite database
 2. Create tables in PostgreSQL if they don't exist
 3. Transfer all alerts, decisions, and events
@@ -181,12 +182,14 @@ The script will:
 ### Error: "Permission denied to create table"
 
 Your PostgreSQL user doesn't have CREATE permissions. Either:
+
 1. Grant CREATE permission to the user
 2. Create tables manually using the SQL above
 
 ### Error: "Cannot find module 'pg'"
 
 Install the PostgreSQL driver:
+
 ```bash
 npm install pg
 ```
@@ -194,6 +197,7 @@ npm install pg
 ### Connection refused
 
 Check that:
+
 - PostgreSQL is running
 - The host and port are correct
 - Firewall allows the connection
