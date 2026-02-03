@@ -128,7 +128,7 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.dashboard.oidc.existingSecret`          | Use existing secret for OIDC                          | `""`                       |
 | `crowdsieve.dashboard.oidc.session.secret`          | Session secret (auto-generated if empty)              | `""`                       |
 | `crowdsieve.dashboard.oidc.session.cookieSecure`    | Session cookie secure flag                            | `true`                     |
-| `crowdsieve.dashboard.oidc.keys.jwsEnabled`         | Enable JWS signing                                    | `false`                    |
+| `crowdsieve.dashboard.oidc.keys.jwsEnabled`         | Enable private_key_jwt auth (replaces client_secret)  | `false`                    |
 | `crowdsieve.dashboard.oidc.keys.jwsAlgorithm`       | JWS signing algorithm                                 | `RS256`                    |
 | `crowdsieve.dashboard.oidc.keys.jweEnabled`         | Enable JWE encryption                                 | `false`                    |
 | `crowdsieve.dashboard.oidc.keys.jweAlgorithm`       | JWE encryption algorithm                              | `RSA-OAEP-256`             |
@@ -661,9 +661,32 @@ crowdsieve:
         cookieSecure: true # Set to false for HTTP (development only)
 ```
 
-#### OIDC with JWS/JWE (Back-channel Logout and Encrypted Tokens)
+#### OIDC with Private Key JWT Authentication
 
-For advanced OIDC features like back-channel logout or encrypted ID tokens:
+Use `private_key_jwt` instead of `client_secret` for stronger authentication:
+
+```yaml
+crowdsieve:
+  dashboard:
+    oidc:
+      enabled: true
+      issuer: 'https://auth.example.com/realms/production'
+      clientId: 'crowdsieve-dashboard'
+      # No clientSecret needed - private_key_jwt is used instead
+      session:
+        secret: '32-chars-minimum-secret-here!!'
+        cookieSecure: true
+      keys:
+        jwsEnabled: true # Enable private_key_jwt authentication
+        jwsAlgorithm: 'RS256'
+        rotationDays: 30 # Auto-rotate keys every 30 days
+```
+
+> **Note:** When `jwsEnabled: true`, `clientSecret` is **ignored** and `private_key_jwt` authentication is used instead. The provider must be configured to accept this authentication method and import CrowdSieve's public keys from `/api/jwks`.
+
+#### OIDC with Encrypted Tokens (JWE)
+
+Enable JWE to decrypt encrypted tokens from the provider (ID tokens and back-channel logout tokens):
 
 ```yaml
 crowdsieve:
@@ -677,11 +700,9 @@ crowdsieve:
         secret: '32-chars-minimum-secret-here!!'
         cookieSecure: true
       keys:
-        jwsEnabled: true # Required for back-channel logout
-        jwsAlgorithm: 'RS256'
-        jweEnabled: true # For encrypted ID tokens
+        jweEnabled: true # Enable JWE decryption
         jweAlgorithm: 'RSA-OAEP-256'
-        rotationDays: 30 # Auto-rotate keys every 30 days
+        rotationDays: 30
 ```
 
 > **Note:** When JWS or JWE is enabled, keys are stored at `/app/data/jwks.json` on the PVC. This ensures keys persist across pod restarts.
@@ -753,8 +774,8 @@ Replace `https://crowdsieve.example.com` with your actual dashboard URL:
    | Allowed post-logout redirection addresses | `https://crowdsieve.example.com` |
 
 3. **Configure authentication** in the `Security` tab:
-   - Authentication method: `client_secret_post` or `client_secret_basic`
-   - Client secret: Generate or set a secure secret
+   - **With client_secret:** Set authentication method to `client_secret_post` or `client_secret_basic`, and set a client secret
+   - **With private_key_jwt (JWS):** Set authentication method to `private_key_jwt`, and import public key from `https://crowdsieve.example.com/api/jwks`
 
 4. **Enable Back-channel Logout** (optional):
    - In `Logout` tab, set Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
@@ -783,18 +804,18 @@ Replace `https://crowdsieve.example.com` with your actual dashboard URL:
    | Valid Post Logout Redirect URIs | `https://crowdsieve.example.com` |
    | Web Origins | `https://crowdsieve.example.com` |
 
-3. **Enable Back-channel Logout** (optional):
+3. **Configure authentication** in the Credentials tab:
+   - **With client_secret:** Use "Client Id and Secret" and copy the secret
+   - **With private_key_jwt (JWS):** Use "Signed JWT", import JWKS from `https://crowdsieve.example.com/api/jwks`
+
+4. **Enable Back-channel Logout** (optional):
    - Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
    - Back-channel logout session required: `ON`
 
-4. **Enable ID Token Encryption** (optional, requires JWE):
+5. **Enable ID Token Encryption** (optional, requires JWE):
    - Go to client > Keys tab
    - Enable "Encrypt ID token"
    - Import keys from JWKS URL: `https://crowdsieve.example.com/api/jwks`
-
-5. **Get credentials**:
-   - Go to client > Credentials tab
-   - Copy the "Secret" value for `oidc.clientSecret`
 
 ##### Other Providers
 

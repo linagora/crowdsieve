@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify, compactDecrypt } from 'jose';
 import { isOidcEnabled, getOidcConfig } from '@/lib/oidc/config';
 import { revokeSession, revokeAllUserSessions } from '@/lib/oidc/revocation';
 import { validateLogoutTokenClaims, LogoutTokenClaims } from '@/lib/oidc/validation';
+import { isJweEnabled, getDecryptionKeys } from '@/lib/oidc/keys';
 
 /**
  * SECURITY: Back-channel logout endpoint (OIDC spec compliant)
@@ -43,6 +44,38 @@ function isJtiUsed(jti: string): boolean {
 
 function markJtiUsed(jti: string): void {
   usedJtis.set(jti, Date.now() + JTI_EXPIRY_MS);
+}
+
+/**
+ * Check if a token is a JWE (5 parts) vs JWS (3 parts)
+ */
+function isEncryptedToken(token: string): boolean {
+  return token.split('.').length === 5;
+}
+
+/**
+ * Decrypt a JWE logout token using our encryption keys.
+ * Returns the nested JWS token.
+ */
+async function decryptLogoutToken(jwe: string): Promise<string> {
+  const decryptionKeys = await getDecryptionKeys();
+  if (decryptionKeys.length === 0) {
+    throw new Error('JWE decryption not configured');
+  }
+
+  // Try each decryption key (current, then previous)
+  let lastError: Error | null = null;
+  for (const key of decryptionKeys) {
+    try {
+      const { plaintext } = await compactDecrypt(jwe, key.privateKey);
+      return new TextDecoder().decode(plaintext);
+    } catch (error) {
+      lastError = error as Error;
+      // Try next key
+    }
+  }
+
+  throw lastError || new Error('Failed to decrypt logout token');
 }
 
 async function getJWKS(issuer: string): Promise<ReturnType<typeof createRemoteJWKSet>> {
@@ -90,11 +123,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return new NextResponse('Missing logout_token', { status: 400 });
     }
 
+    // Handle encrypted logout tokens (JWE)
+    let tokenToVerify = logoutToken;
+    if (isEncryptedToken(logoutToken)) {
+      if (!isJweEnabled()) {
+        console.error('Received encrypted logout token but JWE is not enabled');
+        return new NextResponse('Encrypted logout tokens not supported', { status: 400 });
+      }
+      try {
+        tokenToVerify = await decryptLogoutToken(logoutToken);
+        console.log('Decrypted encrypted logout token');
+      } catch (error) {
+        console.error('Failed to decrypt logout token:', error);
+        return new NextResponse('Failed to decrypt logout_token', { status: 400 });
+      }
+    }
+
     // Get the JWKS for signature verification
     const JWKS = await getJWKS(oidcConfig.issuer);
 
     // Verify the JWT signature and decode claims
-    const { payload } = await jwtVerify(logoutToken, JWKS, {
+    const { payload } = await jwtVerify(tokenToVerify, JWKS, {
       issuer: oidcConfig.issuer,
       audience: oidcConfig.clientId,
     });

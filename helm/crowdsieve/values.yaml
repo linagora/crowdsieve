@@ -127,9 +127,9 @@ crowdsieve:
         # -- Session cookie secure flag (true for HTTPS, false for HTTP)
         cookieSecure: true
 
-      # JWS/JWE Configuration (for back-channel logout and encrypted tokens)
+      # JWS/JWE Configuration (for private_key_jwt auth and encrypted tokens)
       keys:
-        # -- Enable JWS signing (required for back-channel logout)
+        # -- Enable private_key_jwt authentication (uses JWS instead of client_secret)
         jwsEnabled: false
         # -- JWS signing algorithm (RS256, RS384, RS512, ES256, ES384, ES512)
         jwsAlgorithm: "RS256"
