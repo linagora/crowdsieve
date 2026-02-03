@@ -366,7 +366,7 @@ describe('JWE Key Management', () => {
     expect(keys).toBeNull();
   });
 
-  it('should generate keys when JWE is enabled', async () => {
+  it('should generate encryption keys when JWE is enabled', async () => {
     process.env.JWE_ENABLED = 'true';
 
     const { getEncryptionKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
@@ -374,13 +374,14 @@ describe('JWE Key Management', () => {
 
     const keys = await getEncryptionKeys();
     expect(keys).not.toBeNull();
-    expect(keys?.privateKey).toBeDefined();
-    expect(keys?.publicKey).toBeDefined();
-    expect(keys?.kid).toMatch(/^crowdsieve-enc-/);
+    expect(keys?.current.privateKey).toBeDefined();
+    expect(keys?.current.publicKey).toBeDefined();
+    expect(keys?.current.kid).toMatch(/^crowdsieve-enc-/);
   });
 
-  it('should return empty JWKS when JWE is not enabled', async () => {
+  it('should return empty JWKS when JWE and JWS are not enabled', async () => {
     delete process.env.JWE_ENABLED;
+    delete process.env.JWS_ENABLED;
 
     const { getPublicJWKS } = await import('../dashboard/lib/oidc/keys.js');
     const jwks = await getPublicJWKS();
@@ -389,6 +390,7 @@ describe('JWE Key Management', () => {
 
   it('should return JWKS with encryption key when JWE is enabled', async () => {
     process.env.JWE_ENABLED = 'true';
+    delete process.env.JWS_ENABLED;
 
     const { getPublicJWKS, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
     clearKeysCache();
@@ -401,7 +403,7 @@ describe('JWE Key Management', () => {
     expect(jwks.keys[0]).toHaveProperty('kty', 'RSA');
   });
 
-  it('should cache keys between calls', async () => {
+  it('should cache encryption keys between calls', async () => {
     process.env.JWE_ENABLED = 'true';
 
     const { getEncryptionKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
@@ -410,7 +412,161 @@ describe('JWE Key Management', () => {
     const keys1 = await getEncryptionKeys();
     const keys2 = await getEncryptionKeys();
 
-    expect(keys1?.kid).toBe(keys2?.kid);
+    expect(keys1?.current.kid).toBe(keys2?.current.kid);
+  });
+});
+
+describe('JWS Key Management with Rotation', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should return false when JWS is not enabled', async () => {
+    delete process.env.JWS_ENABLED;
+
+    const { isJwsEnabled } = await import('../dashboard/lib/oidc/keys.js');
+    expect(isJwsEnabled()).toBe(false);
+  });
+
+  it('should return true when JWS is enabled', async () => {
+    process.env.JWS_ENABLED = 'true';
+
+    const { isJwsEnabled } = await import('../dashboard/lib/oidc/keys.js');
+    expect(isJwsEnabled()).toBe(true);
+  });
+
+  it('should generate signing keys with next, current, and null previous', async () => {
+    process.env.JWS_ENABLED = 'true';
+
+    const { getSigningKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const keys = await getSigningKeys();
+    expect(keys).not.toBeNull();
+    expect(keys?.next.kid).toMatch(/^crowdsieve-sig-/);
+    expect(keys?.current.kid).toMatch(/^crowdsieve-sig-/);
+    expect(keys?.previous).toBeNull();
+    // next and current should be different keys
+    expect(keys?.next.kid).not.toBe(keys?.current.kid);
+  });
+
+  it('should return JWKS with signing keys when JWS is enabled', async () => {
+    process.env.JWS_ENABLED = 'true';
+    delete process.env.JWE_ENABLED;
+
+    const { getPublicJWKS, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const jwks = await getPublicJWKS();
+    // Should have 2 keys (current and next, no previous yet)
+    expect(jwks.keys.length).toBe(2);
+    expect(jwks.keys[0]).toHaveProperty('use', 'sig');
+    expect(jwks.keys[0]).toHaveProperty('alg', 'RS256');
+  });
+
+  it('should return JWKS with both signing and encryption keys', async () => {
+    process.env.JWS_ENABLED = 'true';
+    process.env.JWE_ENABLED = 'true';
+
+    const { getPublicJWKS, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const jwks = await getPublicJWKS();
+    // Should have 3 keys: 2 signing (current, next) + 1 encryption
+    expect(jwks.keys.length).toBe(3);
+
+    const sigKeys = jwks.keys.filter((k: { use?: string }) => k.use === 'sig');
+    const encKeys = jwks.keys.filter((k: { use?: string }) => k.use === 'enc');
+
+    expect(sigKeys.length).toBe(2);
+    expect(encKeys.length).toBe(1);
+  });
+
+  it('should rotate keys and keep previous', async () => {
+    process.env.JWS_ENABLED = 'true';
+    process.env.JWE_ENABLED = 'true';
+
+    const { getSigningKeys, getEncryptionKeys, forceRotation, clearKeysCache } = await import(
+      '../dashboard/lib/oidc/keys.js'
+    );
+    clearKeysCache();
+
+    // Get initial keys
+    const initialSig = await getSigningKeys();
+    const initialEnc = await getEncryptionKeys();
+
+    const initialCurrentSigKid = initialSig?.current.kid;
+    const initialNextSigKid = initialSig?.next.kid;
+    const initialEncKid = initialEnc?.current.kid;
+
+    // Force rotation
+    await forceRotation();
+
+    // Get rotated keys
+    const rotatedSig = await getSigningKeys();
+    const rotatedEnc = await getEncryptionKeys();
+
+    // After rotation: next -> current -> previous
+    expect(rotatedSig?.current.kid).toBe(initialNextSigKid);
+    expect(rotatedSig?.previous?.kid).toBe(initialCurrentSigKid);
+    expect(rotatedSig?.next.kid).not.toBe(initialNextSigKid); // new next key
+
+    // Encryption: current -> previous
+    expect(rotatedEnc?.previous?.kid).toBe(initialEncKid);
+    expect(rotatedEnc?.current.kid).not.toBe(initialEncKid); // new current key
+  });
+
+  it('should provide decryption keys including previous', async () => {
+    process.env.JWE_ENABLED = 'true';
+
+    const { getDecryptionKeys, forceRotation, clearKeysCache } = await import(
+      '../dashboard/lib/oidc/keys.js'
+    );
+    clearKeysCache();
+
+    // Initially only current key
+    let decryptionKeys = await getDecryptionKeys();
+    expect(decryptionKeys.length).toBe(1);
+
+    // After rotation, should have current and previous
+    await forceRotation();
+    decryptionKeys = await getDecryptionKeys();
+    expect(decryptionKeys.length).toBe(2);
+  });
+
+  it('should not auto-rotate when JWE_KEY_ROTATION_DAYS is not set', async () => {
+    process.env.JWS_ENABLED = 'true';
+    delete process.env.JWE_KEY_ROTATION_DAYS;
+
+    const { getSigningKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const keys1 = await getSigningKeys();
+    const kid1 = keys1?.current.kid;
+
+    // Call again - should not rotate since no rotation days configured
+    const keys2 = await getSigningKeys();
+    expect(keys2?.current.kid).toBe(kid1);
+  });
+
+  it('should not auto-rotate when JWE_KEY_ROTATION_DAYS is invalid', async () => {
+    process.env.JWS_ENABLED = 'true';
+    process.env.JWE_KEY_ROTATION_DAYS = 'invalid';
+
+    const { getSigningKeys, clearKeysCache } = await import('../dashboard/lib/oidc/keys.js');
+    clearKeysCache();
+
+    const keys1 = await getSigningKeys();
+    const kid1 = keys1?.current.kid;
+
+    // Call again - should not rotate since rotation days is invalid
+    const keys2 = await getSigningKeys();
+    expect(keys2?.current.kid).toBe(kid1);
   });
 });
 
