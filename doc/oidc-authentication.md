@@ -5,21 +5,31 @@ CrowdSieve supports OpenID Connect (OIDC) authentication for the dashboard. When
 ## Overview
 
 ```mermaid
-flowchart LR
-    subgraph Authentication Flow
-        User([User]) --> Dashboard
-        Dashboard --> |1. Redirect|Provider[OIDC Provider]
-        Provider --> |2. Authenticate|Auth{Authentication}
-        Auth --> |client_secret|Secret[Shared Secret]
-        Auth --> |private_key_jwt|JWT[Signed JWT]
-        Secret --> Token
-        JWT --> Token{ID Token}
-        Token --> |Plain|Plain[JWT]
-        Token --> |Encrypted|JWE[JWE]
-        Plain --> |3. Callback|Dashboard
-        JWE --> |3. Callback|Dashboard
-        Dashboard --> |4. Session|Session([Session Created])
+sequenceDiagram
+    participant User
+    participant Dashboard as CrowdSieve Dashboard
+    participant Provider as OIDC Provider
+
+    User->>Dashboard: 1. Access dashboard
+    Dashboard->>Provider: 2. Redirect to login
+    Provider->>Provider: 3. User authenticates
+    Provider->>Dashboard: 4. Authorization code
+
+    alt client_secret (default)
+        Dashboard->>Provider: 5a. Exchange code + client_secret
+    else private_key_jwt (JWS enabled)
+        Dashboard->>Provider: 5b. Exchange code + signed JWT
     end
+
+    alt Plain token (default)
+        Provider->>Dashboard: 6a. ID Token (JWT)
+    else Encrypted token (JWE enabled)
+        Provider->>Dashboard: 6b. ID Token (JWE)
+        Dashboard->>Dashboard: Decrypt with private key
+    end
+
+    Dashboard->>Dashboard: 7. Create session
+    Dashboard->>User: 8. Authenticated
 ```
 
 ## Configuration
