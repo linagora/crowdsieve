@@ -15,6 +15,17 @@ interface SessionData {
   user: SessionUser | null;
 }
 
+// Validate picture URL to prevent XSS via javascript: or data: URIs
+function isValidPictureUrl(url: string | undefined): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export function UserMenu() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -48,7 +59,7 @@ export function UserMenu() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
       >
-        {session.user.picture ? (
+        {isValidPictureUrl(session.user.picture) ? (
           <img src={session.user.picture} alt="" className="w-6 h-6 rounded-full" />
         ) : (
           <User className="w-5 h-5" />
