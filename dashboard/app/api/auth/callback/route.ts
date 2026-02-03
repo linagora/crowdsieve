@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as client from 'openid-client';
-import { getOidcClient, getClientPrivateKey, usePrivateKeyJwt } from '@/lib/oidc/client';
+import { getOidcClient } from '@/lib/oidc/client';
 import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
 import { getSession, SessionUser } from '@/lib/oidc/session';
 
@@ -25,28 +25,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const baseUrl = getBaseUrl();
 
-    // Build grant options
-    const grantOptions: Parameters<typeof client.authorizationCodeGrant>[2] = {
+    // Exchange authorization code for tokens
+    // Note: private_key_jwt authentication is configured at discovery time in getOidcClient()
+    const tokens = await client.authorizationCodeGrant(oidcClient, new URL(request.url), {
       pkceCodeVerifier: codeVerifier,
       expectedState: state,
       expectedNonce: nonce,
       idTokenExpected: true,
-    };
-
-    // Use private_key_jwt authentication if JWS is enabled
-    if (usePrivateKeyJwt()) {
-      const privateKey = await getClientPrivateKey();
-      if (privateKey) {
-        grantOptions.clientPrivateKey = privateKey;
-      }
-    }
-
-    // Exchange authorization code for tokens
-    const tokens = await client.authorizationCodeGrant(
-      oidcClient,
-      new URL(request.url),
-      grantOptions
-    );
+    });
 
     // Extract user info from ID token claims
     const claims = tokens.claims();
