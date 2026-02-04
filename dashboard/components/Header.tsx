@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { UserMenu } from './UserMenu';
 
@@ -24,13 +25,13 @@ export function Header() {
           {/* Desktop navigation */}
           <nav className="hidden md:flex items-center gap-4">
             {navLinks.map((link) => (
-              <a
+              <Link
                 key={link.href}
                 href={link.href}
                 className="hover:text-crowdsec-accent transition-colors"
               >
                 {link.label}
-              </a>
+              </Link>
             ))}
             <UserMenu />
           </nav>
@@ -53,14 +54,14 @@ export function Header() {
           <nav className="md:hidden mt-4 pb-2 border-t border-white/20 pt-4">
             <div className="flex flex-col gap-2">
               {navLinks.map((link) => (
-                <a
+                <Link
                   key={link.href}
                   href={link.href}
                   className="py-2 px-3 hover:bg-white/10 rounded-lg transition-colors"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {link.label}
-                </a>
+                </Link>
               ))}
             </div>
           </nav>
