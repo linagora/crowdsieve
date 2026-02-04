@@ -5,6 +5,22 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-04
+
+### Added
+
+#### OIDC Authentication
+
+- **Optional OIDC authentication for dashboard**: Protect the dashboard with OpenID Connect authentication via any OIDC-compliant provider
+- **JWE support**: Handle encrypted ID tokens from OIDC providers
+- **`private_key_jwt` authentication**: Support `private_key_jwt` client authentication method for back-channel logout
+- **Key rotation**: Automatic rotation of cryptographic keys used for OIDC
+
+### Changed
+
+- **Alert download optimization**: Skip downloading alerts when no changes detected
+- **Dependencies update**: Update project dependencies
+
 ## [0.2.0] - 2026-02-01
 
 ### Added
