@@ -18,6 +18,15 @@ export interface WhoisSummary {
   abuse?: string;
 }
 
+/**
+ * Extract the IP address from a value that may be an IP or CIDR notation.
+ * For example: "192.168.1.0/24" -> "192.168.1.0", "10.0.0.1" -> "10.0.0.1"
+ */
+export function extractIpFromValue(value: string): string {
+  const slashIndex = value.indexOf('/');
+  return slashIndex !== -1 ? value.substring(0, slashIndex) : value;
+}
+
 // WHOIS servers by registry
 const WHOIS_SERVERS: Record<string, string> = {
   ARIN: 'whois.arin.net',
@@ -285,8 +294,11 @@ export async function whoisLookup(ip: string): Promise<WhoisSummary | null> {
  * Results are cached for 1 hour to reduce load on WHOIS servers
  */
 export async function getIPInfo(ip: string): Promise<IPInfo> {
+  // Extract base IP if this is a CIDR range
+  const baseIp = extractIpFromValue(ip);
+
   // Validate IP address
-  if (!net.isIP(ip)) {
+  if (!net.isIP(baseIp)) {
     return {
       ip,
       reverseDns: [],
@@ -295,14 +307,14 @@ export async function getIPInfo(ip: string): Promise<IPInfo> {
     };
   }
 
-  // Check cache first
+  // Check cache first (use original input as cache key to differentiate)
   const cached = ipInfoCache.get(ip);
   if (cached) {
     return cached;
   }
 
-  // Run lookups in parallel
-  const [reverseDns, whois] = await Promise.all([reverseDnsLookup(ip), whoisLookup(ip)]);
+  // Run lookups in parallel using the base IP
+  const [reverseDns, whois] = await Promise.all([reverseDnsLookup(baseIp), whoisLookup(baseIp)]);
 
   const result: IPInfo = {
     ip,

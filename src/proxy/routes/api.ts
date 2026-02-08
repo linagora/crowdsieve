@@ -1,7 +1,7 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { timingSafeEqual, createHash } from 'crypto';
 import net from 'net';
-import { getIPInfo } from '../../ipinfo/index.js';
+import { getIPInfo, extractIpFromValue } from '../../ipinfo/index.js';
 import type { LapiServer } from '../../config/index.js';
 import { getAnalyzerEngine } from '../../analyzers/index.js';
 
@@ -411,8 +411,11 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const { ip } = request.params;
 
+      // Extract base IP if this is a CIDR range
+      const baseIp = extractIpFromValue(ip);
+
       // Validate IP address using Node's net module (handles IPv4 and IPv6 correctly)
-      if (!net.isIP(ip)) {
+      if (!net.isIP(baseIp)) {
         return reply.code(400).send({ error: 'Invalid IP address format' });
       }
 

@@ -25,8 +25,8 @@ export function IPInfoPanel({ ip }: IPInfoPanelProps) {
         setLoading(true);
         setError(null);
 
-        // Authentication is handled server-side by /api/ip-info/[ip]/route.ts
-        const res = await fetchWithAuth(`/api/ip-info/${encodeURIComponent(ip)}`);
+        // Use query parameter to avoid URL routing issues with CIDR notation (%2F)
+        const res = await fetchWithAuth(`/api/ip-info?ip=${encodeURIComponent(ip)}`);
 
         if (!res.ok) {
           throw new Error('Failed to fetch IP info');

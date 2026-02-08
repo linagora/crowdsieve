@@ -4,6 +4,7 @@ import {
   reverseDnsLookup,
   parseWhoisResponse,
   detectRir,
+  extractIpFromValue,
 } from '../src/ipinfo/index.js';
 
 describe('IP Info Module', () => {
@@ -164,6 +165,26 @@ netname:        RIPE-NCC
     });
   });
 
+  describe('extractIpFromValue', () => {
+    it('should extract IP from CIDR notation', () => {
+      expect(extractIpFromValue('192.168.1.0/24')).toBe('192.168.1.0');
+      expect(extractIpFromValue('10.0.0.0/8')).toBe('10.0.0.0');
+      expect(extractIpFromValue('2001:db8::/32')).toBe('2001:db8::');
+    });
+
+    it('should return IP as-is when no CIDR', () => {
+      expect(extractIpFromValue('192.168.1.1')).toBe('192.168.1.1');
+      expect(extractIpFromValue('10.0.0.1')).toBe('10.0.0.1');
+      expect(extractIpFromValue('2001:db8::1')).toBe('2001:db8::1');
+    });
+
+    it('should handle edge cases', () => {
+      expect(extractIpFromValue('')).toBe('');
+      expect(extractIpFromValue('/')).toBe('');
+      expect(extractIpFromValue('invalid')).toBe('invalid');
+    });
+  });
+
   describe('getIPInfo', () => {
     it('should return error for invalid IP address', async () => {
       const result = await getIPInfo('not-an-ip');
@@ -194,6 +215,20 @@ netname:        RIPE-NCC
 
       expect(result.ip).toBe('::1');
       expect(result.error).toBeUndefined();
+    });
+
+    it('should accept CIDR notation and extract base IP', async () => {
+      const result = await getIPInfo('192.168.1.0/24');
+
+      expect(result.ip).toBe('192.168.1.0/24');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should return error for invalid CIDR notation', async () => {
+      const result = await getIPInfo('not-an-ip/24');
+
+      expect(result.ip).toBe('not-an-ip/24');
+      expect(result.error).toBe('Invalid IP address');
     });
   });
 

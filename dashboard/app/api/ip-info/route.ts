@@ -4,31 +4,24 @@ import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 
 /**
  * Extract the base IP from a value that may be an IP or CIDR notation.
- * Handles both decoded ("/") and URL-encoded ("%2F") slashes.
  * For example: "185.226.196.0/24" -> "185.226.196.0"
  */
 function extractIpFromValue(value: string): string {
-  // First try to decode in case Next.js didn't decode %2F
-  let decoded = value;
-  try {
-    decoded = decodeURIComponent(value);
-  } catch {
-    // Already decoded or invalid encoding, use as-is
-  }
-  const slashIndex = decoded.indexOf('/');
-  return slashIndex !== -1 ? decoded.substring(0, slashIndex) : decoded;
+  const slashIndex = value.indexOf('/');
+  return slashIndex !== -1 ? value.substring(0, slashIndex) : value;
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ ip: string }> }) {
+/**
+ * GET /api/ip-info?ip=...
+ * Accepts IP addresses or CIDR notation via query parameter.
+ * This avoids URL routing issues with %2F in path segments.
+ */
+export async function GET(request: NextRequest) {
   const { apiBase } = getApiConfig();
-  const { ip: rawIp } = await params;
+  const ip = request.nextUrl.searchParams.get('ip');
 
-  // Decode the IP in case it contains URL-encoded characters
-  let ip = rawIp;
-  try {
-    ip = decodeURIComponent(rawIp);
-  } catch {
-    // Already decoded or invalid encoding
+  if (!ip) {
+    return NextResponse.json({ error: 'Missing ip parameter' }, { status: 400 });
   }
 
   // Extract base IP if this is a CIDR range, then validate

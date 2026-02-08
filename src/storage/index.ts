@@ -4,6 +4,7 @@ import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
 import { getDatabaseContext } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
+import { extractIpFromValue } from '../ipinfo/index.js';
 
 /**
  * Escape SQL LIKE wildcards to prevent injection.
@@ -87,7 +88,8 @@ export function createStorage(): AlertStorage {
         const alert = alerts[i];
         const detail = filterDetails[i];
         // Validate IP before GeoIP lookup to avoid silent failures
-        const ipToLookup = alert.source.ip || alert.source.value || '';
+        const rawIpValue = alert.source.ip || alert.source.value || '';
+        const ipToLookup = extractIpFromValue(rawIpValue);
         const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
 
         const insertQuery = db
