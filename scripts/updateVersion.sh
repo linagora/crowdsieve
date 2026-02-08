@@ -190,6 +190,8 @@ update_json_version "package.json" "$NEW_VERSION"
 update_json_version "dashboard/package.json" "$NEW_VERSION"
 update_helm_version "helm/crowdsieve/Chart.yaml" "$NEW_VERSION"
 
+npm i
+
 echo -e "\n${GREEN}Version updated to $NEW_VERSION${NC}"
 echo -e "\nNext steps:"
 echo -e "  1. Review changes: ${YELLOW}git diff${NC}"

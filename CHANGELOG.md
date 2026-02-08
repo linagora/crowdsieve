@@ -5,6 +5,20 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-02-08
+
+### Fixed
+
+#### Dashboard
+
+- **CIDR geolocation display**: Alerts for network ranges (CIDR notation like 185.226.196.0/24) now correctly display geolocation and network information instead of showing "Unknown"
+- **Navigation polling leak**: Use Next.js Link component for dashboard navigation to prevent polling leaks
+
+### Changed
+
+- **Docker image**: Upgrade to Node.js 22
+- **Dependencies update**: Update @isaacs/brace-expansion to 5.0.1
+
 ## [0.3.0] - 2026-02-04
 
 ### Added
