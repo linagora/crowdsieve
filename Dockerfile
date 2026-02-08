@@ -1,5 +1,5 @@
 # Build stage for proxy
-FROM node:20-alpine AS proxy-builder
+FROM node:22-alpine AS proxy-builder
 
 RUN apk add --no-cache python3 make g++
 
@@ -15,7 +15,7 @@ COPY src ./src
 RUN npx tsc --outDir dist
 
 # Build stage for dashboard
-FROM node:20-alpine AS dashboard-builder
+FROM node:22-alpine AS dashboard-builder
 
 WORKDIR /app/dashboard
 
@@ -34,7 +34,7 @@ ENV API_URL=http://localhost:8080
 RUN npm run build
 
 # Production dependencies stage (separate to leverage --chown)
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
@@ -56,7 +56,7 @@ RUN npm ci --omit=dev && \
     \) -exec rm -rf {} + 2>/dev/null || true
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 RUN apk update && \
     apk upgrade --no-cache && \
