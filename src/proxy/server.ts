@@ -147,21 +147,24 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     logger.debug({ method: request.method, url, clientIp: request.ip }, 'Forwarded request');
 
     try {
+      // Forward all headers except hop-by-hop headers that shouldn't be proxied
+      const headersToSkip = new Set([
+        'host',
+        'connection',
+        'keep-alive',
+        'transfer-encoding',
+        'content-length',
+        'te',
+        'trailer',
+        'upgrade',
+      ]);
+
       const headers: Record<string, string> = {};
 
-      // Copy relevant headers for proxying
-      const headersToCopy = [
-        'authorization',
-        'content-type',
-        'content-encoding',
-        'user-agent',
-        'accept',
-      ];
-
-      for (const header of headersToCopy) {
-        const value = request.headers[header];
-        if (typeof value === 'string') {
-          headers[header] = value;
+      for (const [key, value] of Object.entries(request.headers)) {
+        const lowerKey = key.toLowerCase();
+        if (!headersToSkip.has(lowerKey) && typeof value === 'string') {
+          headers[key] = value;
         }
       }
 
