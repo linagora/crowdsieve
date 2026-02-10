@@ -59,6 +59,7 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     }
 
     logger.info({ count: alerts.length, apiVersion }, 'Received signals batch');
+    logger.debug({ incomingBody: JSON.stringify(alerts) }, 'Incoming alerts (raw)');
 
     // Process through filter engine
     const filterResult = filterEngine.process(alerts);
@@ -98,14 +99,37 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     // Forward remaining alerts to CAPI (using same API version as incoming request)
     try {
       const capiUrl = config.proxy.capi_url;
+      const outgoingBody = JSON.stringify(filterResult.alerts);
+      logger.debug({ outgoingBody }, 'Outgoing alerts to CAPI');
+      // Forward all headers except hop-by-hop headers that shouldn't be proxied
+      const headersToSkip = new Set([
+        'host',
+        'connection',
+        'keep-alive',
+        'transfer-encoding',
+        'content-length',
+        'te',
+        'trailer',
+        'upgrade',
+      ]);
+
+      const forwardHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      for (const [key, value] of Object.entries(request.headers)) {
+        const lowerKey = key.toLowerCase();
+        if (!headersToSkip.has(lowerKey) && typeof value === 'string') {
+          forwardHeaders[key] = value;
+        }
+      }
+
+      logger.debug({ forwardHeaders: Object.keys(forwardHeaders) }, 'Forwarding headers to CAPI');
+
       const response = await fetch(`${capiUrl}/${apiVersion}/signals`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: request.headers.authorization || '',
-          'User-Agent': request.headers['user-agent'] || 'crowdsieve/1.0',
-        },
-        body: JSON.stringify(filterResult.alerts),
+        headers: forwardHeaders,
+        body: outgoingBody,
         signal: AbortSignal.timeout(config.proxy.timeout_ms),
       });
 
@@ -115,6 +139,7 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
         { count: filterResult.alerts.length, status: response.status, apiVersion },
         'Forwarded signals to CAPI'
       );
+      logger.debug({ responseBody }, 'CAPI response body');
 
       // Update storage with forwarded status
       try {
