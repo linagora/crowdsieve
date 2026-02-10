@@ -281,7 +281,9 @@ export async function whoisLookup(ip: string): Promise<WhoisSummary | null> {
 
     // Query the appropriate RIR
     const rirServer = WHOIS_SERVERS[rir];
-    const rirResponse = await queryWhoisServer(rirServer, ip);
+    // ARIN requires '+ ' prefix for verbose output with key-value pairs
+    const query = rir === 'ARIN' ? `+ ${ip}` : ip;
+    const rirResponse = await queryWhoisServer(rirServer, query);
 
     return parseWhoisResponse(rirResponse);
   } catch {
