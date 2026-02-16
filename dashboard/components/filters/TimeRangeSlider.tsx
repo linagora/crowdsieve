@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { format, subDays, subHours, differenceInDays } from 'date-fns';
+import { format, subDays, subHours, differenceInCalendarDays } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
@@ -79,7 +79,7 @@ export function TimeRangeSlider({
     return format(date, 'd MMM yyyy');
   };
 
-  const daysDiff = differenceInDays(until || maxDate, since || minDate);
+  const daysDiff = differenceInCalendarDays(until || maxDate, since || minDate);
 
   return (
     <div className={cn('space-y-3', isLoading && 'opacity-50 pointer-events-none')}>
