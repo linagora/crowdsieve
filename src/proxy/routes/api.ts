@@ -455,9 +455,13 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const { ip } = request.query;
 
-      // Validate IP
-      if (!ip || !net.isIP(ip)) {
-        return reply.code(400).send({ error: 'Invalid or missing IP address' });
+      // Validate IP or CIDR
+      if (!ip) {
+        return reply.code(400).send({ error: 'Missing IP address' });
+      }
+      const parsed = parseIpOrCidr(ip);
+      if (!parsed.valid) {
+        return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
       }
 
       const { config } = fastify;

@@ -154,13 +154,14 @@ function DecisionSearchContent() {
     [results?.ip, handleSearch]
   );
 
-  // Auto-search if IP is provided in URL
+  // Auto-search if IP is provided in URL (only on URL param change, not on handleSearch reference change)
   useEffect(() => {
     if (initialIp) {
       setIp(initialIp);
       handleSearch(initialIp);
     }
-  }, [initialIp, handleSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialIp]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
