@@ -39,7 +39,7 @@
     "drizzle-orm": "^0.38.0",
     "fastify": "^5.6.2",
     "ip-cidr": "^4.0.0",
-    "minimatch": "^9.0.3",
+    "minimatch": "^10.2.1",
     "pino": "^8.19.0",
     "yaml": "^2.3.0",
     "zod": "^3.22.0"
@@ -57,7 +57,7 @@
     "@types/react-dom": "^18.2.0",
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
-    "@vitest/coverage-v8": "^3.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "autoprefixer": "^10.4.17",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.0",
@@ -77,9 +77,12 @@
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
     "typescript-eslint": "^8.56.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "overrides": {
+    "minimatch": "^10.2.1"
   }
 }
