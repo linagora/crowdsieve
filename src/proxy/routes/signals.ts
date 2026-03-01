@@ -5,7 +5,9 @@ import type { SignalsRequest, Alert } from '../../models/alert.js';
 export const MAX_ALERTS_PER_BATCH = 1000;
 
 // Origins that should NOT be forwarded to CAPI (to prevent loops)
-const CROWDSIEVE_ORIGINS = ['crowdsieve', 'crowdsieve-replication'];
+// Only filter 'crowdsieve-replication' (auto-replicated decisions)
+// Manual decisions with origin 'crowdsieve' should be forwarded to CAPI
+export const CROWDSIEVE_ORIGINS: readonly string[] = Object.freeze(['crowdsieve-replication']);
 
 /**
  * Extract machine_id from the alerts payload
@@ -22,10 +24,11 @@ function extractSourceMachineId(alerts: SignalsRequest): string | undefined {
 }
 
 /**
- * Check if an alert has decisions from crowdsieve (should not be forwarded to CAPI)
- * Returns true if ANY decision is from crowdsieve origins (to prevent loop)
+ * Check if an alert has decisions from crowdsieve-replication origin (should not be forwarded to CAPI)
+ * Returns true if ANY decision is from crowdsieve-replication origin (to prevent loop)
+ * Manual decisions with origin 'crowdsieve' are allowed through
  */
-function isCrowdsieveAlert(alert: Alert): boolean {
+export function isCrowdsieveAlert(alert: Alert): boolean {
   if (!alert.decisions || alert.decisions.length === 0) {
     return false;
   }
