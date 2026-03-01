@@ -643,5 +643,81 @@ describe('ReplicationService', () => {
       expect(body).toHaveLength(1);
       expect(body[0].decisions[0].origin).toBe(REPLICATION_ORIGIN);
     });
+
+    it('should provide default values for missing required LAPI fields', async () => {
+      const config = createMockConfig([
+        {
+          name: 'server1',
+          url: 'https://lapi1.example.com',
+          api_key: 'key1',
+          machine_id: 'machine1',
+          password: 'password1',
+          replicate_decisions: true,
+        },
+      ]);
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/v1/watchers/login')) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                token: 'mock-token',
+                expire: new Date(Date.now() + 3600000).toISOString(),
+              }),
+          });
+        }
+        if (url.includes('/v1/alerts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true }),
+          });
+        }
+        return Promise.reject(new Error('Unknown URL'));
+      });
+
+      service = createReplicationService(config, logger);
+
+      // Alert with missing required fields (like real CAPI signals)
+      const alertWithMissingFields: Alert = {
+        scenario: 'crowdsecurity/http-bad-user-agent',
+        scenario_hash: 'abc123',
+        scenario_version: '1.0',
+        message: 'Test alert',
+        start_at: '2024-01-01T00:00:00Z',
+        stop_at: '2024-01-01T00:01:00Z',
+        source: {
+          scope: 'ip',
+          value: '192.168.1.100',
+        },
+        decisions: [
+          {
+            origin: 'crowdsec',
+            type: 'ban',
+            scope: 'ip',
+            value: '192.168.1.100',
+            duration: '4h',
+            scenario: 'crowdsecurity/http-bad-user-agent',
+          },
+        ],
+        // Missing: events_count, capacity, leakspeed, simulated, events
+      };
+
+      await service.replicateDecisions([alertWithMissingFields]);
+
+      // Check that the alert was sent with default values for required fields
+      const alertsCall = mockFetch.mock.calls.find((call) =>
+        (call[0] as string).includes('/v1/alerts')
+      );
+      expect(alertsCall).toBeDefined();
+
+      const body = JSON.parse(alertsCall![1].body as string);
+      expect(body).toHaveLength(1);
+      expect(body[0].events_count).toBe(1);
+      expect(body[0].capacity).toBe(0);
+      expect(body[0].leakspeed).toBe('0s');
+      expect(body[0].simulated).toBe(false);
+      expect(body[0].events).toEqual([]);
+    });
   });
 });
