@@ -10,6 +10,7 @@ import { initGeoIP, lookupIP, closeGeoIP } from './geoip/index.js';
 import { ClientValidator } from './validation/index.js';
 import { initializeAnalyzerEngine, getAnalyzerEngine } from './analyzers/index.js';
 import { createAnalyzerStorage } from './analyzers/storage.js';
+import { createReplicationService, ReplicationService } from './replication/index.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/geoip-city.mmdb';
@@ -161,6 +162,23 @@ async function main() {
     logger.info('Analyzer engine initialized');
   }
 
+  // Initialize replication service (if any servers have replicate_decisions enabled)
+  let replicationService: ReplicationService | undefined;
+  const hasReplicationTargets = (config.lapi_servers || []).some(
+    (s) => s.replicate_decisions && s.machine_id && s.password
+  );
+  if (hasReplicationTargets) {
+    replicationService = createReplicationService(config, logger);
+    logger.info(
+      {
+        targets: config.lapi_servers
+          .filter((s) => s.replicate_decisions)
+          .map((s) => s.name),
+      },
+      'Replication service initialized'
+    );
+  }
+
   // Create and start proxy server
   const server = await createProxyServer({
     config,
@@ -168,6 +186,7 @@ async function main() {
     storage,
     logger,
     clientValidator,
+    replicationService,
   });
 
   // Graceful shutdown

@@ -1,11 +1,57 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
-import type { SignalsRequest } from '../../models/alert.js';
+import type { SignalsRequest, Alert } from '../../models/alert.js';
 
 // Maximum number of alerts allowed per batch to prevent DoS
 export const MAX_ALERTS_PER_BATCH = 1000;
 
+// Origins that should NOT be forwarded to CAPI (to prevent loops)
+const CROWDSIEVE_ORIGINS = ['crowdsieve', 'crowdsieve-replication'];
+
+/**
+ * Extract machine_id from the Authorization header
+ * CrowdSec sends machine_id as username in Basic auth or in JWT payload
+ * For simplicity, we extract from alert's machine_id field if available
+ */
+function extractSourceMachineId(alerts: SignalsRequest): string | undefined {
+  // Use the machine_id from the first alert if available
+  for (const alert of alerts) {
+    if (alert.machine_id) {
+      return alert.machine_id;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Check if an alert has decisions from crowdsieve (should not be forwarded to CAPI)
+ * Returns true if ALL decisions are from crowdsieve origins
+ */
+function isCrowdsieveAlert(alert: Alert): boolean {
+  if (!alert.decisions || alert.decisions.length === 0) {
+    return false;
+  }
+
+  // Check if all decisions are from crowdsieve origins
+  return alert.decisions.every((decision) => {
+    const origin = decision.origin?.toLowerCase() || '';
+    return CROWDSIEVE_ORIGINS.some((excluded) => origin.includes(excluded.toLowerCase()));
+  });
+}
+
+/**
+ * Filter out alerts that originated from crowdsieve (to prevent loops with CAPI)
+ * These alerts should be stored and replicated but NOT forwarded to CAPI
+ */
+function filterCrowdsieveAlerts(alerts: Alert[]): { alerts: Alert[]; filteredCount: number } {
+  const filtered = alerts.filter((alert) => !isCrowdsieveAlert(alert));
+  return {
+    alerts: filtered,
+    filteredCount: alerts.length - filtered.length,
+  };
+}
+
 const signalsRoute: FastifyPluginAsync = async (fastify) => {
-  const { config, filterEngine, storage, proxyLogger: logger, clientValidator } = fastify;
+  const { config, filterEngine, storage, proxyLogger: logger, clientValidator, replicationService } = fastify;
 
   // Shared handler for both /v2/signals and /v3/signals
   const handleSignals = async (
@@ -81,16 +127,42 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
       // Don't fail the request - storage is secondary
     }
 
+    // Replicate decisions to LAPI servers asynchronously (non-blocking)
+    // We replicate ALL original alerts with decisions, regardless of filtering
+    if (replicationService) {
+      const sourceMachineId = extractSourceMachineId(alerts);
+      setImmediate(() => {
+        replicationService.replicateDecisions(alerts, sourceMachineId).catch((err) => {
+          logger.error({ err }, 'Failed to replicate decisions');
+        });
+      });
+    }
+
     // If all alerts were filtered, return success without forwarding
     if (filterResult.alerts.length === 0) {
       logger.info('All alerts filtered, not forwarding to CAPI');
       return reply.code(200).send({ message: 'OK' });
     }
 
+    // Filter out crowdsieve-originated alerts (prevent loops with CAPI)
+    const crowdsieveFilterResult = filterCrowdsieveAlerts(filterResult.alerts);
+    if (crowdsieveFilterResult.filteredCount > 0) {
+      logger.info(
+        { filtered: crowdsieveFilterResult.filteredCount },
+        'Filtered crowdsieve-originated alerts (not forwarding to CAPI)'
+      );
+    }
+
+    // If all remaining alerts are from crowdsieve, don't forward
+    if (crowdsieveFilterResult.alerts.length === 0) {
+      logger.info('All alerts are crowdsieve-originated, not forwarding to CAPI');
+      return reply.code(200).send({ message: 'OK' });
+    }
+
     // Check if forwarding is disabled (test mode)
     if (!config.proxy.forward_enabled) {
       logger.info(
-        { count: filterResult.alerts.length },
+        { count: crowdsieveFilterResult.alerts.length },
         'Forwarding disabled, alerts stored but not sent to CAPI'
       );
       return reply.code(200).send({ message: 'OK (forwarding disabled)' });
@@ -99,7 +171,7 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     // Forward remaining alerts to CAPI (using same API version as incoming request)
     try {
       const capiUrl = config.proxy.capi_url;
-      const outgoingBody = JSON.stringify(filterResult.alerts);
+      const outgoingBody = JSON.stringify(crowdsieveFilterResult.alerts);
       logger.debug({ outgoingBody }, 'Outgoing alerts to CAPI');
       // Forward all headers except hop-by-hop headers that shouldn't be proxied
       const headersToSkip = new Set([
@@ -136,7 +208,7 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
       const responseBody = await response.text();
 
       logger.info(
-        { count: filterResult.alerts.length, status: response.status, apiVersion },
+        { count: crowdsieveFilterResult.alerts.length, status: response.status, apiVersion },
         'Forwarded signals to CAPI'
       );
       logger.debug({ responseBody }, 'CAPI response body');

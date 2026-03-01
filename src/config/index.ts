@@ -119,12 +119,14 @@ export type FilterRule = z.infer<typeof FilterRuleSchema>;
 // LAPI server configuration
 // - api_key: for bouncer (read-only) operations like querying decisions
 // - machine_id + password: for machine (write) operations like posting alerts/bans
+// - replicate_decisions: if true, replicate received decisions to this LAPI server
 const LapiServerSchema = z.object({
   name: z.string().min(1),
   url: z.string().url(),
   api_key: z.string().min(1), // Bouncer API key for reading decisions
   machine_id: z.string().min(1).optional(), // Machine ID for posting alerts
   password: z.string().min(1).optional(), // Machine password for posting alerts
+  replicate_decisions: z.boolean().default(false), // Replicate decisions to this server
 });
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;
