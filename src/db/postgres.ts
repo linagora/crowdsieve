@@ -190,7 +190,7 @@ export async function initializePostgres(
     logger.debug('PostgreSQL connection test successful');
   } catch (err) {
     const error = err as Error;
-    throw new Error(`Failed to connect to PostgreSQL: ${error.message}`);
+    throw new Error(`Failed to connect to PostgreSQL: ${error.message}`, { cause: err });
   }
 
   // Run migrations (create tables if not exist)
@@ -204,7 +204,7 @@ export async function initializePostgres(
           'Either grant CREATE permissions to the user, or create tables manually.\n' +
           'See: https://github.com/linagora/crowdsieve/blob/master/docs/postgresql-setup.md'
       );
-      throw new Error('PostgreSQL initialization failed: insufficient permissions');
+      throw new Error('PostgreSQL initialization failed: insufficient permissions', { cause: err });
     }
     throw err;
   }
