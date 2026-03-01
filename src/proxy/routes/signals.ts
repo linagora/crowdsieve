@@ -7,7 +7,7 @@ export const MAX_ALERTS_PER_BATCH = 1000;
 // Origins that should NOT be forwarded to CAPI (to prevent loops)
 // Only filter 'crowdsieve-replication' (auto-replicated decisions)
 // Manual decisions with origin 'crowdsieve' should be forwarded to CAPI
-export const CROWDSIEVE_ORIGINS = ['crowdsieve-replication'];
+export const CROWDSIEVE_ORIGINS: readonly string[] = Object.freeze(['crowdsieve-replication']);
 
 /**
  * Extract machine_id from the alerts payload
