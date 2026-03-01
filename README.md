@@ -198,7 +198,7 @@ lapi_servers:
     api_key: 'your-bouncer-api-key'
     machine_id: 'crowdsieve'
     password: 'your-machine-password'
-    replicate_decisions: true  # Enable replication to this server
+    replicate_decisions: true # Enable replication to this server
   - name: 'server2'
     url: 'http://192.168.1.10:8080'
     api_key: 'another-bouncer-key'

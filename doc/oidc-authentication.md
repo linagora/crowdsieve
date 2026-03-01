@@ -38,16 +38,17 @@ sequenceDiagram
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OIDC_ISSUER` | Yes | - | OIDC provider URL (e.g., `https://auth.example.com/realms/myrealm`) |
-| `OIDC_CLIENT_ID` | Yes | - | OAuth2 client ID |
-| `OIDC_CLIENT_SECRET` | No* | - | OAuth2 client secret (*required unless JWS is enabled) |
-| `SESSION_SECRET` | Yes | - | Session encryption key (minimum 32 characters) |
-| `SESSION_COOKIE_SECURE` | No | `true` | Set to `false` for HTTP-only development |
-| `NEXTAUTH_URL` | No | auto | Base URL for callbacks (auto-detected if not set) |
+| Variable                | Required | Default | Description                                                         |
+| ----------------------- | -------- | ------- | ------------------------------------------------------------------- |
+| `OIDC_ISSUER`           | Yes      | -       | OIDC provider URL (e.g., `https://auth.example.com/realms/myrealm`) |
+| `OIDC_CLIENT_ID`        | Yes      | -       | OAuth2 client ID                                                    |
+| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required unless JWS is enabled)             |
+| `SESSION_SECRET`        | Yes      | -       | Session encryption key (minimum 32 characters)                      |
+| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development                            |
+| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set)                   |
 
 Generate secrets with:
+
 ```bash
 # Session secret
 openssl rand -hex 32
@@ -81,6 +82,7 @@ OIDC_CLIENT_SECRET=your-client-secret
 ```
 
 The provider must be configured with:
+
 - Client authentication: `client_secret_post` or `client_secret_basic`
 
 ### Private Key JWT (JWS)
@@ -94,11 +96,13 @@ JWE_KEYS_PATH=./data/jwks.json  # Persist keys across restarts
 ```
 
 **Benefits:**
+
 - No shared secret to manage
 - Asymmetric cryptography (more secure)
 - Required by some high-security providers
 
 **Provider configuration:**
+
 - Client authentication: `private_key_jwt`
 - Import public keys from: `https://crowdsieve.example.com/api/jwks`
 
@@ -117,10 +121,12 @@ JWE_KEY_ROTATION_DAYS=30  # Optional: auto-rotate keys
 ```
 
 **Supported tokens:**
+
 - ID tokens (from authorization code exchange)
 - Back-channel logout tokens
 
 **Provider configuration:**
+
 - Enable "Encrypt ID token"
 - Import public encryption key from: `https://crowdsieve.example.com/api/jwks`
 - Key encryption algorithm: `RSA-OAEP-256`
@@ -145,17 +151,20 @@ JWE_KEY_ROTATION_DAYS=30  # Rotate every 30 days
 ```
 
 When rotation is enabled:
+
 - **Signing keys (JWS):** 3 keys are published (next, current, previous) for seamless rotation
 - **Encryption keys (JWE):** Current key is published, previous key is kept for decryption
 
 ### JWKS Endpoint
 
 Public keys are published at:
+
 ```
 GET /api/jwks
 ```
 
 Response format:
+
 ```json
 {
   "keys": [
@@ -184,6 +193,7 @@ Response format:
 CrowdSieve supports OIDC Back-Channel Logout for single sign-out. When a user logs out from the OIDC provider, all their sessions across applications are terminated.
 
 **Endpoint:**
+
 ```
 POST /api/auth/backchannel-logout
 Content-Type: application/x-www-form-urlencoded
@@ -192,33 +202,35 @@ logout_token=<JWT>
 ```
 
 **Features:**
+
 - Automatic session revocation
 - Support for encrypted logout tokens (JWE)
 - Replay attack protection (jti tracking)
 - Session-specific or user-wide logout
 
 **Provider configuration:**
+
 - Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
 - Back-channel logout session required: `ON` (recommended)
 
 ## Supported Algorithms
 
-| Type | Default | Supported |
-|------|---------|-----------|
-| JWS Signing | `RS256` | RS256, RS384, RS512, ES256, ES384, ES512, EdDSA |
-| JWE Key Encryption | `RSA-OAEP-256` | RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384, RSA-OAEP-512 |
-| JWE Content Encryption | `A256GCM` | A256GCM, A128GCM, A192GCM |
+| Type                   | Default        | Supported                                          |
+| ---------------------- | -------------- | -------------------------------------------------- |
+| JWS Signing            | `RS256`        | RS256, RS384, RS512, ES256, ES384, ES512, EdDSA    |
+| JWE Key Encryption     | `RSA-OAEP-256` | RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384, RSA-OAEP-512 |
+| JWE Content Encryption | `A256GCM`      | A256GCM, A128GCM, A192GCM                          |
 
 ## CrowdSieve Endpoints
 
 Configure these URLs in your OIDC provider:
 
-| Endpoint | URL | Description |
-|----------|-----|-------------|
-| Callback | `https://crowdsieve.example.com/api/auth/callback/oidc` | OAuth2 redirect after login |
-| JWKS | `https://crowdsieve.example.com/api/jwks` | Public keys for JWE/JWS |
-| Back-channel Logout | `https://crowdsieve.example.com/api/auth/backchannel-logout` | SSO logout notification |
-| Post-logout Redirect | `https://crowdsieve.example.com` | Redirect after logout |
+| Endpoint             | URL                                                          | Description                 |
+| -------------------- | ------------------------------------------------------------ | --------------------------- |
+| Callback             | `https://crowdsieve.example.com/api/auth/callback/oidc`      | OAuth2 redirect after login |
+| JWKS                 | `https://crowdsieve.example.com/api/jwks`                    | Public keys for JWE/JWS     |
+| Back-channel Logout  | `https://crowdsieve.example.com/api/auth/backchannel-logout` | SSO logout notification     |
+| Post-logout Redirect | `https://crowdsieve.example.com`                             | Redirect after logout       |
 
 ## Provider Setup Examples
 
@@ -230,10 +242,10 @@ Configure these URLs in your OIDC provider:
 
 2. **Configure the Relying Party** in the `Options` tab:
 
-   | Setting | Value |
-   |---------|-------|
-   | Allowed redirection addresses | `https://crowdsieve.example.com/api/auth/callback/oidc` |
-   | Allowed post-logout redirection addresses | `https://crowdsieve.example.com` |
+   | Setting                                   | Value                                                   |
+   | ----------------------------------------- | ------------------------------------------------------- |
+   | Allowed redirection addresses             | `https://crowdsieve.example.com/api/auth/callback/oidc` |
+   | Allowed post-logout redirection addresses | `https://crowdsieve.example.com`                        |
 
 3. **Configure authentication** in the `Security` tab:
    - **With client_secret:** Set authentication method to `client_secret_post` or `client_secret_basic`, and set a client secret
@@ -259,12 +271,12 @@ Configure these URLs in your OIDC provider:
 
 2. **Configure URLs** in the client settings:
 
-   | Setting | Value |
-   |---------|-------|
-   | Root URL | `https://crowdsieve.example.com` |
-   | Valid Redirect URIs | `https://crowdsieve.example.com/api/auth/callback/oidc` |
-   | Valid Post Logout Redirect URIs | `https://crowdsieve.example.com` |
-   | Web Origins | `https://crowdsieve.example.com` |
+   | Setting                         | Value                                                   |
+   | ------------------------------- | ------------------------------------------------------- |
+   | Root URL                        | `https://crowdsieve.example.com`                        |
+   | Valid Redirect URIs             | `https://crowdsieve.example.com/api/auth/callback/oidc` |
+   | Valid Post Logout Redirect URIs | `https://crowdsieve.example.com`                        |
+   | Web Origins                     | `https://crowdsieve.example.com`                        |
 
 3. **Configure authentication** in the Credentials tab:
    - **With client_secret:** Use "Client Id and Secret" and copy the secret
@@ -283,47 +295,49 @@ Configure these URLs in your OIDC provider:
 
 ### Other Providers
 
-| Provider | Issuer URL Format |
-|----------|-------------------|
-| LemonLDAP::NG | `https://auth.example.com` |
-| Keycloak | `https://keycloak.example.com/realms/{realm}` |
-| Auth0 | `https://{tenant}.auth0.com` |
-| Okta | `https://{domain}.okta.com` |
-| Google | `https://accounts.google.com` |
-| Azure AD | `https://login.microsoftonline.com/{tenant}/v2.0` |
+| Provider      | Issuer URL Format                                 |
+| ------------- | ------------------------------------------------- |
+| LemonLDAP::NG | `https://auth.example.com`                        |
+| Keycloak      | `https://keycloak.example.com/realms/{realm}`     |
+| Auth0         | `https://{tenant}.auth0.com`                      |
+| Okta          | `https://{domain}.okta.com`                       |
+| Google        | `https://accounts.google.com`                     |
+| Azure AD      | `https://login.microsoftonline.com/{tenant}/v2.0` |
 
 ## Helm Configuration
 
 For Kubernetes deployments, see the [Helm chart documentation](../helm/crowdsieve/README.md#oidc-authentication).
 
 Basic Helm values:
+
 ```yaml
 crowdsieve:
   dashboard:
     oidc:
       enabled: true
-      issuer: "https://auth.example.com/realms/myrealm"
-      clientId: "crowdsieve-dashboard"
-      clientSecret: "your-client-secret"
+      issuer: 'https://auth.example.com/realms/myrealm'
+      clientId: 'crowdsieve-dashboard'
+      clientSecret: 'your-client-secret'
       session:
-        secret: "32-chars-minimum-secret-here!!"
+        secret: '32-chars-minimum-secret-here!!'
         cookieSecure: true
 ```
 
 With private_key_jwt (JWS):
+
 ```yaml
 crowdsieve:
   dashboard:
     oidc:
       enabled: true
-      issuer: "https://auth.example.com/realms/myrealm"
-      clientId: "crowdsieve-dashboard"
+      issuer: 'https://auth.example.com/realms/myrealm'
+      clientId: 'crowdsieve-dashboard'
       # No clientSecret - using private_key_jwt
       session:
-        secret: "32-chars-minimum-secret-here!!"
+        secret: '32-chars-minimum-secret-here!!'
       keys:
         jwsEnabled: true
-        jwsAlgorithm: "RS256"
+        jwsAlgorithm: 'RS256'
         rotationDays: 30
 ```
 
@@ -332,23 +346,28 @@ crowdsieve:
 ### Common Issues
 
 **"OIDC not configured"**
+
 - Ensure `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `SESSION_SECRET` are set
 - Check that the issuer URL is reachable
 
 **"Invalid redirect URI"**
+
 - Verify the callback URL is registered in your provider: `https://crowdsieve.example.com/api/auth/callback/oidc`
 
 **"Failed to decrypt token"**
+
 - Ensure `JWE_ENABLED=true` and `JWE_KEYS_PATH` is configured
 - Verify the provider has imported the correct public key from `/api/jwks`
 - Check that the encryption algorithms match
 
 **"Invalid client authentication"**
+
 - If using `private_key_jwt`, ensure `JWS_ENABLED=true`
 - Verify the provider has imported the signing key from `/api/jwks`
 - Check that the provider is configured for `private_key_jwt` authentication
 
 **Sessions invalidated after restart**
+
 - Configure `JWE_KEYS_PATH` to persist keys
 - In Helm, keys are stored at `/app/data/jwks.json` on the PVC
 
@@ -361,6 +380,7 @@ LOG_LEVEL=debug
 ```
 
 Look for:
+
 - `OIDC: Using private_key_jwt authentication` - JWS is active
 - `JWE decryption enabled for OIDC responses` - JWE is active
 - `Decrypted encrypted logout token` - JWE logout token processed

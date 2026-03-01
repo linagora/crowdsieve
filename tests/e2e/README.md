@@ -5,6 +5,7 @@ This directory contains end-to-end tests for CrowdSieve features that require ex
 ## OIDC Authentication Test
 
 Tests the full OIDC authentication flow with:
+
 - **JWS (private_key_jwt)**: Client authentication using signed JWT assertions
 - **JWE (encrypted tokens)**: ID tokens and logout tokens encrypted with RSA-OAEP-256
 - **Back-channel logout**: Server-to-server logout notification with encrypted tokens
@@ -61,34 +62,34 @@ Note: OIDC provider configuration is automatic via the s6 init script mounted at
 
 ### What Gets Tested
 
-| Test | Description |
-|------|-------------|
-| JWKS Endpoint | Verifies CrowdSieve publishes signing (JWS) and encryption (JWE) keys |
-| OIDC Discovery | Verifies LLNG provider discovery endpoint |
-| Login Redirect | Verifies login redirects to OIDC provider |
-| Authentication Flow | Tests credential submission and OAuth2 flow |
-| Back-channel Logout | Verifies endpoint exists and validates tokens |
-| LLNG RP Config | Verifies LLNG is configured with private_key_jwt and JWE |
+| Test                | Description                                                           |
+| ------------------- | --------------------------------------------------------------------- |
+| JWKS Endpoint       | Verifies CrowdSieve publishes signing (JWS) and encryption (JWE) keys |
+| OIDC Discovery      | Verifies LLNG provider discovery endpoint                             |
+| Login Redirect      | Verifies login redirects to OIDC provider                             |
+| Authentication Flow | Tests credential submission and OAuth2 flow                           |
+| Back-channel Logout | Verifies endpoint exists and validates tokens                         |
+| LLNG RP Config      | Verifies LLNG is configured with private_key_jwt and JWE              |
 
 ### Configuration
 
 The test uses these settings:
 
-| Setting | Value |
-|---------|-------|
-| OIDC Client ID | `crowdsieve-test` |
-| Token Auth Method | `private_key_jwt` (JWS) |
-| ID Token Encryption | RSA-OAEP-256 + A256GCM |
-| Logout Token Encryption | RSA-OAEP-256 + A256GCM |
-| Test User | `dwho` / `dwho` |
+| Setting                 | Value                   |
+| ----------------------- | ----------------------- |
+| OIDC Client ID          | `crowdsieve-test`       |
+| Token Auth Method       | `private_key_jwt` (JWS) |
+| ID Token Encryption     | RSA-OAEP-256 + A256GCM  |
+| Logout Token Encryption | RSA-OAEP-256 + A256GCM  |
+| Test User               | `dwho` / `dwho`         |
 
 ### Ports
 
-| Service | Port | Description |
-|---------|------|-------------|
-| LemonLDAP::NG | 19080 | OIDC Provider (Portal) |
-| CrowdSieve Dashboard | 13000 | Dashboard UI |
-| CrowdSieve API | 18080 | Proxy API |
+| Service              | Port  | Description            |
+| -------------------- | ----- | ---------------------- |
+| LemonLDAP::NG        | 19080 | OIDC Provider (Portal) |
+| CrowdSieve Dashboard | 13000 | Dashboard UI           |
+| CrowdSieve API       | 18080 | Proxy API              |
 
 ### CI Integration
 
@@ -108,11 +109,13 @@ For complete verification, test the flow manually:
 ### Troubleshooting
 
 **Services not starting:**
+
 ```bash
 docker compose -f docker-compose.oidc.yaml logs
 ```
 
 **LLNG configuration failed:**
+
 ```bash
 # Check LLNG container logs
 docker logs llng-oidc-test
@@ -122,6 +125,7 @@ curl http://localhost:19080/
 ```
 
 **JWKS endpoint empty:**
+
 ```bash
 # Check CrowdSieve environment
 docker exec crowdsieve-oidc-test env | grep -E "JWS|JWE"
@@ -131,6 +135,7 @@ docker logs crowdsieve-oidc-test
 ```
 
 **Authentication fails:**
+
 ```bash
 # Check CrowdSieve can reach LLNG
 docker exec crowdsieve-oidc-test curl -s http://auth.example.com/.well-known/openid-configuration
@@ -141,9 +146,9 @@ docker exec llng-oidc-test curl -s http://dashboard.example.com:3000/api/jwks
 
 ### Files
 
-| File | Description |
-|------|-------------|
-| `docker-compose.oidc.yaml` | Docker Compose configuration for test environment |
+| File                             | Description                                         |
+| -------------------------------- | --------------------------------------------------- |
+| `docker-compose.oidc.yaml`       | Docker Compose configuration for test environment   |
 | `llng-init/00-configure-oidc.sh` | s6 init script to auto-configure LLNG OIDC provider |
-| `configure-llng.sh` | Manual configuration script (for debugging) |
-| `test-oidc.sh` | Automated test script |
+| `configure-llng.sh`              | Manual configuration script (for debugging)         |
+| `test-oidc.sh`                   | Automated test script                               |
