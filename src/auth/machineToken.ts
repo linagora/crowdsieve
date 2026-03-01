@@ -1,7 +1,10 @@
+import { createRequire } from 'module';
 import type { LapiServer } from '../config/index.js';
 
-// Package version for User-Agent header
-export const CROWDSIEVE_VERSION = '1.0.0';
+// Package version for User-Agent header (sourced from package.json)
+const require = createRequire(import.meta.url);
+const { version } = require('../../package.json') as { version: string };
+export const CROWDSIEVE_VERSION = version;
 
 // JWT token cache for machine authentication
 interface TokenCacheEntry {

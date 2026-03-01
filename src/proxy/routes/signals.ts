@@ -8,9 +8,8 @@ export const MAX_ALERTS_PER_BATCH = 1000;
 const CROWDSIEVE_ORIGINS = ['crowdsieve', 'crowdsieve-replication'];
 
 /**
- * Extract machine_id from the Authorization header
- * CrowdSec sends machine_id as username in Basic auth or in JWT payload
- * For simplicity, we extract from alert's machine_id field if available
+ * Extract machine_id from the alerts payload
+ * CrowdSec includes the machine_id in each alert
  */
 function extractSourceMachineId(alerts: SignalsRequest): string | undefined {
   // Use the machine_id from the first alert if available
@@ -24,15 +23,15 @@ function extractSourceMachineId(alerts: SignalsRequest): string | undefined {
 
 /**
  * Check if an alert has decisions from crowdsieve (should not be forwarded to CAPI)
- * Returns true if ALL decisions are from crowdsieve origins
+ * Returns true if ANY decision is from crowdsieve origins (to prevent loop)
  */
 function isCrowdsieveAlert(alert: Alert): boolean {
   if (!alert.decisions || alert.decisions.length === 0) {
     return false;
   }
 
-  // Check if all decisions are from crowdsieve origins
-  return alert.decisions.every((decision) => {
+  // Check if any decision is from crowdsieve origins (prevent any crowdsieve decisions reaching CAPI)
+  return alert.decisions.some((decision) => {
     const origin = decision.origin?.toLowerCase() || '';
     return CROWDSIEVE_ORIGINS.some((excluded) => origin.includes(excluded.toLowerCase()));
   });
@@ -51,7 +50,14 @@ function filterCrowdsieveAlerts(alerts: Alert[]): { alerts: Alert[]; filteredCou
 }
 
 const signalsRoute: FastifyPluginAsync = async (fastify) => {
-  const { config, filterEngine, storage, proxyLogger: logger, clientValidator, replicationService } = fastify;
+  const {
+    config,
+    filterEngine,
+    storage,
+    proxyLogger: logger,
+    clientValidator,
+    replicationService,
+  } = fastify;
 
   // Shared handler for both /v2/signals and /v3/signals
   const handleSignals = async (

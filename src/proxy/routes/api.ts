@@ -64,7 +64,6 @@ export function parseIpOrCidr(
   return { valid: false };
 }
 
-
 /**
  * Constant-time string comparison to prevent timing attacks
  */

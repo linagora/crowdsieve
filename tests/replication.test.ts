@@ -4,9 +4,8 @@ import type { Config } from '../src/config/index.js';
 import type { Alert } from '../src/models/alert.js';
 import { clearTokenCache } from '../src/auth/machineToken.js';
 
-// Mock fetch globally
+// Mock fetch - stubbed in beforeEach
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
 
 function createMockLogger(): ReplicationLogger {
   return {
@@ -101,12 +100,14 @@ describe('ReplicationService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', mockFetch);
     clearTokenCache();
     logger = createMockLogger();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   describe('replicateDecisions', () => {
@@ -540,8 +541,8 @@ describe('ReplicationService', () => {
 
       await service.replicateDecisions(alerts);
 
-      // Should get token but then skip because no replicable decisions
-      expect(mockFetch).toHaveBeenCalledTimes(1); // Only login call
+      // Should skip without fetching token because no replicable decisions after filtering
+      expect(mockFetch).toHaveBeenCalledTimes(0);
       expect(logger.debug).toHaveBeenCalledWith(
         { server: 'server1' },
         'No replicable decisions after filtering (all from crowdsieve origin)'
@@ -587,8 +588,8 @@ describe('ReplicationService', () => {
 
       await service.replicateDecisions(alerts);
 
-      // Should get token but then skip because no replicable decisions
-      expect(mockFetch).toHaveBeenCalledTimes(1); // Only login call
+      // Should skip without fetching token because no replicable decisions after filtering
+      expect(mockFetch).toHaveBeenCalledTimes(0);
       expect(logger.debug).toHaveBeenCalledWith(
         { server: 'server1' },
         'No replicable decisions after filtering (all from crowdsieve origin)'

@@ -126,15 +126,7 @@ export function createReplicationService(
    */
   async function replicateToServer(server: LapiServer, alerts: Alert[]): Promise<boolean> {
     try {
-      const token = await getMachineToken(server, timeoutMs, logger);
-      if (!token) {
-        logger.warn(
-          { server: server.name },
-          'Failed to get machine token for replication'
-        );
-        return false;
-      }
-
+      // Build payload first to avoid unnecessary token fetch if nothing to replicate
       const payload = buildAlertPayload(alerts);
 
       // Skip if no alerts to replicate (all decisions were filtered out)
@@ -144,6 +136,12 @@ export function createReplicationService(
           'No replicable decisions after filtering (all from crowdsieve origin)'
         );
         return true; // Not a failure, just nothing to do
+      }
+
+      const token = await getMachineToken(server, timeoutMs, logger);
+      if (!token) {
+        logger.warn({ server: server.name }, 'Failed to get machine token for replication');
+        return false;
       }
 
       const response = await fetch(`${server.url}/v1/alerts`, {
@@ -167,15 +165,12 @@ export function createReplicationService(
       }
 
       logger.info(
-        { server: server.name, alertCount: alerts.length },
+        { server: server.name, alertCount: payload.length },
         'Successfully replicated decisions to LAPI'
       );
       return true;
     } catch (err) {
-      logger.error(
-        { server: server.name, err },
-        'Error replicating decisions to LAPI'
-      );
+      logger.error({ server: server.name, err }, 'Error replicating decisions to LAPI');
       return false;
     }
   }
@@ -215,9 +210,7 @@ export function createReplicationService(
       );
 
       // Log summary
-      const succeeded = results.filter(
-        (r) => r.status === 'fulfilled' && r.value === true
-      ).length;
+      const succeeded = results.filter((r) => r.status === 'fulfilled' && r.value === true).length;
       const failed = targets.length - succeeded;
 
       if (failed > 0) {
@@ -226,10 +219,7 @@ export function createReplicationService(
           'Replication completed with some failures'
         );
       } else {
-        logger.info(
-          { succeeded, total: targets.length },
-          'Replication completed successfully'
-        );
+        logger.info({ succeeded, total: targets.length }, 'Replication completed successfully');
       }
     },
   };
