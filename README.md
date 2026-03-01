@@ -185,6 +185,49 @@ See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
+### Decision Replication
+
+CrowdSieve can optionally replicate received decisions to your LAPI servers. This is useful when you have multiple CrowdSec instances and want to share decisions across them without going through CAPI.
+
+Enable replication for a server by adding `replicate_decisions: true`:
+
+```yaml
+lapi_servers:
+  - name: 'server1'
+    url: 'http://localhost:8081'
+    api_key: 'your-bouncer-api-key'
+    machine_id: 'crowdsieve'
+    password: 'your-machine-password'
+    replicate_decisions: true  # Enable replication to this server
+  - name: 'server2'
+    url: 'http://192.168.1.10:8080'
+    api_key: 'another-bouncer-key'
+    machine_id: 'crowdsieve-2'
+    password: 'another-password'
+    replicate_decisions: true
+```
+
+**How it works:**
+
+- When CrowdSieve receives alerts with decisions (via `/v2/signals` or `/v3/signals`), it replicates those decisions to all configured LAPI servers with `replicate_decisions: true`
+- Replication is asynchronous and non-blocking (doesn't slow down the main request)
+- Errors during replication are logged but don't affect the response to the client
+- **All** decisions are replicated, including those from filtered alerts
+
+**Loop prevention:**
+
+CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
+
+1. **Source server exclusion**: Decisions are not replicated back to the server they originated from (based on `machine_id`)
+2. **Origin tagging**: Replicated decisions are marked with `origin: crowdsieve-replication`
+3. **Origin filtering**: Decisions with `crowdsieve` or `crowdsieve-replication` origins are never replicated
+4. **CAPI filtering**: Crowdsieve-originated alerts are not forwarded to CAPI
+
+**Requirements:**
+
+- Machine credentials (`machine_id` and `password`) must be configured for replication to work
+- The machine must be registered on the target LAPI server (`cscli machines add crowdsieve`)
+
 ### Environment Variables in Config
 
 Sensitive values like passwords and API keys can be loaded from environment variables using the `${VAR_NAME}` syntax:

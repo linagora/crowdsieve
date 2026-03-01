@@ -7,6 +7,7 @@ import type { Config } from '../config/index.js';
 import type { FilterEngine } from '../filters/index.js';
 import type { AlertStorage } from '../storage/index.js';
 import type { ClientValidator } from '../validation/index.js';
+import type { ReplicationService } from '../replication/index.js';
 import type { Logger } from 'pino';
 
 /**
@@ -33,10 +34,11 @@ export interface ProxyServerDeps {
   storage: AlertStorage;
   logger: Logger;
   clientValidator?: ClientValidator;
+  replicationService?: ReplicationService;
 }
 
 export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyInstance> {
-  const { config, filterEngine, storage, logger, clientValidator } = deps;
+  const { config, filterEngine, storage, logger, clientValidator, replicationService } = deps;
 
   // Validate that clientValidator is provided when enabled
   if (config.client_validation?.enabled && !clientValidator) {
@@ -120,6 +122,7 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   app.decorate('storage', storage);
   app.decorate('proxyLogger', logger);
   app.decorate('clientValidator', clientValidator);
+  app.decorate('replicationService', replicationService);
 
   // CAPI passthrough hook - forwards /v2/* and /v3/* requests to CAPI
   // except /v2/signals which has its own handler with filtering logic
@@ -264,5 +267,6 @@ declare module 'fastify' {
     storage: AlertStorage;
     proxyLogger: Logger;
     clientValidator?: ClientValidator;
+    replicationService?: ReplicationService;
   }
 }
