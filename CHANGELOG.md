@@ -5,6 +5,32 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-03-02
+
+### Added
+
+#### Decision Replication
+
+- **LAPI decision replication**: Automatically replicate CAPI decisions to connected LAPI servers, enabling local bouncers to enforce community blocklists without direct CAPI access
+  - **UUID-based deduplication**: Prevent duplicate alerts using UUID-based deduplication
+- **Replicated alerts tracking**: New `replicated` flag on alerts to track replication status and avoid duplicates
+
+### Fixed
+
+#### Dashboard
+
+- **Local decision deletion**: Decisions with origin `crowdsec` (local agent detections) can now be deleted from the dashboard. Previously they were incorrectly classified as shared CAPI decisions
+- **CIDR support in decision search**: Fix URL parameter handling for CIDR notation in the decisions page
+
+#### Backend
+
+- **ARIN WHOIS queries**: Fix WHOIS queries to ARIN returning summary format instead of detailed information
+- **Alert forwarding headers**: Don't modify headers when forwarding alerts to CAPI
+
+### Changed
+
+- **Dependencies update**: Update project dependencies
+
 ## [0.3.1] - 2026-02-08
 
 ### Fixed
