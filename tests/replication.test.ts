@@ -195,7 +195,37 @@ describe('ReplicationService', () => {
 
       expect(mockFetch).not.toHaveBeenCalled();
       expect(logger.debug).toHaveBeenCalledWith(
-        { server: 'server1', sourceMachineId: 'source-machine' },
+        { server: 'server1', serverSourceId: 'source-machine', sourceMachineId: 'source-machine' },
+        'Skipping replication target: same as source'
+      );
+    });
+
+    it('should skip source server using source_machine_id (loop prevention)', async () => {
+      // This tests the fix for the loop bug: when a server has replicate_decisions: true
+      // and sends alerts, it should not receive its own decisions back.
+      // The source_machine_id field identifies alerts FROM this server,
+      // while machine_id is used to POST to this server (different credentials).
+      const config = createMockConfig([
+        {
+          name: 'server1',
+          url: 'https://lapi1.example.com',
+          api_key: 'key1',
+          machine_id: 'crowdsieve-push-creds', // credentials for POSTING to this server
+          password: 'password1',
+          replicate_decisions: true,
+          source_machine_id: 'lapi-sender-id', // machine_id used when this server SENDS alerts
+        },
+      ]);
+
+      service = createReplicationService(config, logger);
+      const alerts = [createMockAlert(true, 'lapi-sender-id')];
+
+      // Alert comes from lapi-sender-id, which matches source_machine_id
+      await service.replicateDecisions(alerts, 'lapi-sender-id');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        { server: 'server1', serverSourceId: 'lapi-sender-id', sourceMachineId: 'lapi-sender-id' },
         'Skipping replication target: same as source'
       );
     });

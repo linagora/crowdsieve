@@ -170,12 +170,18 @@ async function main() {
   const replicationServers = (config.lapi_servers || []).filter((s) => s.replicate_decisions);
   const hasReplicationTargets = replicationServers.some((s) => s.machine_id && s.password);
 
-  // Warn about servers with replicate_decisions but missing credentials
+  // Warn about servers with replicate_decisions but missing credentials or source_machine_id
   for (const server of replicationServers) {
     if (!server.machine_id || !server.password) {
       logger.warn(
         { server: server.name },
         'Server has replicate_decisions enabled but missing machine_id or password - replication disabled for this target'
+      );
+    }
+    if (!server.source_machine_id) {
+      logger.warn(
+        { server: server.name },
+        'Server has replicate_decisions enabled but missing source_machine_id - loop prevention may not work correctly'
       );
     }
   }

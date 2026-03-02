@@ -53,9 +53,11 @@ export function createReplicationService(
       }
 
       // Skip the source server (don't replicate back to origin)
-      if (sourceMachineId && server.machine_id === sourceMachineId) {
+      // Use source_machine_id if configured, otherwise fall back to machine_id
+      const serverSourceId = server.source_machine_id || server.machine_id;
+      if (sourceMachineId && serverSourceId === sourceMachineId) {
         logger.debug(
-          { server: server.name, sourceMachineId },
+          { server: server.name, sourceMachineId, serverSourceId },
           'Skipping replication target: same as source'
         );
         return false;
