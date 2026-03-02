@@ -211,6 +211,14 @@ export async function initializePostgres(
         END IF;
       END $$;
     `);
+
+    // Migration: Add unique partial index on uuid (only for non-null values)
+    // This prevents duplicate alerts and improves lookup performance
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_uuid
+      ON alerts(uuid)
+      WHERE uuid IS NOT NULL;
+    `);
   } catch (err) {
     if (isPermissionError(err)) {
       logger.error(

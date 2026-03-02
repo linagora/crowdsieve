@@ -223,6 +223,12 @@ function runSQLiteMigrations(sqlite: Database.Database) {
   if (!hasReplicatedColumn) {
     sqlite.exec('ALTER TABLE alerts ADD COLUMN replicated INTEGER DEFAULT 0');
   }
+
+  // Migration: Add unique index on uuid (partial - only for non-null values)
+  // This prevents duplicate alerts and improves lookup performance
+  sqlite.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_uuid ON alerts(uuid) WHERE uuid IS NOT NULL'
+  );
 }
 
 /**

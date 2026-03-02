@@ -65,13 +65,19 @@ export interface StoreAlertsOptions {
   replicationEnabled?: boolean;
 }
 
+export interface StoreAlertsResult {
+  /** Indices of alerts that have replicable decisions (for marking as replicated after success) */
+  replicableIndices: number[];
+}
+
 export interface AlertStorage {
   storeAlerts(
     alerts: Alert[],
     filterDetails: FilterEngineResult['filterDetails'],
     options?: StoreAlertsOptions
-  ): Promise<void>;
+  ): Promise<StoreAlertsResult>;
   markAlertsForwarded(indices: number[]): Promise<void>;
+  markAlertsReplicated(indices: number[]): Promise<void>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
   getAlertById(id: number): Promise<SelectAlert | null>;
   hasAlertsNewerThan(timestamp: Date): Promise<boolean>;
@@ -81,8 +87,8 @@ export interface AlertStorage {
   cleanup(retentionDays: number): Promise<number>;
 }
 
-// Origins that indicate a replicated decision (should not be stored)
-const REPLICATION_ORIGINS = ['crowdsieve-replication'];
+// Import shared replication constants
+import { REPLICATION_ORIGIN } from '../replication/index.js';
 
 /**
  * Check if an alert has decisions from crowdsieve-replication origin
@@ -92,9 +98,10 @@ function isReplicatedAlert(alert: Alert): boolean {
   if (!alert.decisions || alert.decisions.length === 0) {
     return false;
   }
+  const replicationOrigin = REPLICATION_ORIGIN.toLowerCase();
   return alert.decisions.some((decision) => {
     const origin = decision.origin?.toLowerCase() || '';
-    return REPLICATION_ORIGINS.some((excluded) => origin.includes(excluded.toLowerCase()));
+    return origin.includes(replicationOrigin);
   });
 }
 
@@ -114,14 +121,15 @@ function hasReplicableDecisions(alert: Alert): boolean {
 }
 
 export function createStorage(): AlertStorage {
-  let lastInsertedIds: number[] = [];
+  // Map from original alert index to inserted database ID
+  let lastInsertedIdMap: Map<number, number> = new Map();
 
   return {
-    async storeAlerts(alerts, filterDetails, options) {
+    async storeAlerts(alerts, filterDetails, options): Promise<StoreAlertsResult> {
       const { db, schema, isPostgres } = getDatabaseContext();
       const geoipLookup = options?.geoipLookup;
-      const replicationEnabled = options?.replicationEnabled ?? false;
-      lastInsertedIds = [];
+      lastInsertedIdMap = new Map();
+      const replicableIndices: number[] = [];
 
       for (let i = 0; i < alerts.length; i++) {
         const alert = alerts[i];
@@ -155,64 +163,83 @@ export function createStorage(): AlertStorage {
         const ipToLookup = extractIpFromValue(rawIpValue);
         const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
 
-        // Mark as replicated if replication is enabled and alert has replicable decisions
-        const shouldMarkReplicated = replicationEnabled && hasReplicableDecisions(alert);
+        // Track alerts with replicable decisions (to be marked as replicated after successful replication)
+        const hasReplicable = hasReplicableDecisions(alert);
+        if (hasReplicable) {
+          replicableIndices.push(i);
+        }
 
-        const insertQuery = db
-          .insert(schema.alerts)
-          .values({
-            uuid: alert.uuid,
-            machineId: alert.machine_id,
-            scenario: alert.scenario,
-            scenarioHash: alert.scenario_hash,
-            scenarioVersion: alert.scenario_version,
-            message: alert.message,
-            eventsCount: alert.events_count,
-            capacity: alert.capacity,
-            leakspeed: alert.leakspeed,
-            startAt: alert.start_at,
-            stopAt: alert.stop_at,
-            createdAt: alert.created_at,
-            simulated: alert.simulated,
-            remediation: alert.remediation,
-            hasDecisions: (alert.decisions?.length || 0) > 0,
-            replicated: shouldMarkReplicated,
-            sourceScope: alert.source.scope,
-            sourceValue: alert.source.value,
-            sourceIp: alert.source.ip,
-            sourceRange: alert.source.range,
-            sourceAsNumber: alert.source.as_number,
-            sourceAsName: alert.source.as_name,
-            sourceCn: alert.source.cn,
-            geoCountryCode: geoip?.countryCode || alert.source.cn,
-            geoCountryName: geoip?.countryName,
-            geoCity: geoip?.city,
-            geoRegion: geoip?.region,
-            geoLatitude: geoip?.latitude || alert.source.latitude,
-            geoLongitude: geoip?.longitude || alert.source.longitude,
-            geoTimezone: geoip?.timezone,
-            geoIsp: geoip?.isp,
-            geoOrg: geoip?.org,
-            filtered: detail.filtered,
-            filterReasons:
-              detail.matchedFilters.length > 0
-                ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
-                : null,
-            rawJson: JSON.stringify(alert),
-          } as typeof schema.alerts.$inferInsert)
-          .returning({ id: schema.alerts.id });
-
-        // Handle SQLite vs PostgreSQL result format
+        // Insert alert with error handling for unique constraint violations (race conditions)
         let result: { id: number } | undefined;
-        if (isPostgres) {
-          const rows = await insertQuery;
-          result = rows[0];
-        } else {
-          result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+        try {
+          const insertQuery = db
+            .insert(schema.alerts)
+            .values({
+              uuid: alert.uuid,
+              machineId: alert.machine_id,
+              scenario: alert.scenario,
+              scenarioHash: alert.scenario_hash,
+              scenarioVersion: alert.scenario_version,
+              message: alert.message,
+              eventsCount: alert.events_count,
+              capacity: alert.capacity,
+              leakspeed: alert.leakspeed,
+              startAt: alert.start_at,
+              stopAt: alert.stop_at,
+              createdAt: alert.created_at,
+              simulated: alert.simulated,
+              remediation: alert.remediation,
+              hasDecisions: (alert.decisions?.length || 0) > 0,
+              replicated: false, // Will be set to true after successful replication
+              sourceScope: alert.source.scope,
+              sourceValue: alert.source.value,
+              sourceIp: alert.source.ip,
+              sourceRange: alert.source.range,
+              sourceAsNumber: alert.source.as_number,
+              sourceAsName: alert.source.as_name,
+              sourceCn: alert.source.cn,
+              geoCountryCode: geoip?.countryCode || alert.source.cn,
+              geoCountryName: geoip?.countryName,
+              geoCity: geoip?.city,
+              geoRegion: geoip?.region,
+              geoLatitude: geoip?.latitude || alert.source.latitude,
+              geoLongitude: geoip?.longitude || alert.source.longitude,
+              geoTimezone: geoip?.timezone,
+              geoIsp: geoip?.isp,
+              geoOrg: geoip?.org,
+              filtered: detail.filtered,
+              filterReasons:
+                detail.matchedFilters.length > 0
+                  ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
+                  : null,
+              rawJson: JSON.stringify(alert),
+            } as typeof schema.alerts.$inferInsert)
+            .returning({ id: schema.alerts.id });
+
+          // Handle SQLite vs PostgreSQL result format
+          if (isPostgres) {
+            const rows = await insertQuery;
+            result = rows[0];
+          } else {
+            result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+          }
+        } catch (err) {
+          // Handle unique constraint violation (race condition on uuid)
+          // SQLite: SQLITE_CONSTRAINT_UNIQUE (code contains 'UNIQUE')
+          // PostgreSQL: error code '23505' (unique_violation)
+          const error = err as { code?: string; message?: string };
+          if (
+            error.code === '23505' ||
+            (error.message && error.message.includes('UNIQUE constraint failed'))
+          ) {
+            // Duplicate alert, skip
+            continue;
+          }
+          throw err;
         }
 
         if (result) {
-          lastInsertedIds.push(result.id);
+          lastInsertedIdMap.set(i, result.id);
 
           // Store decisions
           if (alert.decisions && alert.decisions.length > 0) {
@@ -239,6 +266,8 @@ export function createStorage(): AlertStorage {
           }
         }
       }
+
+      return { replicableIndices };
     },
 
     async markAlertsForwarded(indices) {
@@ -246,11 +275,31 @@ export function createStorage(): AlertStorage {
       const now = new Date().toISOString();
 
       for (const index of indices) {
-        const id = lastInsertedIds[index];
-        if (id) {
+        const id = lastInsertedIdMap.get(index);
+        if (id !== undefined) {
           const updateQuery = db
             .update(schema.alerts)
             .set({ forwardedToCapi: true, forwardedAt: now })
+            .where(eq(schema.alerts.id, id));
+
+          if (isPostgres) {
+            await updateQuery;
+          } else {
+            (updateQuery as unknown as { run(): void }).run();
+          }
+        }
+      }
+    },
+
+    async markAlertsReplicated(indices) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+
+      for (const index of indices) {
+        const id = lastInsertedIdMap.get(index);
+        if (id !== undefined) {
+          const updateQuery = db
+            .update(schema.alerts)
+            .set({ replicated: true })
             .where(eq(schema.alerts.id, id));
 
           if (isPostgres) {
