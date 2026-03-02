@@ -28,6 +28,7 @@ export const alerts = sqliteTable(
     simulated: integer('simulated', { mode: 'boolean' }).default(false),
     remediation: integer('remediation', { mode: 'boolean' }).default(false),
     hasDecisions: integer('has_decisions', { mode: 'boolean' }).default(false),
+    replicated: integer('replicated', { mode: 'boolean' }).default(false),
 
     // Source information
     sourceScope: text('source_scope'),

@@ -60,11 +60,16 @@ export interface DecisionStats {
 // Import schema types - use SQLite schema types as canonical (they're compatible)
 import type { SelectAlert } from '../db/schema.js';
 
+export interface StoreAlertsOptions {
+  geoipLookup?: (ip: string) => GeoIPInfo | null;
+  replicationEnabled?: boolean;
+}
+
 export interface AlertStorage {
   storeAlerts(
     alerts: Alert[],
     filterDetails: FilterEngineResult['filterDetails'],
-    geoipLookup?: (ip: string) => GeoIPInfo | null
+    options?: StoreAlertsOptions
   ): Promise<void>;
   markAlertsForwarded(indices: number[]): Promise<void>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
@@ -76,21 +81,64 @@ export interface AlertStorage {
   cleanup(retentionDays: number): Promise<number>;
 }
 
+// Origins that indicate a replicated decision (should not be stored)
+const REPLICATION_ORIGINS = ['crowdsieve-replication'];
+
+/**
+ * Check if an alert has decisions from crowdsieve-replication origin
+ * These alerts should not be stored (they are duplicates)
+ */
+function isReplicatedAlert(alert: Alert): boolean {
+  if (!alert.decisions || alert.decisions.length === 0) {
+    return false;
+  }
+  return alert.decisions.some((decision) => {
+    const origin = decision.origin?.toLowerCase() || '';
+    return REPLICATION_ORIGINS.some((excluded) => origin.includes(excluded.toLowerCase()));
+  });
+}
+
+/**
+ * Check if an alert has decisions that will be replicated
+ * (non-crowdsieve origin decisions)
+ */
+function hasReplicableDecisions(alert: Alert): boolean {
+  if (!alert.decisions || alert.decisions.length === 0) {
+    return false;
+  }
+  const excludedOrigins = ['crowdsieve', 'crowdsieve-replication'];
+  return alert.decisions.some((decision) => {
+    const origin = decision.origin?.toLowerCase() || '';
+    return !excludedOrigins.some((excluded) => origin.includes(excluded.toLowerCase()));
+  });
+}
+
 export function createStorage(): AlertStorage {
   let lastInsertedIds: number[] = [];
 
   return {
-    async storeAlerts(alerts, filterDetails, geoipLookup) {
+    async storeAlerts(alerts, filterDetails, options) {
       const { db, schema, isPostgres } = getDatabaseContext();
+      const geoipLookup = options?.geoipLookup;
+      const replicationEnabled = options?.replicationEnabled ?? false;
       lastInsertedIds = [];
 
       for (let i = 0; i < alerts.length; i++) {
         const alert = alerts[i];
         const detail = filterDetails[i];
+
+        // Skip alerts with crowdsieve-replication origin (duplicates from LAPI)
+        if (isReplicatedAlert(alert)) {
+          continue;
+        }
+
         // Validate IP before GeoIP lookup to avoid silent failures
         const rawIpValue = alert.source.ip || alert.source.value || '';
         const ipToLookup = extractIpFromValue(rawIpValue);
         const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
+
+        // Mark as replicated if replication is enabled and alert has replicable decisions
+        const shouldMarkReplicated = replicationEnabled && hasReplicableDecisions(alert);
 
         const insertQuery = db
           .insert(schema.alerts)
@@ -110,6 +158,7 @@ export function createStorage(): AlertStorage {
             simulated: alert.simulated,
             remediation: alert.remediation,
             hasDecisions: (alert.decisions?.length || 0) > 0,
+            replicated: shouldMarkReplicated,
             sourceScope: alert.source.scope,
             sourceValue: alert.source.value,
             sourceIp: alert.source.ip,

@@ -110,6 +110,7 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       simulated INTEGER DEFAULT 0,
       remediation INTEGER DEFAULT 0,
       has_decisions INTEGER DEFAULT 0,
+      replicated INTEGER DEFAULT 0,
       source_scope TEXT,
       source_value TEXT,
       source_ip TEXT,
@@ -214,6 +215,14 @@ function runSQLiteMigrations(sqlite: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_analyzer_results_run_id ON analyzer_results(run_id);
     CREATE INDEX IF NOT EXISTS idx_analyzer_results_source_ip ON analyzer_results(source_ip);
   `);
+
+  // Migration: Add replicated column to alerts if it doesn't exist
+  // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
+  const tableInfo = sqlite.prepare('PRAGMA table_info(alerts)').all() as { name: string }[];
+  const hasReplicatedColumn = tableInfo.some((col) => col.name === 'replicated');
+  if (!hasReplicatedColumn) {
+    sqlite.exec('ALTER TABLE alerts ADD COLUMN replicated INTEGER DEFAULT 0');
+  }
 }
 
 /**

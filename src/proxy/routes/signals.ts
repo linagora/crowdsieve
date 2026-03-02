@@ -129,8 +129,11 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     );
 
     // Store all alerts (both filtered and passed) for dashboard
+    // Note: Alerts with crowdsieve-replication origin are automatically skipped by storage
     try {
-      await storage.storeAlerts(alerts, filterResult.filterDetails);
+      await storage.storeAlerts(alerts, filterResult.filterDetails, {
+        replicationEnabled: !!replicationService,
+      });
     } catch (err) {
       logger.error({ err }, 'Failed to store alerts');
       // Don't fail the request - storage is secondary
