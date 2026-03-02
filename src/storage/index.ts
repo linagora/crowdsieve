@@ -132,6 +132,24 @@ export function createStorage(): AlertStorage {
           continue;
         }
 
+        // Skip duplicate alerts based on UUID (prevents re-storing the same alert)
+        if (alert.uuid) {
+          const existingQuery = db
+            .select({ id: schema.alerts.id })
+            .from(schema.alerts)
+            .where(eq(schema.alerts.uuid, alert.uuid))
+            .limit(1);
+
+          const exists = isPostgres
+            ? (await existingQuery).length > 0
+            : (existingQuery as unknown as { get(): { id: number } | undefined }).get() !==
+              undefined;
+
+          if (exists) {
+            continue;
+          }
+        }
+
         // Validate IP before GeoIP lookup to avoid silent failures
         const rawIpValue = alert.source.ip || alert.source.value || '';
         const ipToLookup = extractIpFromValue(rawIpValue);
