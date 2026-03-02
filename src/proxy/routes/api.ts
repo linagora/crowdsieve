@@ -459,7 +459,8 @@ const apiRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Separate shared decisions (from CAPI/lists) that appear on all servers
       // from local decisions specific to each server
-      const sharedOrigins = ['CAPI', 'capi', 'lists', 'crowdsec'];
+      // Note: 'crowdsec' origin means local agent detection, not shared CAPI decisions
+      const sharedOrigins = ['CAPI', 'capi', 'lists'];
       const sharedDecisionKeys = new Map<
         string,
         { decision: (typeof serverResults)[0]['decisions'][0]; count: number }
