@@ -60,13 +60,24 @@ export interface DecisionStats {
 // Import schema types - use SQLite schema types as canonical (they're compatible)
 import type { SelectAlert } from '../db/schema.js';
 
+export interface StoreAlertsOptions {
+  geoipLookup?: (ip: string) => GeoIPInfo | null;
+  replicationEnabled?: boolean;
+}
+
+export interface StoreAlertsResult {
+  /** Indices of alerts that have replicable decisions (for marking as replicated after success) */
+  replicableIndices: number[];
+}
+
 export interface AlertStorage {
   storeAlerts(
     alerts: Alert[],
     filterDetails: FilterEngineResult['filterDetails'],
-    geoipLookup?: (ip: string) => GeoIPInfo | null
-  ): Promise<void>;
+    options?: StoreAlertsOptions
+  ): Promise<StoreAlertsResult>;
   markAlertsForwarded(indices: number[]): Promise<void>;
+  markAlertsReplicated(indices: number[]): Promise<void>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
   getAlertById(id: number): Promise<SelectAlert | null>;
   hasAlertsNewerThan(timestamp: Date): Promise<boolean>;
@@ -76,76 +87,159 @@ export interface AlertStorage {
   cleanup(retentionDays: number): Promise<number>;
 }
 
+// Import shared replication constants
+import { REPLICATION_ORIGIN } from '../replication/index.js';
+
+/**
+ * Check if an alert has decisions from crowdsieve-replication origin
+ * These alerts should not be stored (they are duplicates)
+ */
+function isReplicatedAlert(alert: Alert): boolean {
+  if (!alert.decisions || alert.decisions.length === 0) {
+    return false;
+  }
+  const replicationOrigin = REPLICATION_ORIGIN.toLowerCase();
+  return alert.decisions.some((decision) => {
+    const origin = decision.origin?.toLowerCase() || '';
+    return origin.includes(replicationOrigin);
+  });
+}
+
+/**
+ * Check if an alert has decisions that will be replicated
+ * (non-crowdsieve origin decisions)
+ */
+function hasReplicableDecisions(alert: Alert): boolean {
+  if (!alert.decisions || alert.decisions.length === 0) {
+    return false;
+  }
+  const excludedOrigins = ['crowdsieve', 'crowdsieve-replication'];
+  return alert.decisions.some((decision) => {
+    const origin = decision.origin?.toLowerCase() || '';
+    return !excludedOrigins.some((excluded) => origin.includes(excluded.toLowerCase()));
+  });
+}
+
 export function createStorage(): AlertStorage {
-  let lastInsertedIds: number[] = [];
+  // Map from original alert index to inserted database ID
+  let lastInsertedIdMap: Map<number, number> = new Map();
 
   return {
-    async storeAlerts(alerts, filterDetails, geoipLookup) {
+    async storeAlerts(alerts, filterDetails, options): Promise<StoreAlertsResult> {
       const { db, schema, isPostgres } = getDatabaseContext();
-      lastInsertedIds = [];
+      const geoipLookup = options?.geoipLookup;
+      lastInsertedIdMap = new Map();
+      const replicableIndices: number[] = [];
 
       for (let i = 0; i < alerts.length; i++) {
         const alert = alerts[i];
         const detail = filterDetails[i];
+
+        // Skip alerts with crowdsieve-replication origin (duplicates from LAPI)
+        if (isReplicatedAlert(alert)) {
+          continue;
+        }
+
+        // Skip duplicate alerts based on UUID (prevents re-storing the same alert)
+        if (alert.uuid) {
+          const existingQuery = db
+            .select({ id: schema.alerts.id })
+            .from(schema.alerts)
+            .where(eq(schema.alerts.uuid, alert.uuid))
+            .limit(1);
+
+          const exists = isPostgres
+            ? (await existingQuery).length > 0
+            : (existingQuery as unknown as { get(): { id: number } | undefined }).get() !==
+              undefined;
+
+          if (exists) {
+            continue;
+          }
+        }
+
         // Validate IP before GeoIP lookup to avoid silent failures
         const rawIpValue = alert.source.ip || alert.source.value || '';
         const ipToLookup = extractIpFromValue(rawIpValue);
         const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
 
-        const insertQuery = db
-          .insert(schema.alerts)
-          .values({
-            uuid: alert.uuid,
-            machineId: alert.machine_id,
-            scenario: alert.scenario,
-            scenarioHash: alert.scenario_hash,
-            scenarioVersion: alert.scenario_version,
-            message: alert.message,
-            eventsCount: alert.events_count,
-            capacity: alert.capacity,
-            leakspeed: alert.leakspeed,
-            startAt: alert.start_at,
-            stopAt: alert.stop_at,
-            createdAt: alert.created_at,
-            simulated: alert.simulated,
-            remediation: alert.remediation,
-            hasDecisions: (alert.decisions?.length || 0) > 0,
-            sourceScope: alert.source.scope,
-            sourceValue: alert.source.value,
-            sourceIp: alert.source.ip,
-            sourceRange: alert.source.range,
-            sourceAsNumber: alert.source.as_number,
-            sourceAsName: alert.source.as_name,
-            sourceCn: alert.source.cn,
-            geoCountryCode: geoip?.countryCode || alert.source.cn,
-            geoCountryName: geoip?.countryName,
-            geoCity: geoip?.city,
-            geoRegion: geoip?.region,
-            geoLatitude: geoip?.latitude || alert.source.latitude,
-            geoLongitude: geoip?.longitude || alert.source.longitude,
-            geoTimezone: geoip?.timezone,
-            geoIsp: geoip?.isp,
-            geoOrg: geoip?.org,
-            filtered: detail.filtered,
-            filterReasons:
-              detail.matchedFilters.length > 0
-                ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
-                : null,
-            rawJson: JSON.stringify(alert),
-          } as typeof schema.alerts.$inferInsert)
-          .returning({ id: schema.alerts.id });
+        // Track alerts with replicable decisions (to be marked as replicated after successful replication)
+        const hasReplicable = hasReplicableDecisions(alert);
+        if (hasReplicable) {
+          replicableIndices.push(i);
+        }
 
-        // Handle SQLite vs PostgreSQL result format
+        // Insert alert with error handling for unique constraint violations (race conditions)
         let result: { id: number } | undefined;
-        if (isPostgres) {
-          const rows = await insertQuery;
-          result = rows[0];
-        } else {
-          result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+        try {
+          const insertQuery = db
+            .insert(schema.alerts)
+            .values({
+              uuid: alert.uuid,
+              machineId: alert.machine_id,
+              scenario: alert.scenario,
+              scenarioHash: alert.scenario_hash,
+              scenarioVersion: alert.scenario_version,
+              message: alert.message,
+              eventsCount: alert.events_count,
+              capacity: alert.capacity,
+              leakspeed: alert.leakspeed,
+              startAt: alert.start_at,
+              stopAt: alert.stop_at,
+              createdAt: alert.created_at,
+              simulated: alert.simulated,
+              remediation: alert.remediation,
+              hasDecisions: (alert.decisions?.length || 0) > 0,
+              replicated: false, // Will be set to true after successful replication
+              sourceScope: alert.source.scope,
+              sourceValue: alert.source.value,
+              sourceIp: alert.source.ip,
+              sourceRange: alert.source.range,
+              sourceAsNumber: alert.source.as_number,
+              sourceAsName: alert.source.as_name,
+              sourceCn: alert.source.cn,
+              geoCountryCode: geoip?.countryCode || alert.source.cn,
+              geoCountryName: geoip?.countryName,
+              geoCity: geoip?.city,
+              geoRegion: geoip?.region,
+              geoLatitude: geoip?.latitude || alert.source.latitude,
+              geoLongitude: geoip?.longitude || alert.source.longitude,
+              geoTimezone: geoip?.timezone,
+              geoIsp: geoip?.isp,
+              geoOrg: geoip?.org,
+              filtered: detail.filtered,
+              filterReasons:
+                detail.matchedFilters.length > 0
+                  ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
+                  : null,
+              rawJson: JSON.stringify(alert),
+            } as typeof schema.alerts.$inferInsert)
+            .returning({ id: schema.alerts.id });
+
+          // Handle SQLite vs PostgreSQL result format
+          if (isPostgres) {
+            const rows = await insertQuery;
+            result = rows[0];
+          } else {
+            result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+          }
+        } catch (err) {
+          // Handle unique constraint violation (race condition on uuid)
+          // SQLite: SQLITE_CONSTRAINT_UNIQUE (code contains 'UNIQUE')
+          // PostgreSQL: error code '23505' (unique_violation)
+          const error = err as { code?: string; message?: string };
+          if (
+            error.code === '23505' ||
+            (error.message && error.message.includes('UNIQUE constraint failed'))
+          ) {
+            // Duplicate alert, skip
+            continue;
+          }
+          throw err;
         }
 
         if (result) {
-          lastInsertedIds.push(result.id);
+          lastInsertedIdMap.set(i, result.id);
 
           // Store decisions
           if (alert.decisions && alert.decisions.length > 0) {
@@ -172,6 +266,8 @@ export function createStorage(): AlertStorage {
           }
         }
       }
+
+      return { replicableIndices };
     },
 
     async markAlertsForwarded(indices) {
@@ -179,11 +275,31 @@ export function createStorage(): AlertStorage {
       const now = new Date().toISOString();
 
       for (const index of indices) {
-        const id = lastInsertedIds[index];
-        if (id) {
+        const id = lastInsertedIdMap.get(index);
+        if (id !== undefined) {
           const updateQuery = db
             .update(schema.alerts)
             .set({ forwardedToCapi: true, forwardedAt: now })
+            .where(eq(schema.alerts.id, id));
+
+          if (isPostgres) {
+            await updateQuery;
+          } else {
+            (updateQuery as unknown as { run(): void }).run();
+          }
+        }
+      }
+    },
+
+    async markAlertsReplicated(indices) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+
+      for (const index of indices) {
+        const id = lastInsertedIdMap.get(index);
+        if (id !== undefined) {
+          const updateQuery = db
+            .update(schema.alerts)
+            .set({ replicated: true })
             .where(eq(schema.alerts.id, id));
 
           if (isPostgres) {

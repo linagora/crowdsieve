@@ -50,6 +50,7 @@ export interface StoredAlert {
   filtered: boolean;
   filterReasons?: string;
   forwardedToCapi: boolean;
+  replicated: boolean;
 }
 
 export interface AlertStats {

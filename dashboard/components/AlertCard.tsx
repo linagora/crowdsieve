@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPin, Clock, AlertTriangle, Filter, Send } from 'lucide-react';
+import { MapPin, Clock, AlertTriangle, Filter, Send, Copy } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { StoredAlert } from '@/lib/types';
 import { clsx } from 'clsx';
@@ -67,6 +67,12 @@ export function AlertCard({ alert, onClick }: AlertCardProps) {
             <span className="badge bg-green-100 text-green-800">
               <Send className="w-3 h-3 mr-1" />
               Forwarded
+            </span>
+          )}
+          {alert.replicated && (
+            <span className="badge bg-blue-100 text-blue-800">
+              <Copy className="w-3 h-3 mr-1" />
+              Replicated
             </span>
           )}
           {alert.hasDecisions && <span className="badge badge-ban">Has Decision</span>}

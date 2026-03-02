@@ -62,6 +62,7 @@ const POSTGRES_MIGRATIONS = `
     simulated BOOLEAN DEFAULT FALSE,
     remediation BOOLEAN DEFAULT FALSE,
     has_decisions BOOLEAN DEFAULT FALSE,
+    replicated BOOLEAN DEFAULT FALSE,
     source_scope TEXT,
     source_value TEXT,
     source_ip TEXT,
@@ -197,6 +198,27 @@ export async function initializePostgres(
   try {
     await pool.query(POSTGRES_MIGRATIONS);
     logger.info('PostgreSQL tables initialized successfully');
+
+    // Migration: Add replicated column to alerts if it doesn't exist
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'alerts' AND column_name = 'replicated'
+        ) THEN
+          ALTER TABLE alerts ADD COLUMN replicated BOOLEAN DEFAULT FALSE;
+        END IF;
+      END $$;
+    `);
+
+    // Migration: Add unique partial index on uuid (only for non-null values)
+    // This prevents duplicate alerts and improves lookup performance
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_uuid
+      ON alerts(uuid)
+      WHERE uuid IS NOT NULL;
+    `);
   } catch (err) {
     if (isPermissionError(err)) {
       logger.error(

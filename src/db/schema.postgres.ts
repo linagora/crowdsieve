@@ -36,6 +36,7 @@ export const alerts = pgTable(
     simulated: boolean('simulated').default(false),
     remediation: boolean('remediation').default(false),
     hasDecisions: boolean('has_decisions').default(false),
+    replicated: boolean('replicated').default(false),
 
     // Source information
     sourceScope: text('source_scope'),

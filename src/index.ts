@@ -132,8 +132,11 @@ async function main() {
 
   // Inject GeoIP lookup into storage
   const originalStoreAlerts = storage.storeAlerts.bind(storage);
-  storage.storeAlerts = async (alerts, filterDetails) => {
-    return originalStoreAlerts(alerts, filterDetails, geoipAvailable ? lookupIP : undefined);
+  storage.storeAlerts = async (alerts, filterDetails, options) => {
+    return originalStoreAlerts(alerts, filterDetails, {
+      ...options,
+      geoipLookup: geoipAvailable ? lookupIP : undefined,
+    });
   };
 
   // Initialize client validator (if enabled)

@@ -129,8 +129,11 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     );
 
     // Store all alerts (both filtered and passed) for dashboard
+    // Note: Alerts with crowdsieve-replication origin are automatically skipped by storage
+    let replicableIndices: number[] = [];
     try {
-      await storage.storeAlerts(alerts, filterResult.filterDetails);
+      const storeResult = await storage.storeAlerts(alerts, filterResult.filterDetails);
+      replicableIndices = storeResult.replicableIndices;
     } catch (err) {
       logger.error({ err }, 'Failed to store alerts');
       // Don't fail the request - storage is secondary
@@ -138,12 +141,16 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
 
     // Replicate decisions to LAPI servers asynchronously (non-blocking)
     // We replicate ALL original alerts with decisions, regardless of filtering
-    if (replicationService) {
+    if (replicationService && replicableIndices.length > 0) {
       const sourceMachineId = extractSourceMachineId(alerts);
-      setImmediate(() => {
-        replicationService.replicateDecisions(alerts, sourceMachineId).catch((err) => {
+      setImmediate(async () => {
+        try {
+          await replicationService.replicateDecisions(alerts, sourceMachineId);
+          // Mark alerts as replicated only after successful replication
+          await storage.markAlertsReplicated(replicableIndices);
+        } catch (err) {
           logger.error({ err }, 'Failed to replicate decisions');
-        });
+        }
       });
     }
 
