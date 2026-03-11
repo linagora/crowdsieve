@@ -120,7 +120,7 @@ export type FilterRule = z.infer<typeof FilterRuleSchema>;
 // - api_key: for bouncer (read-only) operations like querying decisions
 // - machine_id + password: for machine (write) operations like posting alerts/bans
 // - replicate_decisions: if true, replicate received decisions to this LAPI server
-// - source_machine_id: the machine_id used by this LAPI when sending alerts (for loop prevention)
+// - source_machine_ids: array of machine_ids that send alerts from this LAPI (for loop prevention)
 const LapiServerSchema = z.object({
   name: z.string().min(1),
   url: z.string().url(),
@@ -128,7 +128,7 @@ const LapiServerSchema = z.object({
   machine_id: z.string().min(1).optional(), // Machine ID for posting alerts
   password: z.string().min(1).optional(), // Machine password for posting alerts
   replicate_decisions: z.boolean().default(false), // Replicate decisions to this server
-  source_machine_id: z.string().min(1).optional(), // Machine ID this LAPI uses when sending alerts (loop prevention)
+  source_machine_ids: z.array(z.string().min(1)).optional(), // Machine IDs that send alerts from this LAPI (loop prevention)
 });
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;

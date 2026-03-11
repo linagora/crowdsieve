@@ -176,34 +176,10 @@ describe('ReplicationService', () => {
       );
     });
 
-    it('should skip source server (avoid replicating back to origin)', async () => {
-      const config = createMockConfig([
-        {
-          name: 'server1',
-          url: 'https://lapi1.example.com',
-          api_key: 'key1',
-          machine_id: 'source-machine',
-          password: 'password1',
-          replicate_decisions: true,
-        },
-      ]);
-
-      service = createReplicationService(config, logger);
-      const alerts = [createMockAlert(true, 'source-machine')];
-
-      await service.replicateDecisions(alerts, 'source-machine');
-
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(logger.debug).toHaveBeenCalledWith(
-        { server: 'server1', serverSourceId: 'source-machine', sourceMachineId: 'source-machine' },
-        'Skipping replication target: same as source'
-      );
-    });
-
-    it('should skip source server using source_machine_id (loop prevention)', async () => {
+    it('should skip source server using source_machine_ids (loop prevention)', async () => {
       // This tests the fix for the loop bug: when a server has replicate_decisions: true
       // and sends alerts, it should not receive its own decisions back.
-      // The source_machine_id field identifies alerts FROM this server,
+      // The source_machine_ids array identifies alerts FROM this server's connected machines,
       // while machine_id is used to POST to this server (different credentials).
       const config = createMockConfig([
         {
@@ -213,21 +189,103 @@ describe('ReplicationService', () => {
           machine_id: 'crowdsieve-push-creds', // credentials for POSTING to this server
           password: 'password1',
           replicate_decisions: true,
-          source_machine_id: 'lapi-sender-id', // machine_id used when this server SENDS alerts
+          source_machine_ids: ['lapi-sender-id', 'another-machine'], // machine_ids that send alerts from this LAPI
         },
       ]);
 
       service = createReplicationService(config, logger);
       const alerts = [createMockAlert(true, 'lapi-sender-id')];
 
-      // Alert comes from lapi-sender-id, which matches source_machine_id
+      // Alert comes from lapi-sender-id, which is in source_machine_ids
       await service.replicateDecisions(alerts, 'lapi-sender-id');
 
       expect(mockFetch).not.toHaveBeenCalled();
       expect(logger.debug).toHaveBeenCalledWith(
-        { server: 'server1', serverSourceId: 'lapi-sender-id', sourceMachineId: 'lapi-sender-id' },
-        'Skipping replication target: same as source'
+        { server: 'server1', sourceMachineId: 'lapi-sender-id', source_machine_ids: ['lapi-sender-id', 'another-machine'] },
+        'Skipping replication target: source machine is in source_machine_ids'
       );
+    });
+
+    it('should skip source server when any machine from source_machine_ids matches', async () => {
+      // Test with multiple machines connected to the same LAPI
+      const config = createMockConfig([
+        {
+          name: 'server1',
+          url: 'https://lapi1.example.com',
+          api_key: 'key1',
+          machine_id: 'crowdsieve',
+          password: 'password1',
+          replicate_decisions: true,
+          source_machine_ids: ['bbb2', 'machine-x', 'machine-y'], // All machines on this LAPI
+        },
+      ]);
+
+      service = createReplicationService(config, logger);
+
+      // Test with different source machines - all should be skipped
+      for (const sourceMachine of ['bbb2', 'machine-x', 'machine-y']) {
+        vi.clearAllMocks();
+        const alerts = [createMockAlert(true, sourceMachine)];
+        await service.replicateDecisions(alerts, sourceMachine);
+        expect(mockFetch).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should replicate to server when source machine is NOT in source_machine_ids', async () => {
+      // Test cross-replication between two LAPIs
+      const config = createMockConfig([
+        {
+          name: 'lapi1',
+          url: 'https://lapi1.example.com',
+          api_key: 'key1',
+          machine_id: 'crowdsieve-lapi1',
+          password: 'password1',
+          replicate_decisions: true,
+          source_machine_ids: ['machine-a', 'machine-b'], // Machines on lapi1
+        },
+        {
+          name: 'lapi2',
+          url: 'https://lapi2.example.com',
+          api_key: 'key2',
+          machine_id: 'crowdsieve-lapi2',
+          password: 'password2',
+          replicate_decisions: true,
+          source_machine_ids: ['machine-c'], // Machines on lapi2
+        },
+      ]);
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/v1/watchers/login')) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                token: 'mock-token',
+                expire: new Date(Date.now() + 3600000).toISOString(),
+              }),
+          });
+        }
+        if (url.includes('/v1/alerts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true }),
+          });
+        }
+        return Promise.reject(new Error('Unknown URL'));
+      });
+
+      service = createReplicationService(config, logger);
+
+      // Alert from machine-a (on lapi1) should only replicate to lapi2
+      const alerts = [createMockAlert(true, 'machine-a')];
+      await service.replicateDecisions(alerts, 'machine-a');
+
+      // Should only call lapi2 (login + alerts = 2 calls)
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const calledUrls = mockFetch.mock.calls.map((call) => call[0]);
+      expect(calledUrls).toContain('https://lapi2.example.com/v1/watchers/login');
+      expect(calledUrls).toContain('https://lapi2.example.com/v1/alerts');
+      expect(calledUrls).not.toContain('https://lapi1.example.com/v1/alerts');
     });
 
     it('should replicate to servers with replicate_decisions enabled', async () => {
