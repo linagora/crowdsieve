@@ -25,9 +25,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const baseUrl = getBaseUrl();
 
+    // Reconstruct the callback URL with the correct external host
+    // request.url may have internal hostname when behind reverse proxy
+    const internalUrl = new URL(request.url);
+    const externalUrl = new URL(`${baseUrl}${internalUrl.pathname}${internalUrl.search}`);
+
     // Exchange authorization code for tokens
     // Note: private_key_jwt authentication is configured at discovery time in getOidcClient()
-    const tokens = await client.authorizationCodeGrant(oidcClient, new URL(request.url), {
+    const tokens = await client.authorizationCodeGrant(oidcClient, externalUrl, {
       pkceCodeVerifier: codeVerifier,
       expectedState: state,
       expectedNonce: nonce,
