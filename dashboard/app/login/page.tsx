@@ -3,6 +3,9 @@ import { isOidcEnabled } from '@/lib/oidc/config';
 import { isSessionValid } from '@/lib/oidc/session';
 import { isSafeRedirect } from '@/lib/oidc/validation';
 
+// Force dynamic rendering - OIDC config is only available at runtime
+export const dynamic = 'force-dynamic';
+
 export default async function LoginPage({
   searchParams,
 }: {
