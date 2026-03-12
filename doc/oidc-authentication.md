@@ -38,14 +38,14 @@ sequenceDiagram
 
 ### Environment Variables
 
-| Variable                | Required | Default | Description                                                         |
-| ----------------------- | -------- | ------- | ------------------------------------------------------------------- |
-| `OIDC_ISSUER`           | Yes      | -       | OIDC provider URL (e.g., `https://auth.example.com/realms/myrealm`) |
-| `OIDC_CLIENT_ID`        | Yes      | -       | OAuth2 client ID                                                    |
-| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required unless JWS is enabled)             |
-| `SESSION_SECRET`        | Yes      | -       | Session encryption key (minimum 32 characters)                      |
-| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development                            |
-| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set)                   |
+| Variable                | Required | Default | Description                                             |
+| ----------------------- | -------- | ------- | ------------------------------------------------------- |
+| `OIDC_ISSUER`           | Yes      | -       | OIDC provider URL (e.g., `https://auth.example.com/`)   |
+| `OIDC_CLIENT_ID`        | Yes      | -       | OAuth2 client ID                                        |
+| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required unless JWS is enabled) |
+| `SESSION_SECRET`        | Yes      | -       | Session encryption key (minimum 32 characters)          |
+| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development                |
+| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set)       |
 
 Generate secrets with:
 
@@ -61,7 +61,7 @@ openssl rand -hex 32
 
 ```bash
 # Required
-OIDC_ISSUER=https://auth.example.com/realms/myrealm
+OIDC_ISSUER=https://auth.example.com/
 OIDC_CLIENT_ID=crowdsieve-dashboard
 OIDC_CLIENT_SECRET=your-client-secret
 SESSION_SECRET=your-32-char-minimum-session-secret
@@ -315,7 +315,7 @@ crowdsieve:
   dashboard:
     oidc:
       enabled: true
-      issuer: 'https://auth.example.com/realms/myrealm'
+      issuer: 'https://auth.example.com'
       clientId: 'crowdsieve-dashboard'
       clientSecret: 'your-client-secret'
       session:
@@ -330,7 +330,7 @@ crowdsieve:
   dashboard:
     oidc:
       enabled: true
-      issuer: 'https://auth.example.com/realms/myrealm'
+      issuer: 'https://auth.example.com'
       clientId: 'crowdsieve-dashboard'
       # No clientSecret - using private_key_jwt
       session:
