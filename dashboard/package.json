@@ -19,7 +19,7 @@
     "jose": "^6.1.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.300.0",
-    "next": "^16.1.6",
+    "next": "^16.2.2",
     "openid-client": "^6.8.1",
     "react": "^18.2.0",
     "react-day-picker": "^9.13.0",
