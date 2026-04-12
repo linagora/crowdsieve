@@ -36,7 +36,7 @@
     "@fastify/static": "^9.0.0",
     "@maxmind/geoip2-node": "^5.0.0",
     "better-sqlite3": "^11.0.0",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.6.2",
     "ip-cidr": "^4.0.0",
     "minimatch": "^10.2.1",
