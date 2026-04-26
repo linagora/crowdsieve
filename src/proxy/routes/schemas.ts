@@ -28,6 +28,11 @@ export const ErrorResponse = Type.Object({
   error: Type.String(),
 });
 
+export const ErrorWithMessageResponse = Type.Object({
+  error: Type.String(),
+  message: Type.Optional(Type.String()),
+});
+
 export const SuccessResponse = Type.Object({
   success: Type.Boolean(),
   message: Type.Optional(Type.String()),
@@ -57,7 +62,7 @@ export const ServerName = Type.String({
   pattern: '^[a-zA-Z0-9_-]+$',
 });
 
-/** Date string accepted by the JS Date constructor */
+/** ISO 8601 date-time string (validated by Ajv `date-time` format) */
 export const IsoDate = Type.String({
   format: 'date-time',
   description: 'ISO 8601 date-time string',

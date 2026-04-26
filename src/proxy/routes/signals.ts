@@ -1,7 +1,12 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import type { SignalsRequest, Alert } from '../../models/alert.js';
-import { ErrorResponse, SignalsBody, SignalsResponse } from './schemas.js';
+import {
+  ErrorResponse,
+  ErrorWithMessageResponse,
+  SignalsBody,
+  SignalsResponse,
+} from './schemas.js';
 
 // Maximum number of alerts allowed per batch to prevent DoS
 export const MAX_ALERTS_PER_BATCH = 1000;
@@ -70,6 +75,25 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     reply: FastifyReply,
     apiVersion: 'v2' | 'v3'
   ) => {
+    // attachValidation: true — inspect validation errors before Fastify auto-rejects
+    if (request.validationError) {
+      const msg = request.validationError.message || '';
+      if (/maxItems|must NOT have more than/.test(msg)) {
+        logger.warn(
+          {
+            count: Array.isArray(request.body) ? request.body.length : undefined,
+            max: MAX_ALERTS_PER_BATCH,
+            clientIp: request.ip,
+          },
+          'Rejected oversized alerts batch'
+        );
+        return reply
+          .code(413)
+          .send({ error: `Batch too large: maximum ${MAX_ALERTS_PER_BATCH} alerts per request` });
+      }
+      return reply.code(400).send({ error: msg });
+    }
+
     logger.debug(
       { method: request.method, url: request.url, clientIp: request.ip },
       'Incoming request'
@@ -245,6 +269,7 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
   // Schema metadata is shared between v2 and v3 routes; the body type provider
   // gives us a permissive Array<object> capped at MAX_ALERTS_PER_BATCH items.
   const signalsRouteOpts = {
+    attachValidation: true,
     schema: {
       tags: ['signals'],
       summary: 'Forward CrowdSec signals to CAPI after filtering',
@@ -256,7 +281,8 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       response: {
         200: SignalsResponse,
         400: ErrorResponse,
-        401: ErrorResponse,
+        401: ErrorWithMessageResponse,
+        413: ErrorResponse,
         500: ErrorResponse,
         502: ErrorResponse,
       },

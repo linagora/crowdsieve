@@ -489,19 +489,20 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         if (!parsed.valid) {
           return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
         }
+        const normalizedIp = parsed.value;
 
         const { config } = fastify;
         const servers = config.lapi_servers || [];
 
         if (servers.length === 0) {
-          return reply.send({ ip, results: [], shared: [] });
+          return reply.send({ ip: normalizedIp, results: [], shared: [] });
         }
 
         // Query all LAPI servers in parallel
         const serverResults = await Promise.all(
           servers.map(async (server: LapiServer) => {
             try {
-              const lapiUrl = `${server.url}/v1/decisions?ip=${encodeURIComponent(ip)}`;
+              const lapiUrl = `${server.url}/v1/decisions?ip=${encodeURIComponent(normalizedIp)}`;
               const response = await fetch(lapiUrl, {
                 headers: {
                   'X-Api-Key': server.api_key,
@@ -633,10 +634,10 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         }
 
         logger.info(
-          { ip, serverCount: servers.length, sharedCount: shared.length },
+          { ip: normalizedIp, serverCount: servers.length, sharedCount: shared.length },
           'Queried decisions across LAPI servers'
         );
-        return reply.send({ ip, results: localResults, shared });
+        return reply.send({ ip: normalizedIp, results: localResults, shared });
       } catch (err) {
         logger.error({ err }, 'Failed to search decisions');
         return reply.code(500).send({ error: 'Failed to search decisions' });
@@ -671,20 +672,8 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
     },
     async (request, reply) => {
       try {
-        // CSRF protection: require Origin header for browser requests.
-        // Skip Origin check if request has valid X-API-Key (server-to-server call)
-        const hasApiKey = !!request.headers['x-api-key'];
-        if (!hasApiKey) {
-          const origin = request.headers.origin;
-          const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
-          if (!origin || !allowedOrigins.some((allowed) => origin === allowed.trim())) {
-            logger.warn(
-              { origin, allowedOrigins },
-              'Rejected ban request from unauthorized or missing origin'
-            );
-            return reply.code(403).send({ error: 'Forbidden: Invalid or missing origin' });
-          }
-        }
+        // Authentication for all /api/* routes, including this one, is enforced by the
+        // plugin-wide onRequest API key hook before the handler is reached.
 
         const { server, ip, duration, reason } = request.body;
 
@@ -695,14 +684,13 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         }
         const { scope: targetScope, value: targetValue } = parsed;
 
-        // Schema requires non-empty reason and length <= MAX_REASON_LENGTH;
-        // we still trim here because trimmed-empty (e.g. "   ") should be rejected
-        // and the alert payload uses the trimmed value.
+        // Schema enforces presence and minLength: 1, but a whitespace-only value
+        // (e.g. "   ") passes the schema. Reject it with a specific message.
         const trimmedReason = reason.trim();
         if (trimmedReason.length === 0) {
           return reply
             .code(400)
-            .send({ error: 'Missing required fields: server, ip, duration, reason' });
+            .send({ error: 'Invalid reason: must not be blank or whitespace-only' });
         }
 
         // Find the LAPI server
