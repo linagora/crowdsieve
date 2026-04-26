@@ -1,0 +1,3169 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CrowdSieve API",
+    "description": "CrowdSec CAPI filtering proxy — internal management API + signals passthrough.",
+    "version": "0.3.5"
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
+    },
+    "schemas": {}
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ],
+        "description": "Returns the proxy status and current server timestamp.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "timestamp"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "summary": "List alerts with filters",
+        "tags": [
+          "alerts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "offset",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "filtered",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "forwardedToCapi",
+            "required": false
+          },
+          {
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "scenario",
+            "required": false
+          },
+          {
+            "schema": {
+              "pattern": "^[A-Z]{2}$",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "description": "ISO 3166-1 alpha-2 country code"
+          },
+          {
+            "schema": {
+              "pattern": "^[a-zA-Z0-9_\\-.:]+$",
+              "maxLength": 255,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "machineId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "ip",
+            "required": false
+          },
+          {
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "description": "ISO 8601 date-time string"
+          },
+          {
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "description": "ISO 8601 date-time string"
+          },
+          {
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "newerThan",
+            "required": false,
+            "description": "ISO 8601 date-time string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "uuid",
+                      "machineId",
+                      "scenario",
+                      "scenarioHash",
+                      "scenarioVersion",
+                      "message",
+                      "eventsCount",
+                      "capacity",
+                      "leakspeed",
+                      "startAt",
+                      "stopAt",
+                      "createdAt",
+                      "receivedAt",
+                      "simulated",
+                      "remediation",
+                      "hasDecisions",
+                      "replicated",
+                      "sourceScope",
+                      "sourceValue",
+                      "sourceIp",
+                      "sourceRange",
+                      "sourceAsNumber",
+                      "sourceAsName",
+                      "sourceCn",
+                      "geoCountryCode",
+                      "geoCountryName",
+                      "geoCity",
+                      "geoRegion",
+                      "geoLatitude",
+                      "geoLongitude",
+                      "geoTimezone",
+                      "geoIsp",
+                      "geoOrg",
+                      "filtered",
+                      "filterReasons",
+                      "forwardedToCapi",
+                      "forwardedAt",
+                      "rawJson"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "uuid": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "machineId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "scenario": {
+                        "type": "string"
+                      },
+                      "scenarioHash": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "scenarioVersion": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "message": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "eventsCount": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "capacity": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "leakspeed": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "startAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "stopAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "receivedAt": {
+                        "type": "string"
+                      },
+                      "simulated": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "remediation": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "hasDecisions": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "replicated": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceScope": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceValue": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceIp": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceRange": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceAsNumber": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceAsName": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceCn": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoCountryCode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoCountryName": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoCity": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoRegion": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoLatitude": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoLongitude": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoTimezone": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoIsp": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "geoOrg": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "filtered": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "filterReasons": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "forwardedToCapi": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "forwardedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "rawJson": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{id}": {
+      "get": {
+        "summary": "Get a single alert by ID",
+        "tags": [
+          "alerts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "uuid",
+                    "machineId",
+                    "scenario",
+                    "scenarioHash",
+                    "scenarioVersion",
+                    "message",
+                    "eventsCount",
+                    "capacity",
+                    "leakspeed",
+                    "startAt",
+                    "stopAt",
+                    "createdAt",
+                    "receivedAt",
+                    "simulated",
+                    "remediation",
+                    "hasDecisions",
+                    "replicated",
+                    "sourceScope",
+                    "sourceValue",
+                    "sourceIp",
+                    "sourceRange",
+                    "sourceAsNumber",
+                    "sourceAsName",
+                    "sourceCn",
+                    "geoCountryCode",
+                    "geoCountryName",
+                    "geoCity",
+                    "geoRegion",
+                    "geoLatitude",
+                    "geoLongitude",
+                    "geoTimezone",
+                    "geoIsp",
+                    "geoOrg",
+                    "filtered",
+                    "filterReasons",
+                    "forwardedToCapi",
+                    "forwardedAt",
+                    "rawJson"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "uuid": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "machineId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scenario": {
+                      "type": "string"
+                    },
+                    "scenarioHash": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scenarioVersion": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "eventsCount": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "capacity": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "leakspeed": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stopAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedAt": {
+                      "type": "string"
+                    },
+                    "simulated": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remediation": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasDecisions": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "replicated": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceScope": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceValue": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceIp": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceRange": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceAsNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceAsName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceCn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoCountryCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoCountryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoCity": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoRegion": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoLatitude": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoLongitude": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoTimezone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoIsp": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "geoOrg": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "filtered": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "filterReasons": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "forwardedToCapi": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "forwardedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rawJson": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "summary": "Get aggregate alert statistics",
+        "tags": [
+          "stats"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "filtered",
+                    "forwarded",
+                    "topScenarios",
+                    "topCountries",
+                    "timeBounds"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "filtered": {
+                      "type": "integer"
+                    },
+                    "forwarded": {
+                      "type": "integer"
+                    },
+                    "topScenarios": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "scenario",
+                          "count"
+                        ],
+                        "properties": {
+                          "scenario": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "topCountries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "country",
+                          "count"
+                        ],
+                        "properties": {
+                          "country": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "timeBounds": {
+                      "type": "object",
+                      "required": [
+                        "min",
+                        "max"
+                      ],
+                      "properties": {
+                        "min": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "max": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/distribution": {
+      "get": {
+        "summary": "Get time distribution statistics",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "7d"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "30d"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "all"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "description": "Lookback window: 7 days, 30 days, or all-time"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "byDayOfWeek",
+                    "byHourOfDay",
+                    "byCountry",
+                    "byScenario",
+                    "dailyTrend",
+                    "totalAlerts",
+                    "dateRange"
+                  ],
+                  "properties": {
+                    "byDayOfWeek": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "day",
+                          "dayName",
+                          "count"
+                        ],
+                        "properties": {
+                          "day": {
+                            "type": "integer"
+                          },
+                          "dayName": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byHourOfDay": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "hour",
+                          "count"
+                        ],
+                        "properties": {
+                          "hour": {
+                            "type": "integer"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byCountry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "countryCode",
+                          "countryName",
+                          "count"
+                        ],
+                        "properties": {
+                          "countryCode": {
+                            "type": "string"
+                          },
+                          "countryName": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byScenario": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "scenario",
+                          "count"
+                        ],
+                        "properties": {
+                          "scenario": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "dailyTrend": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "date",
+                          "count"
+                        ],
+                        "properties": {
+                          "date": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "totalAlerts": {
+                      "type": "integer"
+                    },
+                    "dateRange": {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "to"
+                      ],
+                      "properties": {
+                        "from": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "to": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/decisions": {
+      "get": {
+        "summary": "Get decision statistics",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "7d"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "30d"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "all"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "description": "Lookback window: 7 days, 30 days, or all-time"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "totalDecisions",
+                    "byDayOfWeek",
+                    "byHourOfDay",
+                    "byDurationCategory",
+                    "topScenarios",
+                    "byCountry"
+                  ],
+                  "properties": {
+                    "totalDecisions": {
+                      "type": "integer"
+                    },
+                    "byDayOfWeek": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "day",
+                          "dayName",
+                          "count"
+                        ],
+                        "properties": {
+                          "day": {
+                            "type": "integer"
+                          },
+                          "dayName": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byHourOfDay": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "hour",
+                          "count"
+                        ],
+                        "properties": {
+                          "hour": {
+                            "type": "integer"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byDurationCategory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "category",
+                          "count"
+                        ],
+                        "properties": {
+                          "category": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "topScenarios": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "scenario",
+                          "count"
+                        ],
+                        "properties": {
+                          "scenario": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byCountry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "countryCode",
+                          "countryName",
+                          "count"
+                        ],
+                        "properties": {
+                          "countryCode": {
+                            "type": "string"
+                          },
+                          "countryName": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ip-info/{ip}": {
+      "get": {
+        "summary": "Get reverse DNS and WHOIS info for an IP",
+        "tags": [
+          "ip-info"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "maxLength": 64,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "ip",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ip",
+                    "reverseDns",
+                    "whois"
+                  ],
+                  "properties": {
+                    "ip": {
+                      "type": "string"
+                    },
+                    "reverseDns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "whois": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "netName": {
+                              "type": "string"
+                            },
+                            "netRange": {
+                              "type": "string"
+                            },
+                            "cidr": {
+                              "type": "string"
+                            },
+                            "organization": {
+                              "type": "string"
+                            },
+                            "country": {
+                              "type": "string"
+                            },
+                            "descr": {
+                              "type": "string"
+                            },
+                            "abuse": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lapi-servers": {
+      "get": {
+        "summary": "List configured LAPI servers",
+        "tags": [
+          "lapi"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "url",
+                      "canBan"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "canBan": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decisions": {
+      "get": {
+        "summary": "Search decisions for an IP across all configured LAPI servers",
+        "tags": [
+          "decisions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "ip",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ip",
+                    "results",
+                    "shared"
+                  ],
+                  "properties": {
+                    "ip": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "server",
+                          "decisions"
+                        ],
+                        "properties": {
+                          "server": {
+                            "type": "string"
+                          },
+                          "decisions": {
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": true,
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "origin",
+                                "type",
+                                "scope",
+                                "value",
+                                "duration",
+                                "scenario"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "integer"
+                                },
+                                "origin": {
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "type": "string"
+                                },
+                                "scope": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "duration": {
+                                  "type": "string"
+                                },
+                                "scenario": {
+                                  "type": "string"
+                                },
+                                "until": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "shared": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "origin",
+                          "type",
+                          "scope",
+                          "value",
+                          "duration",
+                          "scenario"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "duration": {
+                            "type": "string"
+                          },
+                          "scenario": {
+                            "type": "string"
+                          },
+                          "until": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decisions/ban": {
+      "post": {
+        "summary": "Issue a manual ban decision via a LAPI server",
+        "tags": [
+          "decisions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "server",
+                  "ip",
+                  "duration",
+                  "reason"
+                ],
+                "properties": {
+                  "server": {
+                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "ip": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "duration": {
+                    "pattern": "^\\d+[smh]$",
+                    "description": "Duration like 30s, 5m, 4h, 24h",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "server": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decisions/{id}": {
+      "delete": {
+        "summary": "Delete a decision from a LAPI server",
+        "tags": [
+          "decisions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "server",
+            "required": true
+          },
+          {
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "server": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analyzers": {
+      "get": {
+        "summary": "List analyzers and their current status",
+        "tags": [
+          "analyzers"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "analyzers"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "analyzers": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "enabled",
+                          "intervalMs"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "lastRun": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {}
+                          },
+                          "nextRun": {
+                            "type": "string"
+                          },
+                          "intervalMs": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analyzers/{id}": {
+      "get": {
+        "summary": "Get analyzer details",
+        "tags": [
+          "analyzers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "analyzer"
+                  ],
+                  "properties": {
+                    "analyzer": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "status": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "name",
+                        "enabled",
+                        "intervalMs"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "lastRun": {
+                          "additionalProperties": true,
+                          "type": "object",
+                          "properties": {}
+                        },
+                        "nextRun": {
+                          "type": "string"
+                        },
+                        "intervalMs": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analyzers/{id}/runs": {
+      "get": {
+        "summary": "Get analyzer run history",
+        "tags": [
+          "analyzers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analyzers/{id}/run": {
+      "post": {
+        "summary": "Manually trigger an analyzer run",
+        "tags": [
+          "analyzers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "result"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "result": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "properties": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/signals": {
+      "post": {
+        "summary": "Forward CrowdSec signals to CAPI after filtering",
+        "tags": [
+          "signals"
+        ],
+        "description": "Receives a batch of CrowdSec alerts, runs them through the configured filters, stores them locally, replicates relevant decisions to LAPI servers, and forwards non-filtered, non-loop alerts to the upstream CAPI.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/signals": {
+      "post": {
+        "summary": "Forward CrowdSec signals to CAPI after filtering",
+        "tags": [
+          "signals"
+        ],
+        "description": "Receives a batch of CrowdSec alerts, runs them through the configured filters, stores them locally, replicates relevant decisions to LAPI servers, and forwards non-filtered, non-loop alerts to the upstream CAPI.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKey": []
+    }
+  ]
+}

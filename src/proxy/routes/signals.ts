@@ -1,5 +1,7 @@
-import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import type { SignalsRequest, Alert } from '../../models/alert.js';
+import { ErrorResponse, SignalsBody, SignalsResponse } from './schemas.js';
 
 // Maximum number of alerts allowed per batch to prevent DoS
 export const MAX_ALERTS_PER_BATCH = 1000;
@@ -52,7 +54,7 @@ function filterCrowdsieveAlerts(alerts: Alert[]): { alerts: Alert[]; filteredCou
   };
 }
 
-const signalsRoute: FastifyPluginAsync = async (fastify) => {
+const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
   const {
     config,
     filterEngine,
@@ -96,22 +98,8 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
       logger.info({ reason: result.reason, clientIp: request.ip }, 'Client validated');
     }
 
+    // Body shape (array, max 1000 items) is validated by the schema.
     const alerts = request.body;
-
-    if (!Array.isArray(alerts)) {
-      return reply.code(400).send({ error: 'Invalid request body: expected array' });
-    }
-
-    // Limit batch size to prevent DoS
-    if (alerts.length > MAX_ALERTS_PER_BATCH) {
-      logger.warn(
-        { count: alerts.length, max: MAX_ALERTS_PER_BATCH, clientIp: request.ip },
-        'Rejected oversized alerts batch'
-      );
-      return reply.code(413).send({
-        error: `Batch too large: maximum ${MAX_ALERTS_PER_BATCH} alerts per request`,
-      });
-    }
 
     logger.info({ count: alerts.length, apiVersion }, 'Received signals batch');
     logger.debug({ incomingBody: JSON.stringify(alerts) }, 'Incoming alerts (raw)');
@@ -254,13 +242,34 @@ const signalsRoute: FastifyPluginAsync = async (fastify) => {
     }
   };
 
+  // Schema metadata is shared between v2 and v3 routes; the body type provider
+  // gives us a permissive Array<object> capped at MAX_ALERTS_PER_BATCH items.
+  const signalsRouteOpts = {
+    schema: {
+      tags: ['signals'],
+      summary: 'Forward CrowdSec signals to CAPI after filtering',
+      description:
+        'Receives a batch of CrowdSec alerts, runs them through the configured filters, ' +
+        'stores them locally, replicates relevant decisions to LAPI servers, and forwards ' +
+        'non-filtered, non-loop alerts to the upstream CAPI.',
+      body: SignalsBody,
+      response: {
+        200: SignalsResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        500: ErrorResponse,
+        502: ErrorResponse,
+      },
+    },
+  };
+
   // Register routes for both API versions
-  fastify.post<{ Body: SignalsRequest }>('/v2/signals', (request, reply) =>
-    handleSignals(request, reply, 'v2')
+  fastify.post('/v2/signals', signalsRouteOpts, (request, reply) =>
+    handleSignals(request as FastifyRequest<{ Body: SignalsRequest }>, reply, 'v2')
   );
 
-  fastify.post<{ Body: SignalsRequest }>('/v3/signals', (request, reply) =>
-    handleSignals(request, reply, 'v3')
+  fastify.post('/v3/signals', signalsRouteOpts, (request, reply) =>
+    handleSignals(request as FastifyRequest<{ Body: SignalsRequest }>, reply, 'v3')
   );
 };
 

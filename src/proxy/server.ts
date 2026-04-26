@@ -3,12 +3,14 @@ import compress from '@fastify/compress';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import type { Config } from '../config/index.js';
 import type { FilterEngine } from '../filters/index.js';
 import type { AlertStorage } from '../storage/index.js';
 import type { ClientValidator } from '../validation/index.js';
 import type { ReplicationService } from '../replication/index.js';
 import type { Logger } from 'pino';
+import { HealthResponse } from './routes/schemas.js';
 
 /**
  * Validate CORS origin - must be empty or a valid URL
@@ -50,6 +52,19 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
     bodyLimit: 1048576, // 1MB max request body
     connectionTimeout: 60000, // 60s - close idle connections
     requestTimeout: 30000, // 30s - max time to receive request body
+  }).withTypeProvider<TypeBoxTypeProvider>();
+
+  // Render schema validation errors with the same shape as our other 4xx
+  // responses ({ error: string }) so dashboard error handling stays uniform.
+  app.setSchemaErrorFormatter((errors, dataVar) => {
+    const first = errors[0];
+    const path = first?.instancePath || '';
+    const message = first?.message || 'Invalid request';
+    const err = new Error(`${dataVar}${path} ${message}`.trim()) as Error & {
+      statusCode?: number;
+    };
+    err.statusCode = 400;
+    return err;
   });
 
   // Security headers
@@ -248,9 +263,22 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   });
 
   // Health check endpoint
-  app.get('/health', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
-  });
+  app.get(
+    '/health',
+    {
+      schema: {
+        tags: ['health'],
+        summary: 'Liveness probe',
+        description: 'Returns the proxy status and current server timestamp.',
+        response: {
+          200: HealthResponse,
+        },
+      },
+    },
+    async () => {
+      return { status: 'ok', timestamp: new Date().toISOString() };
+    }
+  );
 
   // Register routes
   await app.register(import('./routes/api.js'));
