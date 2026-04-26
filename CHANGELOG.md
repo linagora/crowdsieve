@@ -5,6 +5,22 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-26
+
+### Added
+
+#### API
+
+- **OpenAPI specification**: All proxy API routes (`/api/*`, `/v2/signals`, `/v3/signals`, `/health`) now declare TypeBox-based JSON Schema validation
+- **OpenAPI documentation site**: Generated `openapi.json` published to https://linagora.github.io/crowdsieve/api/ on every `v*` tag, rendered with Redoc
+- **`npm run openapi:generate`** script that introspects all routes and writes the spec to `openapi.json`
+
+### Changed
+
+- **Request validation**: Manual regex/length/enum/required-field checks in API handlers replaced by declarative `schema` blocks. Validation errors keep the same `{ error: string }` response envelope.
+- **LAPI passthrough status codes**: `POST /api/decisions/ban` and `DELETE /api/decisions/:id` now map unexpected upstream LAPI status codes to `502 Bad Gateway`. Known codes (400, 401, 403, 404, 500) still pass through unchanged.
+- **Dependencies update**: TypeBox and `@fastify/type-provider-typebox` added as runtime dependencies; `@fastify/swagger` added as a dev dependency for spec generation.
+
 ## [0.3.5] - 2026-03-12
 
 ### Fixed
