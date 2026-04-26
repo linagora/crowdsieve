@@ -19,6 +19,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Encrypted tokens (JWE) and back-channel logout support
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
+- **REST API**: Fully documented with OpenAPI ([interactive docs](https://linagora.github.io/crowdsieve/api/) · [openapi.json](https://linagora.github.io/crowdsieve/api/openapi.json))
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
 - **GeoIP Enrichment**: Enrich alerts with geographic information
 - **Lightweight**: Docker image under 250MB
@@ -456,6 +457,8 @@ The dashboard includes an **Analyzers** page showing:
 - `GET /api/analyzers/:id` - Get analyzer details
 - `GET /api/analyzers/:id/runs` - Get run history
 - `POST /api/analyzers/:id/run` - Trigger manual run
+
+See the [full REST API reference](https://linagora.github.io/crowdsieve/api/) for all endpoints, schemas, and examples (also available as a raw [OpenAPI 3.x spec](https://linagora.github.io/crowdsieve/api/openapi.json)).
 
 ## Environment Variables
 
