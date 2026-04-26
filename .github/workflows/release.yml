@@ -235,6 +235,42 @@ jobs:
   # GitHub Release is created manually when needed
   # To create a release: gh release create vX.Y.Z --generate-notes
 
+  # Publish OpenAPI documentation to GitHub Pages
+  # Output: https://linagora.github.io/crowdsieve/api/
+  openapi-docs:
+    name: Publish OpenAPI Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate openapi.json
+        run: npm run openapi:generate
+
+      - name: Render Redoc HTML
+        run: |
+          mkdir -p site
+          cp openapi.json site/openapi.json
+          npx --yes @redocly/cli@latest build-docs site/openapi.json -o site/index.html
+
+      - name: Deploy to GitHub Pages (api/ subdirectory)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          destination_dir: api
+          keep_files: true
+          commit_message: "docs(api): publish OpenAPI for ${{ github.ref_name }}"
+
   # Update Docker Hub README (runs after manifest is complete)
   dockerhub-readme:
     name: Update Docker Hub README
