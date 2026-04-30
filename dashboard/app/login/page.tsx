@@ -2,8 +2,10 @@ import { redirect } from 'next/navigation';
 import { isOidcEnabled } from '@/lib/oidc/config';
 import { isSessionValid } from '@/lib/oidc/session';
 import { isSafeRedirect } from '@/lib/oidc/validation';
+import { getAuthMode } from '@/lib/auth/mode';
+import { getExternalLoginUrl } from '@/lib/auth/logout';
 
-// Force dynamic rendering - OIDC config is only available at runtime
+// Force dynamic rendering - auth config is only available at runtime
 export const dynamic = 'force-dynamic';
 
 export default async function LoginPage({
@@ -11,12 +13,79 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string; redirect?: string }>;
 }) {
-  // If OIDC is not enabled, redirect to home (no auth required)
-  if (!isOidcEnabled()) {
+  const mode = getAuthMode();
+
+  // Headers mode: this page acts as a static "Authentication required" UI.
+  // We do NOT initiate any login flow — the upstream proxy handles auth.
+  if (mode === 'headers') {
+    if (await isSessionValid()) {
+      const params = await searchParams;
+      redirect(isSafeRedirect(params.redirect) ? params.redirect : '/');
+    }
+
+    const externalLogin = getExternalLoginUrl();
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-gray-900">CrowdSieve</h1>
+              <p className="text-gray-600 mt-2">Authentication required</p>
+            </div>
+
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-amber-800 text-sm">
+                This dashboard is configured to authenticate via an upstream proxy. Please ensure
+                you are accessing it through your organization&apos;s portal.
+              </p>
+            </div>
+
+            {externalLogin && (
+              <a
+                href={externalLogin}
+                className="block w-full bg-crowdsec-primary text-white text-center py-3 px-4 rounded-lg hover:bg-crowdsec-primary/90 transition-colors font-medium"
+              >
+                Go to login portal
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 'none' mode: nothing to gate, send the user home.
+  if (mode === 'none') {
     redirect('/');
   }
 
-  // If already authenticated, redirect to home or requested page
+  // OIDC mode but missing config: render a clear error instead of
+  // redirecting to '/' — otherwise middleware would loop us back to /login.
+  if (!isOidcEnabled()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-gray-900">CrowdSieve</h1>
+              <p className="text-gray-600 mt-2">Authentication misconfigured</p>
+            </div>
+
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">
+                <code>AUTH_MODE=oidc</code> is set but <code>OIDC_ISSUER</code> and/or{' '}
+                <code>OIDC_CLIENT_ID</code> are missing. Please contact your administrator or check
+                the server configuration.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // OIDC mode: existing behavior.
   if (await isSessionValid()) {
     const params = await searchParams;
     redirect(isSafeRedirect(params.redirect) ? params.redirect : '/');

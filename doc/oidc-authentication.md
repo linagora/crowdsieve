@@ -1,4 +1,16 @@
-# OIDC Authentication
+# Authentication
+
+CrowdSieve supports two authentication modes for the dashboard:
+
+| Mode      | When to use                                                                                                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oidc`    | Standard OpenID Connect deployment. The dashboard handles the login flow itself via the iron-session cookie. Documented in this page.                                             |
+| `headers` | A trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) authenticates the user upstream and forwards their identity via `Auth-*` headers. |
+| `none`    | No authentication enforced. Default when neither OIDC nor headers mode is configured.                                                                                             |
+
+The mode is selected via `AUTH_MODE` (`oidc` | `headers` | `none`). When unset, the dashboard auto-detects: `oidc` if `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, otherwise `none`. Jump to [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler) for the proxy-based setup.
+
+## OIDC Mode
 
 CrowdSieve supports OpenID Connect (OIDC) authentication for the dashboard. When configured, users must authenticate via an OIDC provider to access the dashboard.
 
@@ -38,22 +50,30 @@ sequenceDiagram
 
 ### Environment Variables
 
-| Variable                | Required | Default | Description                                              |
-| ----------------------- | -------- | ------- | -------------------------------------------------------- |
-| `OIDC_ISSUER`           | Yes      | -       | OIDC provider URL (e.g., `https://auth.example.com/`)    |
-| `OIDC_CLIENT_ID`        | Yes      | -       | OAuth2 client ID                                         |
-| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required unless JWS is enabled)  |
-| `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor: `sub`, `email`, or `name` |
-| `SESSION_SECRET`        | Yes      | -       | Session encryption key (minimum 32 characters)           |
-| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development                 |
-| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set)        |
+| Variable                | Required | Default | Description                                                                                                                                                            |
+| ----------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`             | No       | auto    | `oidc`, `headers`, or `none`. Auto-detects to `oidc` when `OIDC_ISSUER` + `OIDC_CLIENT_ID` are set, otherwise `none`.                                                  |
+| `OIDC_ISSUER`           | Yes\*    | -       | OIDC provider URL (e.g., `https://auth.example.com/`). \*Required for OIDC mode.                                                                                       |
+| `OIDC_CLIENT_ID`        | Yes\*    | -       | OAuth2 client ID. \*Required for OIDC mode.                                                                                                                            |
+| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required for OIDC unless JWS is enabled).                                                                                                      |
+| `AUTH_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor. Any non-empty string (e.g. `sub`, `email`, `name`, `preferredUsername`, `familyName`). Wins over `OIDC_ACTOR_CLAIM` when both are set.   |
+| `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Legacy alias for `AUTH_ACTOR_CLAIM`. Kept for back-compat.                                                                                                             |
+| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode.                                                                                              |
+| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development.                                                                                                                              |
+| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set).                                                                                                                     |
+| `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges. Empty = no IP check.                                                           |
+| `AUTH_LOGOUT_URL`       | No       | -       | (Headers mode only) External logout URL the dashboard redirects to when a user clicks "Sign out". When unset, the link is hidden.                                      |
+| `AUTH_LOGIN_URL`        | No       | -       | (Headers mode only) External login URL surfaced as a "Go to login portal" button on the headers-mode 401 page.                                                         |
 
-The `OIDC_ACTOR_CLAIM` variable controls which OIDC claim identifies the user
-that issued or revoked a decision (recorded on every manual ban and unban
-event, and on the matching local audit rows persisted in the alerts table).
-Defaults to `sub` (always present, stable, opaque). Set to `email` or `name`
-for a more human-readable audit trail. If the configured claim is missing on
-the user (provider didn't return it), the code falls back to `sub`.
+The `AUTH_ACTOR_CLAIM` (or legacy `OIDC_ACTOR_CLAIM`) variable controls which
+claim identifies the user that issued or revoked a decision (recorded on every
+manual ban and unban event, and on the matching local audit rows persisted in
+the alerts table). Defaults to `sub` (always present, stable, opaque). Set to
+`email`, `name`, `preferredUsername`, etc. for a more human-readable audit
+trail. If the configured claim is missing on the user, the code falls back to
+`sub`. Any non-empty string is accepted, which makes this work seamlessly with
+claims forwarded by [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler)
+such as `familyName` or `preferredUsername`.
 
 Generate secrets with:
 
@@ -393,3 +413,119 @@ Look for:
 - `JWE decryption enabled for OIDC responses` - JWE is active
 - `Decrypted encrypted logout token` - JWE logout token processed
 - `Back-channel logout: revoked session` - Logout notification received
+
+## HTTP Headers Mode (LemonLDAP-NG handler)
+
+Some deployments sit behind a "handler" reverse proxy (LemonLDAP-NG, NGINX `auth_request`, Apache `mod_auth_*`, Traefik ForwardAuth, etc.) that performs authentication upstream and forwards the user's identity to the protected app via HTTP headers. CrowdSieve supports this model via `AUTH_MODE=headers`.
+
+> **Critical security requirement:** the dashboard MUST be unreachable except via the trusted upstream proxy. Headers mode trusts every `Auth-*` header it receives — if a client can reach the dashboard directly, they can spoof any identity. Use network isolation (Kubernetes NetworkPolicy, firewall rules, listening on `127.0.0.1`, etc.) and optionally `TRUSTED_PROXY_IPS` for defense in depth.
+
+### Quick start
+
+```bash
+AUTH_MODE=headers
+# Optional: only accept requests from these source IPs / IPv4 CIDR ranges.
+# When unset, no IP check is performed (rely on network isolation).
+TRUSTED_PROXY_IPS=10.0.0.5,10.42.0.0/16
+# Optional: where to send the user when they click "Sign out".
+# When unset, the Sign-out link is hidden.
+AUTH_LOGOUT_URL=https://portal.example.com/logout
+# Optional: shown on the dashboard's 401 page as a "Go to login portal" button.
+AUTH_LOGIN_URL=https://portal.example.com/
+# Optional: which claim to use as the audit-log actor (defaults to "sub").
+AUTH_ACTOR_CLAIM=preferredUsername
+```
+
+### Header convention
+
+Identity is forwarded as `Auth-<Field>` headers. The dashboard maps each `Auth-Foo-Bar-Baz` header to a `fooBarBaz` claim on the SessionUser:
+
+| Header                    | Claim               | Notes                                    |
+| ------------------------- | ------------------- | ---------------------------------------- |
+| `Auth-Sub`                | `sub`               | **Required.** Stable, opaque user id.    |
+| `Auth-Email`              | `email`             | Optional.                                |
+| `Auth-Name`               | `name`              | Optional, full display name.             |
+| `Auth-Family-Name`        | `familyName`        | Optional.                                |
+| `Auth-Given-Name`         | `givenName`         | Optional.                                |
+| `Auth-Picture`            | `picture`           | Optional. Only `http://` / `https://` accepted. |
+| `Auth-Preferred-Username` | `preferredUsername` | Optional, useful as `AUTH_ACTOR_CLAIM`.  |
+| `Auth-<Anything>`         | `<camelCase>`       | Any custom field. `Auth-Foo-Bar-Baz` → `fooBarBaz`. |
+
+Mapping rule: strip the `auth-` prefix (case-insensitive), then convert the remaining kebab-case suffix to camelCase. Header values are trimmed, stripped of CR/LF, and capped at 1024 characters as a defensive measure.
+
+### Behavior
+
+- A request **without** a non-empty `Auth-Sub` header is rejected with HTTP **401**.
+- When `TRUSTED_PROXY_IPS` is set, a request from any other source IP is rejected with HTTP **403** before headers are even inspected.
+- The login page (`/login`) renders a static "Authentication required" UI. The dashboard does **not** initiate a login flow — that is the upstream proxy's responsibility.
+- The "Sign out" link in the user menu is hidden unless `AUTH_LOGOUT_URL` is configured. When it is, clicking the link redirects the user to that URL (typically the proxy's logout endpoint).
+- Sessions are **stateless**: there is no iron-session cookie, no server-side session store. Every request re-validates against the headers it carries.
+- The audit-log actor (`X-Crowdsieve-Actor` forwarded to the backend on bans/unbans) follows the configured `AUTH_ACTOR_CLAIM`. With headers mode you can use any claim you forward, e.g. `preferredUsername` or `email`.
+
+### Example: LemonLDAP-NG handler
+
+In the LemonLDAP-NG manager, configure a "Virtual Host" pointing at the dashboard with a handler-style protection rule:
+
+```
+# Headers (Manager > Virtual Hosts > <crowdsieve.example.com> > Headers)
+Auth-Sub                = $uid
+Auth-Email              = $mail
+Auth-Name               = $cn
+Auth-Family-Name        = $sn
+Auth-Given-Name         = $givenName
+Auth-Preferred-Username = $uid
+```
+
+Then point your reverse proxy (NGINX, Apache, etc.) at the LemonLDAP-NG handler and forward to the CrowdSieve dashboard. See the [LemonLDAP-NG documentation](https://lemonldap-ng.org/documentation/latest/) for the canonical setup.
+
+### Example: NGINX `auth_request`
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name crowdsieve.example.com;
+
+  # Forward auth to the upstream identity verifier.
+  location = /_auth {
+    internal;
+    proxy_pass https://auth.example.com/check;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-URI $request_uri;
+  }
+
+  location / {
+    auth_request /_auth;
+    # Capture identity headers from the auth response.
+    auth_request_set $auth_sub   $upstream_http_auth_sub;
+    auth_request_set $auth_email $upstream_http_auth_email;
+    auth_request_set $auth_name  $upstream_http_auth_name;
+
+    # Forward them to the dashboard.
+    proxy_set_header Auth-Sub   $auth_sub;
+    proxy_set_header Auth-Email $auth_email;
+    proxy_set_header Auth-Name  $auth_name;
+
+    proxy_pass http://crowdsieve-dashboard:3000;
+  }
+}
+```
+
+### Trusted-proxy IP gating
+
+`TRUSTED_PROXY_IPS` is a comma-separated allowlist applied to the immediate caller of the dashboard:
+
+| Entry format            | Match semantics                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `10.0.0.5`              | Exact IPv4.                                                                              |
+| `10.0.0.0/16`           | IPv4 CIDR.                                                                               |
+| `2001:db8::1`           | Exact IPv6 (IPv6 CIDRs are matched as exact strings only in v1).                          |
+| `::ffff:10.0.0.1`       | IPv4-mapped IPv6, normalized to the IPv4 form for comparison against IPv4/IPv4-CIDR entries. |
+
+The client IP is resolved in this order:
+
+1. The Next.js `NextRequest.ip` field, if present.
+2. The first non-empty entry of the `X-Forwarded-For` header.
+3. The `X-Real-IP` header.
+
+When `TRUSTED_PROXY_IPS` is unset, no IP check is performed — operators are expected to ensure the dashboard is unreachable except via the proxy.

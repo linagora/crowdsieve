@@ -13,10 +13,9 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Push decisions to all your CrowdSec LAPI servers
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
-- **OIDC Authentication**: Secure dashboard access with OpenID Connect ([documentation](./doc/oidc-authentication.md))
-  - Support for any OIDC provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.)
-  - Private Key JWT authentication (`private_key_jwt`) for enhanced security
-  - Encrypted tokens (JWE) and back-channel logout support
+- **Dashboard Authentication**: Two modes, both documented in [doc/oidc-authentication.md](./doc/oidc-authentication.md)
+  - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
+  - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
 - **REST API**: Fully documented with OpenAPI ([interactive docs](https://linagora.github.io/crowdsieve/api/) · [openapi.json](https://linagora.github.io/crowdsieve/api/openapi.json))
@@ -257,11 +256,11 @@ This is useful for:
 - Keeping sensitive data out of config files
 - CI/CD pipelines
 
-### OIDC Authentication
+### Dashboard Authentication
 
-Secure dashboard access with OpenID Connect. See the [OIDC Authentication documentation](./doc/oidc-authentication.md) for detailed setup instructions.
+The dashboard supports two authentication modes (selected via `AUTH_MODE` or auto-detected). See the [Authentication documentation](./doc/oidc-authentication.md) for detailed setup instructions.
 
-Quick start:
+**OIDC mode** — the dashboard runs the OpenID Connect login flow itself:
 
 ```bash
 OIDC_ISSUER=https://auth.example.com/realms/myrealm
@@ -269,6 +268,18 @@ OIDC_CLIENT_ID=crowdsieve-dashboard
 OIDC_CLIENT_SECRET=your-client-secret
 SESSION_SECRET=$(openssl rand -hex 32)
 ```
+
+**HTTP Headers mode** — a trusted upstream proxy authenticates the user and forwards their identity via `Auth-*` headers (e.g. LemonLDAP-NG handler):
+
+```bash
+AUTH_MODE=headers
+# Optional defense-in-depth: only accept requests from these IPs / IPv4 CIDR ranges.
+TRUSTED_PROXY_IPS=10.0.0.5,10.42.0.0/16
+# Optional: where to send the user when they click "Sign out".
+AUTH_LOGOUT_URL=https://portal.example.com/logout
+```
+
+> **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy. See [doc/oidc-authentication.md](./doc/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
 
 ### Decision Search
 

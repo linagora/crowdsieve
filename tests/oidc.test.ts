@@ -10,6 +10,7 @@ vi.mock('next/headers', () => ({
     set: vi.fn(),
     delete: vi.fn(),
   })),
+  headers: vi.fn(() => new Headers()),
 }));
 
 describe('OIDC Config', () => {
@@ -121,39 +122,79 @@ describe('OIDC Config', () => {
   });
 
   describe('getActorClaim', () => {
-    it('should default to "sub" when OIDC_ACTOR_CLAIM is not set', async () => {
+    it('should default to "sub" when no actor claim env is set', async () => {
       delete process.env.OIDC_ACTOR_CLAIM;
+      delete process.env.AUTH_ACTOR_CLAIM;
 
       const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
       expect(getActorClaim()).toBe('sub');
     });
 
-    it.each(['sub', 'email', 'name'])('should accept "%s" as a valid claim', async (claim) => {
-      process.env.OIDC_ACTOR_CLAIM = claim;
+    it.each(['sub', 'email', 'name'])(
+      'should accept "%s" as a valid claim via OIDC_ACTOR_CLAIM',
+      async (claim) => {
+        delete process.env.AUTH_ACTOR_CLAIM;
+        process.env.OIDC_ACTOR_CLAIM = claim;
 
-      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
-      expect(getActorClaim()).toBe(claim);
-    });
+        const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+        expect(getActorClaim()).toBe(claim);
+      }
+    );
 
-    it('should be case-insensitive and trim whitespace', async () => {
-      process.env.OIDC_ACTOR_CLAIM = '  EMAIL  ';
-
-      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
-      expect(getActorClaim()).toBe('email');
-    });
-
-    it('should fall back to "sub" for unknown claim values', async () => {
+    it('should accept arbitrary claim names (e.g. preferred_username)', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = 'preferred_username';
 
       const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
-      expect(getActorClaim()).toBe('sub');
+      expect(getActorClaim()).toBe('preferred_username');
+    });
+
+    it('should accept camelCase claim names like familyName', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
+      process.env.OIDC_ACTOR_CLAIM = 'familyName';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('familyName');
+    });
+
+    it('should preserve case (no longer lowercased)', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
+      process.env.OIDC_ACTOR_CLAIM = '  Email  ';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('Email');
     });
 
     it('should fall back to "sub" for empty string', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = '';
 
       const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
       expect(getActorClaim()).toBe('sub');
+    });
+
+    it('should fall back to "sub" for whitespace-only string', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
+      process.env.OIDC_ACTOR_CLAIM = '   ';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('sub');
+    });
+
+    it('should let AUTH_ACTOR_CLAIM win over OIDC_ACTOR_CLAIM', async () => {
+      process.env.AUTH_ACTOR_CLAIM = 'familyName';
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('familyName');
+    });
+
+    it('should fall back to OIDC_ACTOR_CLAIM when AUTH_ACTOR_CLAIM is empty', async () => {
+      process.env.AUTH_ACTOR_CLAIM = '';
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('email');
     });
   });
 
@@ -166,14 +207,16 @@ describe('OIDC Config', () => {
       expect(resolveActor(undefined)).toBe('');
     });
 
-    it('should default to sub when OIDC_ACTOR_CLAIM is not set', async () => {
+    it('should default to sub when no actor claim env is set', async () => {
       delete process.env.OIDC_ACTOR_CLAIM;
+      delete process.env.AUTH_ACTOR_CLAIM;
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
       expect(resolveActor(user)).toBe('user-123');
     });
 
     it('should use email when OIDC_ACTOR_CLAIM=email', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = 'email';
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
@@ -181,13 +224,29 @@ describe('OIDC Config', () => {
     });
 
     it('should use name when OIDC_ACTOR_CLAIM=name', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = 'name';
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
       expect(resolveActor(user)).toBe('Alice');
     });
 
+    it('should support arbitrary claim names (familyName)', async () => {
+      process.env.AUTH_ACTOR_CLAIM = 'familyName';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: 's', familyName: 'Doe' })).toBe('Doe');
+    });
+
+    it('should support arbitrary claim names (preferredUsername)', async () => {
+      process.env.AUTH_ACTOR_CLAIM = 'preferredUsername';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: 's', preferredUsername: 'alice' })).toBe('alice');
+    });
+
     it('should fall back to sub when configured claim is missing on user', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = 'email';
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
@@ -195,6 +254,7 @@ describe('OIDC Config', () => {
     });
 
     it('should fall back to sub when configured claim is empty/whitespace', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = 'email';
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
@@ -202,6 +262,7 @@ describe('OIDC Config', () => {
     });
 
     it('should trim leading/trailing whitespace from the resolved claim', async () => {
+      delete process.env.AUTH_ACTOR_CLAIM;
       process.env.OIDC_ACTOR_CLAIM = 'email';
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
@@ -212,6 +273,7 @@ describe('OIDC Config', () => {
 
     it('should trim sub when used as fallback', async () => {
       delete process.env.OIDC_ACTOR_CLAIM;
+      delete process.env.AUTH_ACTOR_CLAIM;
 
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
       expect(resolveActor({ sub: '  user-trim  ' })).toBe('user-trim');

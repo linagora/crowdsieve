@@ -1,15 +1,31 @@
 import { NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcClient } from '@/lib/oidc/client';
-import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
+import { getBaseUrl } from '@/lib/oidc/config';
 import { getSession, clearSession } from '@/lib/oidc/session';
+import { getAuthMode } from '@/lib/auth/mode';
+import { getExternalLogoutUrl } from '@/lib/auth/logout';
 
 export async function GET(): Promise<NextResponse> {
-  // Return 404 if OIDC is not enabled
-  if (!isOidcEnabled()) {
-    return new NextResponse('Not Found', { status: 404 });
+  const mode = getAuthMode();
+
+  if (mode === 'none') {
+    // No auth, nothing to do — just bounce home.
+    return NextResponse.redirect(new URL('/', getBaseUrl()));
   }
 
+  if (mode === 'headers') {
+    // Headers mode is stateless — we don't own the session, the upstream
+    // proxy does. Send the user to the configured external logout URL if
+    // any, otherwise back to the dashboard home.
+    const external = getExternalLogoutUrl();
+    if (external) {
+      return NextResponse.redirect(external);
+    }
+    return NextResponse.redirect(new URL('/', getBaseUrl()));
+  }
+
+  // OIDC mode — existing logic.
   try {
     const baseUrl = getBaseUrl();
     const session = await getSession();

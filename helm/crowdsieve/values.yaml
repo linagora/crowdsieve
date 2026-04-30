@@ -97,6 +97,38 @@ crowdsieve:
     corsOrigin: ""
 
     # ---------------------------------------------------------------------------
+    # Authentication mode (Optional)
+    # ---------------------------------------------------------------------------
+    # CrowdSieve supports two authentication modes:
+    #   - "oidc"    : OpenID Connect via iron-session cookies (see oidc: below)
+    #   - "headers" : Trusted upstream proxy forwards identity via Auth-* headers
+    #                 (e.g. LemonLDAP-NG handler). The dashboard MUST be
+    #                 unreachable except via that proxy.
+    #   - "none"    : No authentication enforced.
+    # When unset, mode is auto-detected from OIDC env vars (oidc if configured,
+    # none otherwise).
+    auth:
+      # -- Authentication mode override: "oidc", "headers", or "none". Leave
+      # empty to auto-detect.
+      mode: ""
+      # -- Optional: claim used as the audit-log actor. Any non-empty string is
+      # accepted (e.g. "sub", "email", "preferredUsername", "familyName").
+      # Defaults to "sub". Takes precedence over OIDC_ACTOR_CLAIM.
+      actorClaim: ""
+      headers:
+        # -- Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges.
+        # Empty = no IP check (defense in depth disabled, relies on network
+        # isolation only).
+        # Example: "10.0.0.5, 10.42.0.0/16"
+        trustedProxyIps: ""
+        # -- External logout URL the dashboard redirects to when a user clicks
+        # "Sign out" in headers mode. When unset, the Sign-out link is hidden.
+        logoutUrl: ""
+        # -- Optional: external login URL surfaced as a "Go to login portal"
+        # button on the headers-mode 401 page.
+        loginUrl: ""
+
+    # ---------------------------------------------------------------------------
     # OIDC Configuration (Optional)
     # ---------------------------------------------------------------------------
     # When configured, users must authenticate via OIDC to access the dashboard.
