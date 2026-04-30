@@ -17,6 +17,25 @@ function escapeLikePattern(pattern: string): string {
     .replace(/[%_]/g, '\\$&'); // Then escape LIKE wildcards
 }
 
+/**
+ * Maximum stored length of an actor identifier (matches MAX_ACTOR_LENGTH in
+ * src/proxy/routes/api.ts). Kept here too so storage callers don't need to
+ * cross the route boundary just to sanitize.
+ */
+const MAX_ACTOR_LENGTH = 256;
+
+/**
+ * Trim and truncate an actor value, returning null when the result is empty.
+ * Centralizes the "store NULL instead of whitespace/empty" semantics used by
+ * both `recordUnbanEvent` and the `events[].meta` extraction path.
+ */
+function sanitizeActor(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  return trimmed.slice(0, MAX_ACTOR_LENGTH);
+}
+
 export interface AlertQuery {
   filtered?: boolean;
   forwardedToCapi?: boolean;
@@ -190,9 +209,12 @@ export function createStorage(): AlertStorage {
           for (const ev of alert.events) {
             if (ev.meta && Array.isArray(ev.meta)) {
               const found = ev.meta.find((m) => m && m.key === 'actor');
-              if (found?.value) {
-                actorFromMeta = String(found.value).slice(0, 256);
-                break;
+              if (found?.value !== undefined && found.value !== null) {
+                const sanitized = sanitizeActor(String(found.value));
+                if (sanitized) {
+                  actorFromMeta = sanitized;
+                  break;
+                }
               }
             }
           }
@@ -350,9 +372,10 @@ export function createStorage(): AlertStorage {
     async recordUnbanEvent(input): Promise<number> {
       const { db, schema, isPostgres } = getDatabaseContext();
       const { ip, scope, comment, server, decisionId, geoipLookup } = input;
-      // Normalize actor: empty/whitespace-only -> null so the column stays NULL
-      // instead of holding a meaningless empty string.
-      const actor = input.actor && input.actor.trim().length > 0 ? input.actor : null;
+      // Normalize actor: trim, truncate to MAX_ACTOR_LENGTH, and treat empty
+      // / whitespace-only strings as NULL so audit logs never carry padding or
+      // oversized values from upstream callers.
+      const actor = sanitizeActor(input.actor);
 
       // GeoIP enrichment when IP is valid (mirror storeAlerts behavior)
       const ipToLookup = extractIpFromValue(ip);

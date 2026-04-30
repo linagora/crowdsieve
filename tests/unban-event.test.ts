@@ -217,6 +217,35 @@ describe('Unban event recording', () => {
     }
   });
 
+  it('trims and truncates the supplied actor to MAX_ACTOR_LENGTH', async () => {
+    const id = await storage.recordUnbanEvent({
+      ip: '203.0.113.20',
+      scope: 'ip',
+      comment: 'Trimmed actor',
+      server: 'lapi',
+      decisionId: 50,
+      actor: '  alice@example.com  ',
+    });
+    const row = sqlite
+      .prepare('SELECT actor FROM alerts WHERE id = ?')
+      .get(id) as { actor: string | null };
+    expect(row.actor).toBe('alice@example.com');
+
+    const longActor = 'a'.repeat(500);
+    const id2 = await storage.recordUnbanEvent({
+      ip: '203.0.113.21',
+      scope: 'ip',
+      comment: 'Long actor',
+      server: 'lapi',
+      decisionId: 51,
+      actor: longActor,
+    });
+    const row2 = sqlite
+      .prepare('SELECT actor FROM alerts WHERE id = ?')
+      .get(id2) as { actor: string | null };
+    expect(row2.actor).toHaveLength(MAX_ACTOR_LENGTH);
+  });
+
   it('uses range scope when scope=range and leaves source_ip null', async () => {
     const id = await storage.recordUnbanEvent({
       ip: '203.0.113.0/24',
@@ -384,6 +413,10 @@ describe('extractActorHeader', () => {
 
   it('returns the trimmed first entry for array-valued headers', () => {
     expect(extractActorHeader(['  alice@example.com  ', 'bob'])).toBe('alice@example.com');
+  });
+
+  it('skips empty/whitespace entries and returns the first usable one', () => {
+    expect(extractActorHeader(['', '  ', '  carol@example.com', 'dave'])).toBe('carol@example.com');
   });
 
   it('truncates to MAX_ACTOR_LENGTH', () => {

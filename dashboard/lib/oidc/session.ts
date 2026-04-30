@@ -103,6 +103,9 @@ export function resolveActor(user: SessionUser | null | undefined): string {
   if (!user) return '';
   const claim = getActorClaim();
   const value = user[claim];
-  if (value && value.trim().length > 0) return value;
-  return user.sub;
+  if (value) {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return user.sub.trim();
 }

@@ -52,11 +52,13 @@ export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
  */
 export function extractActorHeader(header: string | string[] | undefined): string | null {
   if (!header) return null;
-  const raw = Array.isArray(header) ? header[0] : header;
-  if (!raw || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return null;
-  return trimmed.slice(0, MAX_ACTOR_LENGTH);
+  const candidates = Array.isArray(header) ? header : [header];
+  for (const raw of candidates) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) return trimmed.slice(0, MAX_ACTOR_LENGTH);
+  }
+  return null;
 }
 
 /**

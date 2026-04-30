@@ -94,7 +94,6 @@ const POSTGRES_MIGRATIONS = `
   CREATE INDEX IF NOT EXISTS idx_country_code ON alerts(geo_country_code);
   CREATE INDEX IF NOT EXISTS idx_filtered ON alerts(filtered);
   CREATE INDEX IF NOT EXISTS idx_machine_id ON alerts(machine_id);
-  CREATE INDEX IF NOT EXISTS idx_unban ON alerts(unban);
 
   -- Decisions table
   CREATE TABLE IF NOT EXISTS decisions (
@@ -242,6 +241,10 @@ export async function initializePostgres(
         END IF;
       END $$;
     `);
+
+    // Index on `unban` is created here (after the ADD COLUMN above) so existing
+    // databases that pre-date the column don't error out on first startup.
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_unban ON alerts(unban);`);
 
     // Migration: Add unique partial index on uuid (only for non-null values)
     // This prevents duplicate alerts and improves lookup performance

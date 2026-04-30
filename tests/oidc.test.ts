@@ -200,6 +200,22 @@ describe('OIDC Config', () => {
       const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
       expect(resolveActor({ sub: 'user-789', email: '   ' })).toBe('user-789');
     });
+
+    it('should trim leading/trailing whitespace from the resolved claim', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: 'user-x', email: '  alice@example.com  ' })).toBe(
+        'alice@example.com'
+      );
+    });
+
+    it('should trim sub when used as fallback', async () => {
+      delete process.env.OIDC_ACTOR_CLAIM;
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: '  user-trim  ' })).toBe('user-trim');
+    });
   });
 
   describe('getBaseUrl', () => {
