@@ -8,8 +8,9 @@
  *     `event: manual_unban` and the actor, scope, target and reason
  *
  * Captures pino output by writing to a destination stream and parsing each
- * NDJSON line. Mirrors the harness style of decisions-ban-route.test.ts but
- * uses a per-test Fastify app so we can swap in the capturing logger.
+ * NDJSON line. Uses a dedicated Fastify app (created once in beforeAll, like
+ * the sibling route tests) decorated with a capturing logger; the `captured`
+ * array is reset at the start of each test.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -120,10 +121,14 @@ beforeAll(async () => {
   // Capturing destination stream: parses each pino NDJSON line into the
   // `captured` array. Level filter is set to `notice` — we expect at least
   // one notice-level entry per audit-worthy action.
+  // pino destinations may receive `string | Buffer`; coerce defensively so
+  // the capture works across pino/node stream implementations.
   const stream = {
-    write(chunk: string) {
+    write(chunk: string | Buffer) {
+      const text = (typeof chunk === 'string' ? chunk : chunk.toString('utf8')).trim();
+      if (text.length === 0) return;
       try {
-        captured.push(JSON.parse(chunk));
+        captured.push(JSON.parse(text));
       } catch {
         // Ignore malformed lines — pino occasionally writes non-JSON during
         // teardown.

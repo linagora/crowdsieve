@@ -838,8 +838,20 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         }
 
         const result = await response.json();
-        // Audit-friendly notice: a human just banned an IP/range. Carries the
-        // full who/what/why payload so it stands out from agent-driven traffic.
+
+        // Best effort: extract the LAPI-returned decision id (if any). LAPI
+        // returns an array of decision ids on /v1/alerts. Used in both the
+        // notice log and the persisted audit row.
+        let lapiDecisionId: number | undefined;
+        if (Array.isArray(result) && result.length > 0) {
+          const idCandidate = Number(result[0]);
+          if (Number.isFinite(idCandidate)) lapiDecisionId = idCandidate;
+        }
+
+        // Audit-friendly notice: a human just banned an IP/range. Stable field
+        // set (event/actor/server/target/scope/duration/reason/decisionId) —
+        // never the raw upstream response, so log consumers don't get
+        // coupled to LAPI's wire format.
         logger.notice(
           {
             event: 'manual_ban',
@@ -849,7 +861,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             scope: targetScope,
             duration,
             reason: trimmedReason,
-            result,
+            decisionId: lapiDecisionId,
           },
           'Manual ban issued'
         );
@@ -861,14 +873,6 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // never forwarded to CAPI ("pas grave pour le doublon").
         // Failures must not bubble: the LAPI ban already succeeded.
         try {
-          // Best effort: extract the LAPI-returned decision id (if any). LAPI
-          // returns an array of decision ids on /v1/alerts. We don't fail the
-          // audit if this isn't present.
-          let lapiDecisionId: number | undefined;
-          if (Array.isArray(result) && result.length > 0) {
-            const idCandidate = Number(result[0]);
-            if (Number.isFinite(idCandidate)) lapiDecisionId = idCandidate;
-          }
           await storage.recordManualBanAuditEvent({
             ip: targetValue,
             scope: targetScope,
