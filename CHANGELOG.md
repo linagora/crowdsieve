@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Manual ban audit events**: `POST /api/decisions/ban` now records an immediate local audit row (`scenario=crowdsieve/manual-audit`, `localAudit=true`) right after the LAPI ban succeeds, capturing the dashboard user (from OIDC), the comment, the duration and the LAPI-returned decision id. The row appears in the timeline (orange "Manual ban" badge) without waiting for the LAPI -> signals roundtrip and is excluded from alert/decision statistics.
+- **Audit-friendly logging for human-actor actions**: a new `notice` log level (syslog-equivalent, value 35) is emitted for manual bans (`event: manual_ban`) and unbans (`event: manual_unban`). Each entry carries the actor (when present), target IP/CIDR, scope, server, duration (bans) and the reason, so audit trails can be filtered out of regular operational noise. Other ban/unban-related logs are also enriched with the actor when available.
 
 ### Changed
 

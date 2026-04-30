@@ -9,7 +9,7 @@ import type { FilterEngine } from '../filters/index.js';
 import type { AlertStorage } from '../storage/index.js';
 import type { ClientValidator } from '../validation/index.js';
 import type { ReplicationService } from '../replication/index.js';
-import type { Logger } from 'pino';
+import type { AppLogger } from '../logging.js';
 import { HealthResponse } from './routes/schemas.js';
 
 /**
@@ -34,7 +34,7 @@ export interface ProxyServerDeps {
   config: Config;
   filterEngine: FilterEngine;
   storage: AlertStorage;
-  logger: Logger;
+  logger: AppLogger;
   clientValidator?: ClientValidator;
   replicationService?: ReplicationService;
 }
@@ -293,7 +293,7 @@ declare module 'fastify' {
     config: Config;
     filterEngine: FilterEngine;
     storage: AlertStorage;
-    proxyLogger: Logger;
+    proxyLogger: AppLogger;
     clientValidator?: ClientValidator;
     replicationService?: ReplicationService;
   }

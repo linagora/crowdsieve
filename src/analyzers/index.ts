@@ -1,4 +1,4 @@
-import type { Logger } from 'pino';
+import type { BaseLogger } from 'pino';
 import type { Config, LapiServer } from '../config/index.js';
 import {
   loadAnalyzersFromDirectory,
@@ -45,13 +45,13 @@ export class AnalyzerEngine {
   private globalConfig: AnalyzersGlobalConfig;
   private lapiServers: LapiServer[];
   private timeoutMs: number;
-  private logger: Logger;
+  private logger: BaseLogger;
   private storage?: AnalyzerStorage;
   private schedulers: Map<string, NodeJS.Timeout> = new Map();
   private lastRuns: Map<string, AnalyzerRunResult> = new Map();
   private nextRuns: Map<string, Date> = new Map();
 
-  constructor(config: Config, logger: Logger, storage?: AnalyzerStorage) {
+  constructor(config: Config, logger: BaseLogger, storage?: AnalyzerStorage) {
     this.globalConfig = config.analyzers as AnalyzersGlobalConfig;
     this.sources = this.globalConfig.sources || {};
     this.lapiServers = config.lapi_servers || [];
@@ -343,7 +343,7 @@ let analyzerEngine: AnalyzerEngine | null = null;
  */
 export function initializeAnalyzerEngine(
   config: Config,
-  logger: Logger,
+  logger: BaseLogger,
   storage?: AnalyzerStorage
 ): AnalyzerEngine {
   if (analyzerEngine) {

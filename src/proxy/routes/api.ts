@@ -798,7 +798,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // Post to LAPI /v1/alerts
         const lapiUrl = `${lapiServer.url}/v1/alerts`;
         logger.info(
-          { server: lapiServer.name, target: targetValue, scope: targetScope, duration },
+          { server: lapiServer.name, target: targetValue, scope: targetScope, duration, actor },
           'Posting manual ban alert to LAPI'
         );
 
@@ -816,7 +816,14 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         if (!response.ok) {
           const errorBody = await response.text();
           logger.error(
-            { status: response.status, error: errorBody, server: lapiServer.name },
+            {
+              status: response.status,
+              error: errorBody,
+              server: lapiServer.name,
+              target: targetValue,
+              scope: targetScope,
+              actor,
+            },
             'LAPI rejected alert'
           );
           // Don't expose raw LAPI error details to client - could contain sensitive info.
@@ -836,9 +843,32 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         }
 
         const result = await response.json();
-        logger.info(
-          { server: lapiServer.name, target: targetValue, scope: targetScope, result },
-          'Manual ban alert posted successfully'
+
+        // Best effort: extract the LAPI-returned decision id (if any). LAPI
+        // returns an array of decision ids on /v1/alerts. Used in both the
+        // notice log and the persisted audit row.
+        let lapiDecisionId: number | undefined;
+        if (Array.isArray(result) && result.length > 0) {
+          const idCandidate = Number(result[0]);
+          if (Number.isFinite(idCandidate)) lapiDecisionId = idCandidate;
+        }
+
+        // Audit-friendly notice: a human just banned an IP/range. Stable field
+        // set (event/actor/server/target/scope/duration/reason/decisionId) —
+        // never the raw upstream response, so log consumers don't get
+        // coupled to LAPI's wire format.
+        logger.notice(
+          {
+            event: 'manual_ban',
+            actor,
+            server: lapiServer.name,
+            target: targetValue,
+            scope: targetScope,
+            duration,
+            reason: trimmedReason,
+            decisionId: lapiDecisionId,
+          },
+          'Manual ban issued'
         );
 
         // Record an immediate local audit row so the timeline reflects who
@@ -848,14 +878,6 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // never forwarded to CAPI ("pas grave pour le doublon").
         // Failures must not bubble: the LAPI ban already succeeded.
         try {
-          // Best effort: extract the LAPI-returned decision id (if any). LAPI
-          // returns an array of decision ids on /v1/alerts. We don't fail the
-          // audit if this isn't present.
-          let lapiDecisionId: number | undefined;
-          if (Array.isArray(result) && result.length > 0) {
-            const idCandidate = Number(result[0]);
-            if (Number.isFinite(idCandidate)) lapiDecisionId = idCandidate;
-          }
           await storage.recordManualBanAuditEvent({
             ip: targetValue,
             scope: targetScope,
@@ -966,7 +988,14 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // Delete the decision via LAPI
         const deleteUrl = `${lapiServer.url}/v1/decisions/${decisionId}`;
         logger.info(
-          { server: lapiServer.name, decisionId, url: deleteUrl },
+          {
+            server: lapiServer.name,
+            decisionId,
+            url: deleteUrl,
+            target: parsed.value,
+            scope: parsed.scope,
+            actor,
+          },
           'Deleting decision from LAPI'
         );
 
@@ -981,7 +1010,13 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         if (!response.ok) {
           const errorBody = await response.text();
           logger.error(
-            { status: response.status, error: errorBody, server: lapiServer.name },
+            {
+              status: response.status,
+              error: errorBody,
+              server: lapiServer.name,
+              decisionId,
+              actor,
+            },
             'LAPI rejected delete request'
           );
           if (response.status === 404) {
@@ -1001,7 +1036,20 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           });
         }
 
-        logger.info({ server: lapiServer.name, decisionId }, 'Decision deleted successfully');
+        // Audit-friendly notice: a human just removed a decision. Carries the
+        // who/what/why payload so it stands out from agent-driven traffic.
+        logger.notice(
+          {
+            event: 'manual_unban',
+            actor,
+            server: lapiServer.name,
+            decisionId,
+            target: parsed.value,
+            scope: parsed.scope,
+            reason: trimmedReason,
+          },
+          'Decision unbanned'
+        );
 
         // Record a local unban event for audit & timeline visibility.
         // Failures here must not bubble: the LAPI delete already succeeded.

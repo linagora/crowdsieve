@@ -6,7 +6,7 @@ import { setAdapter, getAdapter, type DatabaseAdapter, type DatabaseType } from 
 // PostgreSQL module is loaded dynamically to avoid requiring 'pg' when using SQLite
 import type { PostgresDb } from './postgres.js';
 import type { Config } from '../config/index.js';
-import type { Logger } from 'pino';
+import type { BaseLogger } from 'pino';
 import fs from 'fs';
 import path from 'path';
 
@@ -257,7 +257,7 @@ function runSQLiteMigrations(sqlite: Database.Database) {
  * @param config - Full application configuration
  * @param logger - Logger instance
  */
-export async function initializeDatabase(config: Config, logger: Logger): Promise<void> {
+export async function initializeDatabase(config: Config, logger: BaseLogger): Promise<void> {
   const storageType = config.storage.type;
   currentType = storageType;
 
