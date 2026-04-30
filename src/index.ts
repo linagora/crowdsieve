@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
-import pino from 'pino';
 import { dirname, join } from 'path';
+import { createLogger } from './logging.js';
 import { loadConfig, loadConfigFromEnv, loadFiltersFromDirectory, Config } from './config/index.js';
 import { initializeDatabase, closeDatabase } from './db/index.js';
 import { FilterEngine } from './filters/index.js';
@@ -47,9 +47,10 @@ async function main() {
     analyzers: fileConfig.analyzers, // Analyzers only from file
   };
 
-  // Initialize logger
+  // Initialize logger (with custom `notice` level wired in for audit-friendly
+  // logging of human-actor actions like manual ban / unban).
   const usePrettyLogs = config.logging.format === 'pretty' && process.env.NODE_ENV !== 'production';
-  const logger = pino({
+  const logger = createLogger({
     level: config.logging.level,
     formatters: {
       level: (label) => ({ level: label }),

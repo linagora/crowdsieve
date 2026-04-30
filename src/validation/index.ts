@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import type { Logger } from 'pino';
+import type { BaseLogger } from 'pino';
 import { LRUCache } from './memory-cache.js';
 import { ValidationCache } from './cache.js';
 import type { ValidationConfig, ValidationResult, CacheEntry } from './types.js';
@@ -19,9 +19,9 @@ export class ClientValidator {
   private dbCache: ValidationCache;
   private config: ValidationConfig;
   private capiUrl: string;
-  private logger: Logger;
+  private logger: BaseLogger;
 
-  constructor(config: ValidationConfig, capiUrl: string, logger: Logger) {
+  constructor(config: ValidationConfig, capiUrl: string, logger: BaseLogger) {
     this.config = config;
     this.capiUrl = capiUrl;
     this.logger = logger;

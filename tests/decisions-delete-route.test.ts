@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import pino from 'pino';
+import { createLogger } from '../src/logging.js';
 import type { AlertStorage } from '../src/storage/index.js';
 import type { Config } from '../src/config/index.js';
 import type { ReplicationService } from '../src/replication/index.js';
@@ -158,7 +158,7 @@ beforeAll(async () => {
   });
   app.decorate('config', buildConfig());
   app.decorate('storage', buildMockStorage());
-  app.decorate('proxyLogger', pino({ level: 'silent' }));
+  app.decorate('proxyLogger', createLogger({ level: 'silent' }));
   app.decorate('clientValidator', undefined);
   app.decorate('replicationService', undefined as ReplicationService | undefined);
 

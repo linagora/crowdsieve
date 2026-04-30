@@ -11,7 +11,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { PostgresConfig } from '../config/index.js';
 import * as schema from './schema.postgres.js';
-import type { Logger } from 'pino';
+import type { BaseLogger } from 'pino';
 
 // Re-export PostgreSQL schema
 export { schema };
@@ -149,7 +149,7 @@ const POSTGRES_MIGRATIONS = `
  */
 export async function initializePostgres(
   config: PostgresConfig,
-  logger: Logger
+  logger: BaseLogger
 ): Promise<PostgresDb> {
   // Validate required configuration fields
   const missingFields: string[] = [];
