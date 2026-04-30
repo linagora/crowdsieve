@@ -139,6 +139,15 @@ async function main() {
     });
   };
 
+  // Inject GeoIP lookup into recordUnbanEvent (mirror storeAlerts pattern)
+  const originalRecordUnbanEvent = storage.recordUnbanEvent.bind(storage);
+  storage.recordUnbanEvent = async (input) => {
+    return originalRecordUnbanEvent({
+      ...input,
+      geoipLookup: input.geoipLookup ?? (geoipAvailable ? lookupIP : undefined),
+    });
+  };
+
   // Initialize client validator (if enabled)
   let clientValidator: ClientValidator | undefined;
   if (config.client_validation.enabled) {

@@ -120,6 +120,104 @@ describe('OIDC Config', () => {
     });
   });
 
+  describe('getActorClaim', () => {
+    it('should default to "sub" when OIDC_ACTOR_CLAIM is not set', async () => {
+      delete process.env.OIDC_ACTOR_CLAIM;
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('sub');
+    });
+
+    it.each(['sub', 'email', 'name'])('should accept "%s" as a valid claim', async (claim) => {
+      process.env.OIDC_ACTOR_CLAIM = claim;
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe(claim);
+    });
+
+    it('should be case-insensitive and trim whitespace', async () => {
+      process.env.OIDC_ACTOR_CLAIM = '  EMAIL  ';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('email');
+    });
+
+    it('should fall back to "sub" for unknown claim values', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'preferred_username';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('sub');
+    });
+
+    it('should fall back to "sub" for empty string', async () => {
+      process.env.OIDC_ACTOR_CLAIM = '';
+
+      const { getActorClaim } = await import('../dashboard/lib/oidc/config.js');
+      expect(getActorClaim()).toBe('sub');
+    });
+  });
+
+  describe('resolveActor', () => {
+    const user = { sub: 'user-123', email: 'alice@example.com', name: 'Alice' };
+
+    it('should return empty string for null/undefined user', async () => {
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor(null)).toBe('');
+      expect(resolveActor(undefined)).toBe('');
+    });
+
+    it('should default to sub when OIDC_ACTOR_CLAIM is not set', async () => {
+      delete process.env.OIDC_ACTOR_CLAIM;
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor(user)).toBe('user-123');
+    });
+
+    it('should use email when OIDC_ACTOR_CLAIM=email', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor(user)).toBe('alice@example.com');
+    });
+
+    it('should use name when OIDC_ACTOR_CLAIM=name', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'name';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor(user)).toBe('Alice');
+    });
+
+    it('should fall back to sub when configured claim is missing on user', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: 'user-456' })).toBe('user-456');
+    });
+
+    it('should fall back to sub when configured claim is empty/whitespace', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: 'user-789', email: '   ' })).toBe('user-789');
+    });
+
+    it('should trim leading/trailing whitespace from the resolved claim', async () => {
+      process.env.OIDC_ACTOR_CLAIM = 'email';
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: 'user-x', email: '  alice@example.com  ' })).toBe(
+        'alice@example.com'
+      );
+    });
+
+    it('should trim sub when used as fallback', async () => {
+      delete process.env.OIDC_ACTOR_CLAIM;
+
+      const { resolveActor } = await import('../dashboard/lib/oidc/session.js');
+      expect(resolveActor({ sub: '  user-trim  ' })).toBe('user-trim');
+    });
+  });
+
   describe('getBaseUrl', () => {
     it('should return NEXTAUTH_URL when set', async () => {
       process.env.NEXTAUTH_URL = 'https://dashboard.example.com';

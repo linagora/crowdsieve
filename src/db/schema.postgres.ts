@@ -63,6 +63,10 @@ export const alerts = pgTable(
     filterReasons: text('filter_reasons'), // JSON array
     forwardedToCapi: boolean('forwarded_to_capi').default(false),
     forwardedAt: text('forwarded_at'),
+    unban: boolean('unban').default(false),
+    // Identifier of the human user who triggered this alert/event (e.g. unban),
+    // sourced from the dashboard OIDC session and forwarded as X-Crowdsieve-Actor.
+    actor: text('actor'),
 
     // Raw data
     rawJson: text('raw_json'),
@@ -74,6 +78,7 @@ export const alerts = pgTable(
     countryCodeIdx: index('idx_country_code').on(table.geoCountryCode),
     filteredIdx: index('idx_filtered').on(table.filtered),
     machineIdIdx: index('idx_machine_id').on(table.machineId),
+    unbanIdx: index('idx_unban').on(table.unban),
   })
 );
 

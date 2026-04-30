@@ -84,7 +84,13 @@ export const Period = Type.Optional(
  * `id`, `scenario`, and `receivedAt` may be null because the source CrowdSec
  * payload sometimes omits them or GeoIP enrichment fails.
  */
-export const AlertResponse = Type.Object({
+// Note: explicit `TSchema` annotation prevents TypeScript's type-instantiation
+// depth limit from being hit when this object is referenced in route schemas
+// such as `Type.Array(AlertResponse)`. Without it, adding fields here can
+// cause TS2589 ("Type instantiation is excessively deep and possibly infinite")
+// at unrelated route handlers. This widening only affects the inferred TS type
+// — the runtime TypeBox schema and OpenAPI generation are unaffected.
+export const AlertResponse: TSchema = Type.Object({
   id: Type.Integer(),
 
   // CrowdSec core fields
@@ -135,6 +141,8 @@ export const AlertResponse = Type.Object({
   filterReasons: Nullable(Type.String()),
   forwardedToCapi: Nullable(Type.Boolean()),
   forwardedAt: Nullable(Type.String()),
+  unban: Nullable(Type.Boolean()),
+  actor: Nullable(Type.String()),
 
   // Raw data
   rawJson: Nullable(Type.String()),

@@ -10,7 +10,7 @@ import { fetchWithAuth } from '@/lib/fetchWithAuth';
 interface DecisionCardProps {
   decision: Decision;
   server?: string;
-  onDelete?: (decisionId: number, server: string) => Promise<void>;
+  onDelete?: (decisionId: number, server: string, ip: string, reason: string) => Promise<void>;
   canDelete?: boolean;
 }
 
@@ -18,24 +18,31 @@ function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardPro
   const isExpired = decision.until && new Date(decision.until) < new Date();
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reason, setReason] = useState('');
 
-  const handleDelete = async () => {
-    if (!onDelete || !server || !decision.id) return;
+  const trimmedReason = reason.trim();
+  const canSubmit = trimmedReason.length > 0 && !deleting;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete this decision?\n\nType: ${decision.type}\nScenario: ${decision.scenario}\nValue: ${decision.value}`
-    );
-    if (!confirmed) return;
-
+  const handleConfirm = async () => {
+    if (!onDelete || !server || !decision.id || !canSubmit) return;
     setDeleting(true);
     setDeleteError(null);
     try {
-      await onDelete(decision.id, server);
+      await onDelete(decision.id, server, decision.value, trimmedReason);
+      setConfirmOpen(false);
+      setReason('');
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleCancel = () => {
+    setConfirmOpen(false);
+    setReason('');
+    setDeleteError(null);
   };
 
   return (
@@ -55,9 +62,9 @@ function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardPro
           >
             {decision.origin}
           </span>
-          {canDelete && decision.id && (
+          {canDelete && decision.id && !confirmOpen && (
             <button
-              onClick={handleDelete}
+              onClick={() => setConfirmOpen(true)}
               disabled={deleting}
               className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
               title="Delete decision"
@@ -87,6 +94,38 @@ function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardPro
           )}
         </div>
       </div>
+      {confirmOpen && (
+        <div className="mt-3 p-3 bg-white border border-slate-300 rounded space-y-2">
+          <p className="text-sm font-medium text-slate-700">Confirm deletion of this decision</p>
+          <p className="text-xs text-slate-500">
+            A reason is required and will be recorded as a local unban event.
+          </p>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason for unban (required)..."
+            maxLength={500}
+            rows={2}
+            disabled={deleting}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-crowdsec-primary"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleConfirm} disabled={!canSubmit}>
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                'Confirm delete'
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
       {deleteError && <p className="mt-2 text-sm text-red-600">{deleteError}</p>}
     </div>
   );
@@ -133,11 +172,13 @@ function DecisionSearchContent() {
   );
 
   const handleDeleteDecision = useCallback(
-    async (decisionId: number, server: string) => {
+    async (decisionId: number, server: string, ip: string, reason: string) => {
       const res = await fetchWithAuth(
         `/api/decisions/${decisionId}?server=${encodeURIComponent(server)}`,
         {
           method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip, reason }),
         }
       );
       const data = await res.json();

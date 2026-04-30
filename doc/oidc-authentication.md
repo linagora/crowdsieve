@@ -43,9 +43,16 @@ sequenceDiagram
 | `OIDC_ISSUER`           | Yes      | -       | OIDC provider URL (e.g., `https://auth.example.com/`)   |
 | `OIDC_CLIENT_ID`        | Yes      | -       | OAuth2 client ID                                        |
 | `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required unless JWS is enabled) |
+| `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor: `sub`, `email`, or `name` |
 | `SESSION_SECRET`        | Yes      | -       | Session encryption key (minimum 32 characters)          |
 | `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development                |
 | `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set)       |
+
+The `OIDC_ACTOR_CLAIM` variable controls which OIDC claim identifies the user
+that issued or revoked a decision (recorded on every manual ban and unban
+event). Defaults to `sub` (always present, stable, opaque). Set to `email` or
+`name` for a more human-readable audit trail. If the configured claim is
+missing on the user (provider didn't return it), the code falls back to `sub`.
 
 Generate secrets with:
 

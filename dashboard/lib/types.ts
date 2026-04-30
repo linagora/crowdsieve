@@ -51,6 +51,8 @@ export interface StoredAlert {
   filterReasons?: string;
   forwardedToCapi: boolean;
   replicated: boolean;
+  unban?: boolean;
+  actor?: string;
 }
 
 export interface AlertStats {

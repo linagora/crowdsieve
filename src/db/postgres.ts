@@ -83,6 +83,8 @@ const POSTGRES_MIGRATIONS = `
     filter_reasons TEXT,
     forwarded_to_capi BOOLEAN DEFAULT FALSE,
     forwarded_at TEXT,
+    unban BOOLEAN DEFAULT FALSE,
+    actor TEXT,
     raw_json TEXT
   );
 
@@ -211,6 +213,38 @@ export async function initializePostgres(
         END IF;
       END $$;
     `);
+
+    // Migration: Add unban column to alerts if it doesn't exist
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'alerts' AND column_name = 'unban'
+        ) THEN
+          ALTER TABLE alerts ADD COLUMN unban BOOLEAN DEFAULT FALSE;
+        END IF;
+      END $$;
+    `);
+
+    // Migration: Add actor column to alerts if it doesn't exist.
+    // Stores the human user identifier (email/name/sub) for audit trails on
+    // manual bans and unban events. Idempotent: safe to run on every startup.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'alerts' AND column_name = 'actor'
+        ) THEN
+          ALTER TABLE alerts ADD COLUMN actor TEXT;
+        END IF;
+      END $$;
+    `);
+
+    // Index on `unban` is created here (after the ADD COLUMN above) so existing
+    // databases that pre-date the column don't error out on first startup.
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_unban ON alerts(unban);`);
 
     // Migration: Add unique partial index on uuid (only for non-null values)
     // This prevents duplicate alerts and improves lookup performance
