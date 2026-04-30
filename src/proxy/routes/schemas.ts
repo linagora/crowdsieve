@@ -141,7 +141,7 @@ export const AlertResponse: TSchema = Type.Object({
   filterReasons: Nullable(Type.String()),
   forwardedToCapi: Nullable(Type.Boolean()),
   forwardedAt: Nullable(Type.String()),
-  unban: Nullable(Type.Boolean()),
+  localAudit: Nullable(Type.Boolean()),
   actor: Nullable(Type.String()),
 
   // Raw data

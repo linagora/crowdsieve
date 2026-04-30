@@ -63,7 +63,13 @@ export const alerts = pgTable(
     filterReasons: text('filter_reasons'), // JSON array
     forwardedToCapi: boolean('forwarded_to_capi').default(false),
     forwardedAt: text('forwarded_at'),
-    unban: boolean('unban').default(false),
+    // Locally-recorded audit event flag. Set on rows inserted by CrowdSieve to
+    // record a human action (currently: unban after a decision delete, manual
+    // ban audit) that should appear in the timeline but never be forwarded to
+    // CAPI and never counted in alert/decision statistics. The specific audit
+    // kind is distinguished by `scenario` (`crowdsieve/unban`,
+    // `crowdsieve/manual-audit`).
+    localAudit: boolean('local_audit').default(false),
     // Identifier of the human user who triggered this alert/event (e.g. unban),
     // sourced from the dashboard OIDC session and forwarded as X-Crowdsieve-Actor.
     actor: text('actor'),
@@ -78,7 +84,7 @@ export const alerts = pgTable(
     countryCodeIdx: index('idx_country_code').on(table.geoCountryCode),
     filteredIdx: index('idx_filtered').on(table.filtered),
     machineIdIdx: index('idx_machine_id').on(table.machineId),
-    unbanIdx: index('idx_unban').on(table.unban),
+    localAuditIdx: index('idx_local_audit').on(table.localAudit),
   })
 );
 

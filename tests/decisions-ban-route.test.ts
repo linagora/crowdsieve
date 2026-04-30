@@ -1,16 +1,18 @@
 /**
- * Backend route tests for DELETE /api/decisions/:id
+ * Backend route tests for POST /api/decisions/ban
  *
  * Verifies:
- *   - Schema rejects requests without a `reason` body field
- *   - Whitespace-only reasons are rejected with 400
- *   - Invalid IPs are rejected with 400
- *   - On a successful upstream LAPI delete, the route calls
- *     storage.recordUnbanEvent with the actor parsed from X-Crowdsieve-Actor
+ *   - On a successful upstream LAPI ban, the route calls
+ *     storage.recordManualBanAuditEvent with the actor parsed from
+ *     X-Crowdsieve-Actor and the LAPI-returned decision id (when present)
  *   - Missing actor header is fine: the call still happens with actor=null
+ *   - Failed LAPI bans do not record an audit event
+ *   - Whitespace-only reasons are rejected with 400 (no audit row)
+ *   - Invalid IPs are rejected with 400 (no audit row)
  *
  * The hook in api.ts requires X-API-Key matching DASHBOARD_API_KEY; we set
- * that env var before registering the plugin.
+ * that env var before registering the plugin. Mirrors the structure of
+ * decisions-delete-route.test.ts.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -20,10 +22,8 @@ import type { AlertStorage } from '../src/storage/index.js';
 import type { Config } from '../src/config/index.js';
 import type { ReplicationService } from '../src/replication/index.js';
 
-const TEST_API_KEY = 'test-api-key-decisions-delete';
+const TEST_API_KEY = 'test-api-key-decisions-ban';
 
-// Minimal mock LAPI server config — exercise the "machine creds present"
-// happy path so the route reaches the LAPI fetch we mock below.
 function buildConfig(): Config {
   return {
     proxy: {
@@ -69,23 +69,24 @@ function buildConfig(): Config {
   } as Config;
 }
 
-interface RecordUnbanCall {
+interface RecordManualBanAuditCall {
   ip: string;
   scope: 'ip' | 'range';
   comment: string;
   server: string;
-  decisionId: number;
+  duration: string;
+  decisionId?: number;
   actor?: string | null;
 }
 
-let recordUnbanCalls: RecordUnbanCall[];
+let recordManualBanAuditCalls: RecordManualBanAuditCall[];
 let app: FastifyInstance;
 let originalFetch: typeof fetch;
 let mockFetch: ReturnType<typeof vi.fn>;
 const machineTokenJsonResponse = { code: 200, expire: '2099-01-01T00:00:00Z', token: 'mock-token' };
 
 function buildMockStorage(): AlertStorage {
-  // Only `recordUnbanEvent` is actually exercised by the DELETE handler. The
+  // Only `recordManualBanAuditEvent` is exercised by the POST handler. The
   // other methods are stubbed to satisfy the AlertStorage interface; they're
   // not invoked by this test path.
   const notImplemented = () => {
@@ -95,19 +96,19 @@ function buildMockStorage(): AlertStorage {
     storeAlerts: notImplemented as unknown as AlertStorage['storeAlerts'],
     markAlertsForwarded: notImplemented as unknown as AlertStorage['markAlertsForwarded'],
     markAlertsReplicated: notImplemented as unknown as AlertStorage['markAlertsReplicated'],
-    recordUnbanEvent: async (input) => {
-      recordUnbanCalls.push({
+    recordUnbanEvent: notImplemented as unknown as AlertStorage['recordUnbanEvent'],
+    recordManualBanAuditEvent: async (input) => {
+      recordManualBanAuditCalls.push({
         ip: input.ip,
         scope: input.scope,
         comment: input.comment,
         server: input.server,
+        duration: input.duration,
         decisionId: input.decisionId,
         actor: input.actor ?? null,
       });
       return 1;
     },
-    recordManualBanAuditEvent:
-      notImplemented as unknown as AlertStorage['recordManualBanAuditEvent'],
     queryAlerts: notImplemented as unknown as AlertStorage['queryAlerts'],
     getAlertById: notImplemented as unknown as AlertStorage['getAlertById'],
     hasAlertsNewerThan: notImplemented as unknown as AlertStorage['hasAlertsNewerThan'],
@@ -123,8 +124,7 @@ beforeAll(async () => {
   process.env.DASHBOARD_API_KEY = TEST_API_KEY;
 
   // Mock global fetch to intercept both /v1/watchers/login (machine token) and
-  // /v1/decisions/:id (the actual delete). Matched by URL substring so we
-  // don't care about query/headers on this side.
+  // /v1/alerts (the actual ban). Matched by URL substring.
   originalFetch = global.fetch;
   mockFetch = vi.fn(async (url: string | URL) => {
     const u = typeof url === 'string' ? url : url.toString();
@@ -134,9 +134,9 @@ beforeAll(async () => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (u.includes('/v1/decisions/')) {
-      // Default success — overridden per-test where needed via mockFetch.mockImplementationOnce.
-      return new Response('null', {
+    if (u.includes('/v1/alerts')) {
+      // LAPI returns an array of decision ids on /v1/alerts.
+      return new Response(JSON.stringify([12345]), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -173,101 +173,131 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  recordUnbanCalls = [];
+  recordManualBanAuditCalls = [];
 });
 
-describe('DELETE /api/decisions/:id — schema and validation', () => {
-  it('rejects request without a body (no reason)', async () => {
+describe('POST /api/decisions/ban — schema and validation', () => {
+  it('rejects request without a body', async () => {
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/123?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: { 'X-API-Key': TEST_API_KEY, 'Content-Type': 'application/json' },
       payload: {},
     });
     expect(res.statusCode).toBe(400);
-    expect(recordUnbanCalls).toHaveLength(0);
+    expect(recordManualBanAuditCalls).toHaveLength(0);
   });
 
   it('rejects request with whitespace-only reason', async () => {
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/123?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: { 'X-API-Key': TEST_API_KEY, 'Content-Type': 'application/json' },
-      payload: { reason: '   ', ip: '203.0.113.10' },
+      payload: {
+        server: 'test-lapi',
+        ip: '203.0.113.10',
+        duration: '4h',
+        reason: '   ',
+      },
     });
     expect(res.statusCode).toBe(400);
     const body = res.json() as { error: string };
     expect(body.error).toMatch(/blank|whitespace/i);
-    expect(recordUnbanCalls).toHaveLength(0);
+    expect(recordManualBanAuditCalls).toHaveLength(0);
   });
 
   it('rejects request with an invalid IP', async () => {
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/123?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: { 'X-API-Key': TEST_API_KEY, 'Content-Type': 'application/json' },
-      payload: { reason: 'False positive', ip: 'not-an-ip' },
+      payload: {
+        server: 'test-lapi',
+        ip: 'not-an-ip',
+        duration: '4h',
+        reason: 'Spam',
+      },
     });
     expect(res.statusCode).toBe(400);
     const body = res.json() as { error: string };
     expect(body.error).toMatch(/IP address|CIDR/i);
-    expect(recordUnbanCalls).toHaveLength(0);
+    expect(recordManualBanAuditCalls).toHaveLength(0);
   });
 
   it('rejects unauthenticated requests with 401', async () => {
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/123?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: { 'Content-Type': 'application/json' },
-      payload: { reason: 'False positive', ip: '203.0.113.11' },
+      payload: {
+        server: 'test-lapi',
+        ip: '203.0.113.10',
+        duration: '4h',
+        reason: 'Spam',
+      },
     });
     expect(res.statusCode).toBe(401);
+    expect(recordManualBanAuditCalls).toHaveLength(0);
   });
 });
 
-describe('DELETE /api/decisions/:id — actor propagation', () => {
-  it('records an unban event with actor parsed from X-Crowdsieve-Actor', async () => {
+describe('POST /api/decisions/ban — actor propagation', () => {
+  it('records a manual ban audit event with actor parsed from X-Crowdsieve-Actor and decisionId from LAPI', async () => {
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/4242?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: {
         'X-API-Key': TEST_API_KEY,
         'X-Crowdsieve-Actor': 'alice@example.com',
         'Content-Type': 'application/json',
       },
-      payload: { reason: 'False positive — internal scanner', ip: '203.0.113.12' },
+      payload: {
+        server: 'test-lapi',
+        ip: '203.0.113.42',
+        duration: '4h',
+        reason: 'Spam from this IP',
+      },
     });
 
     expect(res.statusCode).toBe(200);
-    expect(recordUnbanCalls).toHaveLength(1);
-    expect(recordUnbanCalls[0]).toMatchObject({
-      ip: '203.0.113.12',
+    expect(recordManualBanAuditCalls).toHaveLength(1);
+    expect(recordManualBanAuditCalls[0]).toMatchObject({
+      ip: '203.0.113.42',
       scope: 'ip',
-      comment: 'False positive — internal scanner',
+      comment: 'Spam from this IP',
       server: 'test-lapi',
-      decisionId: 4242,
+      duration: '4h',
+      decisionId: 12345,
       actor: 'alice@example.com',
     });
   });
 
   it('records actor=null when X-Crowdsieve-Actor is missing', async () => {
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/4243?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: {
         'X-API-Key': TEST_API_KEY,
         'Content-Type': 'application/json',
       },
-      payload: { reason: 'cleanup', ip: '203.0.113.13' },
+      payload: {
+        server: 'test-lapi',
+        ip: '203.0.113.43',
+        duration: '4h',
+        reason: 'cleanup',
+      },
     });
 
     expect(res.statusCode).toBe(200);
-    expect(recordUnbanCalls).toHaveLength(1);
-    expect(recordUnbanCalls[0].actor).toBeNull();
+    expect(recordManualBanAuditCalls).toHaveLength(1);
+    expect(recordManualBanAuditCalls[0].actor).toBeNull();
   });
 
-  it('does not record an unban event when LAPI delete fails', async () => {
-    // Override only this fetch with a 404 from LAPI
+  it('records audit row even when LAPI returns an unparseable decision id', async () => {
+    // Override the LAPI /v1/alerts response with a non-array body so the
+    // decisionId extraction falls back to undefined. The audit row should
+    // still be created. The machine token is cached from previous tests,
+    // so only the /v1/alerts fetch happens here — queue a single override.
     mockFetch.mockImplementationOnce(async (url: string | URL) => {
       const u = typeof url === 'string' ? url : url.toString();
       if (u.includes('/v1/watchers/login')) {
@@ -276,27 +306,72 @@ describe('DELETE /api/decisions/:id — actor propagation', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      return new Response('not found', { status: 404 });
-    });
-    // The DELETE call goes after the login call, so we need to override
-    // both. mockImplementationOnce queues by call order; queue the LAPI
-    // delete failure too.
-    mockFetch.mockImplementationOnce(async () => {
+      if (u.includes('/v1/alerts')) {
+        return new Response(JSON.stringify({ unexpected: 'shape' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       return new Response('not found', { status: 404 });
     });
 
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/decisions/9999?server=test-lapi',
+      method: 'POST',
+      url: '/api/decisions/ban',
       headers: {
         'X-API-Key': TEST_API_KEY,
         'X-Crowdsieve-Actor': 'bob',
         'Content-Type': 'application/json',
       },
-      payload: { reason: 'should not record', ip: '203.0.113.14' },
+      payload: {
+        server: 'test-lapi',
+        ip: '203.0.113.44',
+        duration: '1h',
+        reason: 'no id',
+      },
     });
 
-    expect(res.statusCode).toBe(404);
-    expect(recordUnbanCalls).toHaveLength(0);
+    expect(res.statusCode).toBe(200);
+    expect(recordManualBanAuditCalls).toHaveLength(1);
+    expect(recordManualBanAuditCalls[0].actor).toBe('bob');
+    expect(recordManualBanAuditCalls[0].decisionId).toBeUndefined();
+  });
+
+  it('does not record an audit event when LAPI ban fails', async () => {
+    // Override the LAPI /v1/alerts response with a 500 from upstream. The
+    // route handler maps that to 500 and must NOT call recordManualBanAuditEvent.
+    // Machine token is cached, so only the alerts fetch happens.
+    mockFetch.mockImplementationOnce(async (url: string | URL) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/v1/watchers/login')) {
+        return new Response(JSON.stringify(machineTokenJsonResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes('/v1/alerts')) {
+        return new Response('boom', { status: 500 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decisions/ban',
+      headers: {
+        'X-API-Key': TEST_API_KEY,
+        'X-Crowdsieve-Actor': 'bob',
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        server: 'test-lapi',
+        ip: '203.0.113.45',
+        duration: '4h',
+        reason: 'should not record',
+      },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(recordManualBanAuditCalls).toHaveLength(0);
   });
 });

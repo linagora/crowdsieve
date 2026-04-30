@@ -131,7 +131,7 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       filter_reasons TEXT,
       forwarded_to_capi INTEGER DEFAULT 0,
       forwarded_at TEXT,
-      unban INTEGER DEFAULT 0,
+      local_audit INTEGER DEFAULT 0,
       actor TEXT,
       raw_json TEXT
     );
@@ -226,13 +226,15 @@ function runSQLiteMigrations(sqlite: Database.Database) {
     sqlite.exec('ALTER TABLE alerts ADD COLUMN replicated INTEGER DEFAULT 0');
   }
 
-  // Migration: Add unban column to alerts if it doesn't exist
-  const hasUnbanColumn = tableInfo.some((col) => col.name === 'unban');
-  if (!hasUnbanColumn) {
-    sqlite.exec('ALTER TABLE alerts ADD COLUMN unban INTEGER DEFAULT 0');
+  // Migration: Add local_audit column to alerts if it doesn't exist.
+  // Flags locally-recorded audit-only rows (unban + manual ban audit) so they
+  // are excluded from stats and never forwarded to CAPI.
+  const hasLocalAudit = tableInfo.some((col) => col.name === 'local_audit');
+  if (!hasLocalAudit) {
+    sqlite.exec('ALTER TABLE alerts ADD COLUMN local_audit INTEGER DEFAULT 0');
   }
 
-  // Migration: Add actor column to alerts if it doesn't exist
+  // Migration: Add actor column to alerts if it doesn't exist.
   // Stores the human user identifier (email/name/sub) when known,
   // for audit trails on manual bans and unban events.
   const hasActorColumn = tableInfo.some((col) => col.name === 'actor');
@@ -240,9 +242,7 @@ function runSQLiteMigrations(sqlite: Database.Database) {
     sqlite.exec('ALTER TABLE alerts ADD COLUMN actor TEXT');
   }
 
-  // Index on `unban` is created here (after the ADD COLUMN above) so existing
-  // databases that pre-date the column don't error out on first startup.
-  sqlite.exec('CREATE INDEX IF NOT EXISTS idx_unban ON alerts(unban)');
+  sqlite.exec('CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit)');
 
   // Migration: Add unique index on uuid (partial - only for non-null values)
   // This prevents duplicate alerts and improves lookup performance

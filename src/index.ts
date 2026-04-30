@@ -148,6 +148,16 @@ async function main() {
     });
   };
 
+  // Same injection for recordManualBanAuditEvent so manual-ban audit rows get
+  // the same geo enrichment as unban rows and round-tripped alerts.
+  const originalRecordManualBanAuditEvent = storage.recordManualBanAuditEvent.bind(storage);
+  storage.recordManualBanAuditEvent = async (input) => {
+    return originalRecordManualBanAuditEvent({
+      ...input,
+      geoipLookup: input.geoipLookup ?? (geoipAvailable ? lookupIP : undefined),
+    });
+  };
+
   // Initialize client validator (if enabled)
   let clientValidator: ClientValidator | undefined;
   if (config.client_validation.enabled) {

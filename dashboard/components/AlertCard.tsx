@@ -1,6 +1,16 @@
 'use client';
 
-import { MapPin, Clock, AlertTriangle, Filter, Send, Copy, ShieldOff, User } from 'lucide-react';
+import {
+  MapPin,
+  Clock,
+  AlertTriangle,
+  Filter,
+  Send,
+  Copy,
+  ShieldOff,
+  ShieldPlus,
+  User,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { StoredAlert } from '@/lib/types';
 import { clsx } from 'clsx';
@@ -13,14 +23,23 @@ interface AlertCardProps {
 export function AlertCard({ alert, onClick }: AlertCardProps) {
   const country = alert.geoCountryName || alert.geoCountryCode || alert.sourceCn || 'Unknown';
 
-  // Border color reflects the alert's primary state. Unban events take
+  // Local audit rows split into unban and manual-ban audits. The scenario
+  // distinguishes them; both use a distinct border color and replace the
+  // regular filtered/forwarded/replicated badge stack with a single audit
+  // badge so the timeline reads unambiguously.
+  const isUnban = !!alert.localAudit && alert.scenario === 'crowdsieve/unban';
+  const isManualAudit = !!alert.localAudit && alert.scenario === 'crowdsieve/manual-audit';
+
+  // Border color reflects the alert's primary state. Audit events take
   // priority over filtered/forwarded so they're visually distinct in the
   // global timeline.
-  const borderClass = alert.unban
+  const borderClass = isUnban
     ? 'border-l-purple-500'
-    : alert.filtered
-      ? 'border-l-yellow-500'
-      : 'border-l-green-500';
+    : isManualAudit
+      ? 'border-l-orange-500'
+      : alert.filtered
+        ? 'border-l-yellow-500'
+        : 'border-l-green-500';
 
   return (
     <div
@@ -73,13 +92,20 @@ export function AlertCard({ alert, onClick }: AlertCardProps) {
           </div>
         </div>
 
-        {/* Status — unban events render only the purple Unban badge so the
-            row reads unambiguously as an audit/audit-trail entry. */}
+        {/* Status — audit events render a single audit badge (purple Unban
+            or orange Manual ban) and suppress the filtered/forwarded/
+            replicated badges since the row is an audit entry, not a real
+            CrowdSec alert. */}
         <div className="flex flex-col items-end gap-2">
-          {alert.unban ? (
+          {isUnban ? (
             <span className="badge bg-purple-100 text-purple-800">
               <ShieldOff className="w-3 h-3 mr-1" />
               Unban
+            </span>
+          ) : isManualAudit ? (
+            <span className="badge bg-orange-100 text-orange-800">
+              <ShieldPlus className="w-3 h-3 mr-1" />
+              Manual ban
             </span>
           ) : (
             <>

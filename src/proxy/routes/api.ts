@@ -836,6 +836,37 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           'Manual ban alert posted successfully'
         );
 
+        // Record an immediate local audit row so the timeline reflects who
+        // issued this manual ban without waiting for the LAPI -> signals
+        // roundtrip. The duplicate with the round-tripped crowdsieve/manual
+        // alert is intentional: the audit row is filtered out of stats and
+        // never forwarded to CAPI ("pas grave pour le doublon").
+        // Failures must not bubble: the LAPI ban already succeeded.
+        try {
+          // Best effort: extract the LAPI-returned decision id (if any). LAPI
+          // returns an array of decision ids on /v1/alerts. We don't fail the
+          // audit if this isn't present.
+          let lapiDecisionId: number | undefined;
+          if (Array.isArray(result) && result.length > 0) {
+            const idCandidate = Number(result[0]);
+            if (Number.isFinite(idCandidate)) lapiDecisionId = idCandidate;
+          }
+          await storage.recordManualBanAuditEvent({
+            ip: targetValue,
+            scope: targetScope,
+            comment: trimmedReason,
+            server: lapiServer.name,
+            duration,
+            decisionId: lapiDecisionId,
+            actor,
+          });
+        } catch (recordErr) {
+          logger.error(
+            { err: recordErr, server: lapiServer.name, target: targetValue },
+            'Failed to record manual ban audit event (LAPI ban already succeeded)'
+          );
+        }
+
         return reply.send({
           success: true,
           message: `${targetValue} banned for ${duration}`,

@@ -27,7 +27,8 @@ const MAX_ACTOR_LENGTH = 256;
 /**
  * Trim and truncate an actor value, returning null when the result is empty.
  * Centralizes the "store NULL instead of whitespace/empty" semantics used by
- * both `recordUnbanEvent` and the `events[].meta` extraction path.
+ * both `recordLocalAuditEvent` (unban / manual-ban audit) and the
+ * `events[].meta` extraction path in storeAlerts.
  */
 function sanitizeActor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -35,6 +36,11 @@ function sanitizeActor(value: unknown): string | null {
   if (trimmed.length === 0) return null;
   return trimmed.slice(0, MAX_ACTOR_LENGTH);
 }
+
+/** Scenario string for unban audit rows recorded after a decision delete. */
+export const UNBAN_AUDIT_SCENARIO = 'crowdsieve/unban';
+/** Scenario string for manual ban audit rows recorded after a manual LAPI ban. */
+export const MANUAL_BAN_AUDIT_SCENARIO = 'crowdsieve/manual-audit';
 
 export interface AlertQuery {
   filtered?: boolean;
@@ -106,6 +112,33 @@ export interface RecordUnbanEventInput {
   geoipLookup?: (ip: string) => GeoIPInfo | null;
 }
 
+/**
+ * Input for {@link AlertStorage.recordManualBanAuditEvent}, the local-audit
+ * row that pairs with a manual ban issued via POST /api/decisions/ban.
+ *
+ * The audit row is inserted immediately after the LAPI ban call succeeds so
+ * the timeline reflects the human action without waiting for the
+ * LAPI -> signals roundtrip. It is not forwarded to CAPI and is excluded
+ * from alert/decision statistics. Duplicate rows alongside the round-tripped
+ * `crowdsieve/manual` alert are accepted intentionally.
+ */
+export interface RecordManualBanAuditEventInput {
+  ip: string;
+  scope: 'ip' | 'range';
+  comment: string;
+  server: string;
+  /** Duration of the original ban (e.g. "4h"). Recorded in `raw_json`. */
+  duration: string;
+  /**
+   * LAPI-returned decision id, when the LAPI response carried one. Recorded
+   * in `raw_json` for forensic linking; omitted otherwise.
+   */
+  decisionId?: number;
+  /** See {@link RecordUnbanEventInput.actor}. */
+  actor?: string | null;
+  geoipLookup?: (ip: string) => GeoIPInfo | null;
+}
+
 export interface AlertStorage {
   storeAlerts(
     alerts: Alert[],
@@ -115,6 +148,7 @@ export interface AlertStorage {
   markAlertsForwarded(indices: number[]): Promise<void>;
   markAlertsReplicated(indices: number[]): Promise<void>;
   recordUnbanEvent(input: RecordUnbanEventInput): Promise<number>;
+  recordManualBanAuditEvent(input: RecordManualBanAuditEventInput): Promise<number>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
   getAlertById(id: number): Promise<SelectAlert | null>;
   hasAlertsNewerThan(timestamp: Date): Promise<boolean>;
@@ -155,6 +189,111 @@ function hasReplicableDecisions(alert: Alert): boolean {
     const origin = decision.origin?.toLowerCase() || '';
     return !excludedOrigins.some((excluded) => origin.includes(excluded.toLowerCase()));
   });
+}
+
+/**
+ * Internal shape used by {@link recordLocalAuditEvent} to encode either an
+ * unban audit row (`crowdsieve/unban`) or a manual-ban audit row
+ * (`crowdsieve/manual-audit`). Both share the same insert template; only
+ * the scenario string and the optional `duration` differ.
+ */
+interface RecordLocalAuditEventInput {
+  scenario: typeof UNBAN_AUDIT_SCENARIO | typeof MANUAL_BAN_AUDIT_SCENARIO;
+  ip: string;
+  scope: 'ip' | 'range';
+  comment: string;
+  server: string;
+  /** Defined for unban audits; possibly defined for manual-ban audits. */
+  decisionId?: number;
+  /** Defined for manual-ban audits only. */
+  duration?: string;
+  actor?: string | null;
+  geoipLookup?: (ip: string) => GeoIPInfo | null;
+}
+
+/**
+ * Insert a local-audit row in the alerts table. Shared implementation behind
+ * `recordUnbanEvent` (kept for back-compat) and `recordManualBanAuditEvent`.
+ *
+ * Audit rows are pre-flagged with `filtered=true`, `forwardedToCapi=false`,
+ * `localAudit=true`, `replicated=false`, `hasDecisions=false` so they are
+ * excluded from stats and the (defunct) signal-forwarding path. The
+ * distinguishing `scenario` is the only field that varies between the two
+ * audit kinds; the JSON payload in `raw_json` carries the `kind`, server,
+ * decision id (if any), duration (manual-ban only), comment, ip, scope and
+ * actor for downstream consumers.
+ */
+async function recordLocalAuditEvent(input: RecordLocalAuditEventInput): Promise<number> {
+  const { db, schema, isPostgres } = getDatabaseContext();
+  const { scenario, ip, scope, comment, server, decisionId, duration, geoipLookup } = input;
+  // Normalize actor: trim, truncate to MAX_ACTOR_LENGTH, and treat empty
+  // / whitespace-only strings as NULL so audit logs never carry padding or
+  // oversized values from upstream callers.
+  const actor = sanitizeActor(input.actor);
+
+  // GeoIP enrichment when IP is valid (mirror storeAlerts behavior)
+  const ipToLookup = extractIpFromValue(ip);
+  const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
+
+  const kind = scenario === UNBAN_AUDIT_SCENARIO ? 'unban' : 'manual-ban';
+
+  const insertQuery = db
+    .insert(schema.alerts)
+    .values({
+      scenario,
+      scenarioVersion: CROWDSIEVE_VERSION,
+      message: comment,
+      simulated: false,
+      remediation: false,
+      hasDecisions: false,
+      replicated: false,
+      sourceScope: scope,
+      sourceValue: ip,
+      sourceIp: scope === 'ip' ? ip : undefined,
+      sourceRange: scope === 'range' ? ip : undefined,
+      geoCountryCode: geoip?.countryCode,
+      geoCountryName: geoip?.countryName,
+      geoCity: geoip?.city,
+      geoRegion: geoip?.region,
+      geoLatitude: geoip?.latitude,
+      geoLongitude: geoip?.longitude,
+      geoTimezone: geoip?.timezone,
+      geoIsp: geoip?.isp,
+      geoOrg: geoip?.org,
+      // Defensive: mark as filtered so any future signal-forwarding logic that
+      // operates on un-filtered alerts will skip these. recordLocalAuditEvent
+      // does not go through the signals path, but this prevents accidental
+      // forwarding.
+      filtered: true,
+      forwardedToCapi: false,
+      localAudit: true,
+      actor,
+      rawJson: JSON.stringify({
+        kind,
+        server,
+        decisionId: decisionId ?? null,
+        duration: duration ?? null,
+        comment,
+        ip,
+        scope,
+        actor,
+      }),
+    } as typeof schema.alerts.$inferInsert)
+    .returning({ id: schema.alerts.id });
+
+  let result: { id: number } | undefined;
+  if (isPostgres) {
+    const rows = await insertQuery;
+    result = rows[0];
+  } else {
+    result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+  }
+
+  if (!result) {
+    throw new Error(`Failed to record local audit event (${kind})`);
+  }
+
+  return result.id;
 }
 
 export function createStorage(): AlertStorage {
@@ -370,71 +509,38 @@ export function createStorage(): AlertStorage {
     },
 
     async recordUnbanEvent(input): Promise<number> {
-      const { db, schema, isPostgres } = getDatabaseContext();
-      const { ip, scope, comment, server, decisionId, geoipLookup } = input;
-      // Normalize actor: trim, truncate to MAX_ACTOR_LENGTH, and treat empty
-      // / whitespace-only strings as NULL so audit logs never carry padding or
-      // oversized values from upstream callers.
-      const actor = sanitizeActor(input.actor);
+      // Thin wrapper over the shared local-audit insert. Kept on the public
+      // AlertStorage API for back-compat with PR #29 callers.
+      return recordLocalAuditEvent({
+        scenario: UNBAN_AUDIT_SCENARIO,
+        ip: input.ip,
+        scope: input.scope,
+        comment: input.comment,
+        server: input.server,
+        decisionId: input.decisionId,
+        actor: input.actor,
+        geoipLookup: input.geoipLookup,
+      });
+    },
 
-      // GeoIP enrichment when IP is valid (mirror storeAlerts behavior)
-      const ipToLookup = extractIpFromValue(ip);
-      const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
-
-      const insertQuery = db
-        .insert(schema.alerts)
-        .values({
-          scenario: 'crowdsieve/unban',
-          scenarioVersion: CROWDSIEVE_VERSION,
-          message: comment,
-          simulated: false,
-          remediation: false,
-          hasDecisions: false,
-          replicated: false,
-          sourceScope: scope,
-          sourceValue: ip,
-          sourceIp: scope === 'ip' ? ip : undefined,
-          geoCountryCode: geoip?.countryCode,
-          geoCountryName: geoip?.countryName,
-          geoCity: geoip?.city,
-          geoRegion: geoip?.region,
-          geoLatitude: geoip?.latitude,
-          geoLongitude: geoip?.longitude,
-          geoTimezone: geoip?.timezone,
-          geoIsp: geoip?.isp,
-          geoOrg: geoip?.org,
-          // Defensive: mark as filtered so any future signal-forwarding logic that
-          // operates on un-filtered alerts will skip these. recordUnbanEvent does
-          // not go through the signals path, but this prevents accidental forwarding.
-          filtered: true,
-          forwardedToCapi: false,
-          unban: true,
-          actor,
-          rawJson: JSON.stringify({
-            kind: 'unban',
-            server,
-            decisionId,
-            comment,
-            ip,
-            scope,
-            actor,
-          }),
-        } as typeof schema.alerts.$inferInsert)
-        .returning({ id: schema.alerts.id });
-
-      let result: { id: number } | undefined;
-      if (isPostgres) {
-        const rows = await insertQuery;
-        result = rows[0];
-      } else {
-        result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
-      }
-
-      if (!result) {
-        throw new Error('Failed to record unban event');
-      }
-
-      return result.id;
+    async recordManualBanAuditEvent(input): Promise<number> {
+      // Local-audit row mirroring a manual ban (POST /api/decisions/ban).
+      // Inserted immediately after the LAPI ban succeeds so the dashboard
+      // timeline shows who took the action without waiting for the
+      // LAPI -> signals roundtrip. The duplicate row alongside the
+      // round-tripped `crowdsieve/manual` alert is intentional; the audit
+      // row is filtered out of stats and never forwarded to CAPI.
+      return recordLocalAuditEvent({
+        scenario: MANUAL_BAN_AUDIT_SCENARIO,
+        ip: input.ip,
+        scope: input.scope,
+        comment: input.comment,
+        server: input.server,
+        decisionId: input.decisionId,
+        duration: input.duration,
+        actor: input.actor,
+        geoipLookup: input.geoipLookup,
+      });
     },
 
     async queryAlerts(query) {
@@ -523,8 +629,10 @@ export function createStorage(): AlertStorage {
       const { db, schema, isPostgres } = getDatabaseContext();
       const sinceDate = since?.toISOString();
       const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
-      // Exclude locally-recorded unban events from all alert/decision statistics.
-      const notUnban = sql`(${schema.alerts.unban} IS NULL OR ${schema.alerts.unban} = ${isPostgres ? sql`FALSE` : sql`0`})`;
+      // Exclude locally-recorded audit events (unban + manual-ban audit) from
+      // all alert/decision statistics so the dashboard's stats reflect real
+      // CrowdSec activity, not the audit rows we insert ourselves.
+      const notLocalAudit = sql`(${schema.alerts.localAudit} IS NULL OR ${schema.alerts.localAudit} = ${isPostgres ? sql`FALSE` : sql`0`})`;
 
       // Use Drizzle's sql template with schema column references
       // This lets Drizzle handle the boolean representation for each database
@@ -541,7 +649,7 @@ export function createStorage(): AlertStorage {
           maxTime: sql<string | null>`max(${schema.alerts.receivedAt})`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban));
+        .where(and(sinceCondition, notLocalAudit));
 
       let totalResult:
         | {
@@ -571,7 +679,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(schema.alerts.scenario)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -592,7 +700,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban, sql`geo_country_code is not null`))
+        .where(and(sinceCondition, notLocalAudit, sql`geo_country_code is not null`))
         .groupBy(schema.alerts.geoCountryCode)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -630,8 +738,8 @@ export function createStorage(): AlertStorage {
       const { db, schema, isPostgres } = getDatabaseContext();
       const sinceDate = since?.toISOString();
       const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
-      // Exclude locally-recorded unban events from time-distribution stats.
-      const notUnban = sql`(${schema.alerts.unban} IS NULL OR ${schema.alerts.unban} = ${isPostgres ? sql`FALSE` : sql`0`})`;
+      // Exclude locally-recorded audit events from time-distribution stats.
+      const notLocalAudit = sql`(${schema.alerts.localAudit} IS NULL OR ${schema.alerts.localAudit} = ${isPostgres ? sql`FALSE` : sql`0`})`;
 
       const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -657,7 +765,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*)`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(dayOfWeekExpr)
         .orderBy(dayOfWeekExpr);
 
@@ -668,7 +776,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*)`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(hourOfDayExpr)
         .orderBy(hourOfDayExpr);
 
@@ -680,7 +788,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban, sql`${schema.alerts.geoCountryCode} is not null`))
+        .where(and(sinceCondition, notLocalAudit, sql`${schema.alerts.geoCountryCode} is not null`))
         .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
         .orderBy(sql`count desc`)
         .limit(15);
@@ -692,7 +800,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(schema.alerts.scenario)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -704,7 +812,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*)`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(dateExpr)
         .orderBy(dateExpr);
 
@@ -716,7 +824,7 @@ export function createStorage(): AlertStorage {
           maxDate: sql<string | null>`max(${schema.alerts.receivedAt})`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, notUnban));
+        .where(and(sinceCondition, notLocalAudit));
 
       // Execute queries
       let byDayOfWeek: Array<{ day: number; count: number }>;
@@ -827,8 +935,8 @@ export function createStorage(): AlertStorage {
       // Join decisions with alerts to filter by date
       // We need to filter decisions based on their associated alert's receivedAt
       const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
-      // Exclude locally-recorded unban events from decision statistics.
-      const notUnban = sql`(${schema.alerts.unban} IS NULL OR ${schema.alerts.unban} = ${isPostgres ? sql`FALSE` : sql`0`})`;
+      // Exclude locally-recorded audit events from decision statistics.
+      const notLocalAudit = sql`(${schema.alerts.localAudit} IS NULL OR ${schema.alerts.localAudit} = ${isPostgres ? sql`FALSE` : sql`0`})`;
 
       // Query: Total decisions count
       const totalQuery = db
@@ -837,7 +945,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, notUnban));
+        .where(and(sinceCondition, notLocalAudit));
 
       const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -859,7 +967,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(dayOfWeekExpr)
         .orderBy(dayOfWeekExpr);
 
@@ -871,7 +979,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, notUnban))
+        .where(and(sinceCondition, notLocalAudit))
         .groupBy(hourOfDayExpr)
         .orderBy(hourOfDayExpr);
 
@@ -902,7 +1010,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, notUnban, sql`${schema.decisions.duration} is not null`))
+        .where(and(sinceCondition, notLocalAudit, sql`${schema.decisions.duration} is not null`))
         .groupBy(durationCategoryExpr)
         .orderBy(sql`count desc`);
 
@@ -915,7 +1023,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, notUnban, sql`${schema.decisions.scenario} is not null`))
+        .where(and(sinceCondition, notLocalAudit, sql`${schema.decisions.scenario} is not null`))
         .groupBy(schema.decisions.scenario)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -930,7 +1038,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, notUnban, sql`${schema.alerts.geoCountryCode} is not null`))
+        .where(and(sinceCondition, notLocalAudit, sql`${schema.alerts.geoCountryCode} is not null`))
         .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
         .orderBy(sql`count desc`)
         .limit(15);
