@@ -1,16 +1,16 @@
 /**
- * Unban Event Tests
+ * Manual Ban Audit Event Tests
  *
  * Covers:
- *   - storage.recordUnbanEvent inserts a row with unban=true and the supplied actor
- *   - Stats methods (getStats, getTimeDistributionStats, getDecisionStats) exclude
- *     unban rows so audit events don't pollute alert/decision counts
- *   - queryAlerts still returns unban rows so they appear in listings/timelines
- *   - storeAlerts extracts an `actor` from event meta when present (this is how
- *     the manual ban path threads the dashboard user through the LAPI -> signals
- *     roundtrip and back into the alerts table)
- *   - extractActorHeader normalizes the X-Crowdsieve-Actor header forwarded by
- *     the dashboard
+ *   - storage.recordManualBanAuditEvent inserts a row with local_audit=true,
+ *     scenario='crowdsieve/manual-audit', the sanitized actor, the comment,
+ *     and the duration encoded in raw_json
+ *   - Stats methods (getStats, getTimeDistributionStats, getDecisionStats)
+ *     exclude manual-ban audit rows so audit events don't pollute counts
+ *   - queryAlerts still returns manual-ban audit rows so they appear in
+ *     listings/timelines
+ *   - The decisionId is recorded in raw_json when supplied and is null
+ *     otherwise (LAPI didn't return a parsable id)
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
@@ -19,7 +19,7 @@ import * as schema from '../src/db/schema.js';
 import { createStorage, type AlertStorage } from '../src/storage/index.js';
 import type { Alert } from '../src/models/alert.js';
 import type { FilterEngineResult } from '../src/filters/types.js';
-import { extractActorHeader, MAX_ACTOR_LENGTH } from '../src/proxy/routes/api.js';
+import { MAX_ACTOR_LENGTH } from '../src/proxy/routes/api.js';
 
 // Shared in-memory database; recreated per test to keep tests independent.
 let sqlite: Database.Database;
@@ -96,7 +96,8 @@ function setupTestDatabase() {
 }
 
 // Mock getDatabaseContext to use our test database. Mirrors the pattern used
-// in storage-deduplication.test.ts so storage methods exercise the real SQL.
+// in storage-deduplication.test.ts and unban-event.test.ts so storage methods
+// exercise the real SQL.
 vi.mock('../src/db/index.js', () => ({
   getDatabaseContext: () => {
     const db = drizzle(sqlite, { schema });
@@ -137,7 +138,7 @@ function noFilter(count: number): FilterEngineResult['filterDetails'] {
   return Array.from({ length: count }, () => ({ filtered: false, matchedFilters: [] }));
 }
 
-describe('Unban event recording', () => {
+describe('Manual ban audit event recording', () => {
   let storage: AlertStorage;
 
   beforeEach(() => {
@@ -149,20 +150,23 @@ describe('Unban event recording', () => {
     sqlite.close();
   });
 
-  it('inserts a row with local_audit=true, scenario=crowdsieve/unban and the supplied actor', async () => {
-    const id = await storage.recordUnbanEvent({
-      ip: '203.0.113.5',
+  it('inserts a row with local_audit=true, scenario=crowdsieve/manual-audit and the supplied actor', async () => {
+    const id = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.50',
       scope: 'ip',
-      comment: 'False positive — internal scanner',
+      comment: 'Spam from this IP',
       server: 'lapi-prod',
-      decisionId: 42,
+      duration: '4h',
+      decisionId: 4242,
       actor: 'alice@example.com',
     });
 
     expect(id).toBeGreaterThan(0);
 
     const row = sqlite
-      .prepare('SELECT scenario, local_audit, actor, message, source_ip, filtered FROM alerts WHERE id = ?')
+      .prepare(
+        'SELECT scenario, local_audit, actor, message, source_ip, filtered, forwarded_to_capi, raw_json FROM alerts WHERE id = ?'
+      )
       .get(id) as {
         scenario: string;
         local_audit: number;
@@ -170,41 +174,84 @@ describe('Unban event recording', () => {
         message: string;
         source_ip: string | null;
         filtered: number;
+        forwarded_to_capi: number;
+        raw_json: string;
       };
 
-    expect(row.scenario).toBe('crowdsieve/unban');
+    expect(row.scenario).toBe('crowdsieve/manual-audit');
     // SQLite stores booleans as 0/1
     expect(row.local_audit).toBe(1);
     expect(row.actor).toBe('alice@example.com');
-    expect(row.message).toBe('False positive — internal scanner');
-    expect(row.source_ip).toBe('203.0.113.5');
+    expect(row.message).toBe('Spam from this IP');
+    expect(row.source_ip).toBe('203.0.113.50');
     // Defensive: audit events are pre-flagged as filtered so they never get
     // forwarded to CAPI even if a future signal-forwarding job iterates the table.
     expect(row.filtered).toBe(1);
+    expect(row.forwarded_to_capi).toBe(0);
+
+    // raw_json should encode the manual-ban kind, duration, decisionId and
+    // the rest of the audit payload so downstream consumers can render it.
+    const parsed = JSON.parse(row.raw_json) as {
+      kind: string;
+      server: string;
+      decisionId: number | null;
+      duration: string | null;
+      comment: string;
+      ip: string;
+      scope: string;
+      actor: string | null;
+    };
+    expect(parsed.kind).toBe('manual-ban');
+    expect(parsed.server).toBe('lapi-prod');
+    expect(parsed.decisionId).toBe(4242);
+    expect(parsed.duration).toBe('4h');
+    expect(parsed.comment).toBe('Spam from this IP');
+    expect(parsed.ip).toBe('203.0.113.50');
+    expect(parsed.scope).toBe('ip');
+    expect(parsed.actor).toBe('alice@example.com');
+  });
+
+  it('records decisionId=null in raw_json when LAPI did not return one', async () => {
+    const id = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.51',
+      scope: 'ip',
+      comment: 'No id from LAPI',
+      server: 'lapi-prod',
+      duration: '1h',
+      // decisionId omitted
+      actor: 'bob',
+    });
+
+    const row = sqlite
+      .prepare('SELECT raw_json FROM alerts WHERE id = ?')
+      .get(id) as { raw_json: string };
+    const parsed = JSON.parse(row.raw_json) as { decisionId: number | null; duration: string };
+    expect(parsed.decisionId).toBeNull();
+    expect(parsed.duration).toBe('1h');
   });
 
   it('stores actor as NULL when omitted, an empty string, or whitespace-only', async () => {
-    const id1 = await storage.recordUnbanEvent({
-      ip: '203.0.113.6',
+    const id1 = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.60',
       scope: 'ip',
       comment: 'Case 1',
       server: 'lapi',
-      decisionId: 1,
+      duration: '4h',
     });
-    const id2 = await storage.recordUnbanEvent({
-      ip: '203.0.113.7',
+    const id2 = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.61',
       scope: 'ip',
       comment: 'Case 2',
       server: 'lapi',
-      decisionId: 2,
+      duration: '4h',
       actor: '',
     });
-    const id3 = await storage.recordUnbanEvent({
-      ip: '203.0.113.8',
+    const id3 = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.62',
       scope: 'ip',
       comment: 'Case 3',
       server: 'lapi',
-      decisionId: 3,
+      duration: '4h',
       actor: '   ',
     });
 
@@ -218,12 +265,12 @@ describe('Unban event recording', () => {
   });
 
   it('trims and truncates the supplied actor to MAX_ACTOR_LENGTH', async () => {
-    const id = await storage.recordUnbanEvent({
-      ip: '203.0.113.20',
+    const id = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.70',
       scope: 'ip',
       comment: 'Trimmed actor',
       server: 'lapi',
-      decisionId: 50,
+      duration: '4h',
       actor: '  alice@example.com  ',
     });
     const row = sqlite
@@ -232,12 +279,12 @@ describe('Unban event recording', () => {
     expect(row.actor).toBe('alice@example.com');
 
     const longActor = 'a'.repeat(500);
-    const id2 = await storage.recordUnbanEvent({
-      ip: '203.0.113.21',
+    const id2 = await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.71',
       scope: 'ip',
       comment: 'Long actor',
       server: 'lapi',
-      decisionId: 51,
+      duration: '4h',
       actor: longActor,
     });
     const row2 = sqlite
@@ -247,12 +294,12 @@ describe('Unban event recording', () => {
   });
 
   it('uses range scope when scope=range and leaves source_ip null', async () => {
-    const id = await storage.recordUnbanEvent({
+    const id = await storage.recordManualBanAuditEvent({
       ip: '203.0.113.0/24',
       scope: 'range',
-      comment: 'Range unban',
+      comment: 'Range manual ban',
       server: 'lapi',
-      decisionId: 7,
+      duration: '24h',
       actor: 'bob',
     });
 
@@ -266,7 +313,7 @@ describe('Unban event recording', () => {
   });
 });
 
-describe('Stats exclude unban events; listings include them', () => {
+describe('Stats exclude manual-ban audit events; listings include them', () => {
   let storage: AlertStorage;
 
   beforeEach(() => {
@@ -278,16 +325,17 @@ describe('Stats exclude unban events; listings include them', () => {
     sqlite.close();
   });
 
-  it('counts only real alerts in getStats / getTimeDistributionStats and exposes both in queryAlerts', async () => {
+  it('counts only real alerts in getStats / getTimeDistributionStats and exposes the audit row in queryAlerts', async () => {
     // One regular ban alert
     await storage.storeAlerts([createBanAlert({ uuid: 'real-1' })], noFilter(1));
 
-    // One unban event for the same IP
-    await storage.recordUnbanEvent({
-      ip: '203.0.113.5',
+    // One manual-ban audit event
+    await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.80',
       scope: 'ip',
-      comment: 'mistaken ban',
+      comment: 'manual ban from dashboard',
       server: 'lapi',
+      duration: '4h',
       decisionId: 99,
       actor: 'alice@example.com',
     });
@@ -299,130 +347,103 @@ describe('Stats exclude unban events; listings include them', () => {
     expect(timeStats.totalAlerts).toBe(1);
 
     // queryAlerts must surface both rows so the timeline / per-IP history
-    // shows the unban event alongside the original ban.
+    // shows the audit entry alongside the original alert.
     const all = await storage.queryAlerts({});
     expect(all).toHaveLength(2);
 
-    const unbanRow = all.find((a) => a.scenario === 'crowdsieve/unban');
-    expect(unbanRow).toBeDefined();
-    expect(unbanRow?.localAudit).toBe(true);
-    expect(unbanRow?.actor).toBe('alice@example.com');
+    const auditRow = all.find((a) => a.scenario === 'crowdsieve/manual-audit');
+    expect(auditRow).toBeDefined();
+    expect(auditRow?.localAudit).toBe(true);
+    expect(auditRow?.actor).toBe('alice@example.com');
   });
 
-  it('getDecisionStats ignores rows joined to unban alerts', async () => {
+  it('getDecisionStats ignores rows joined to manual-ban audit alerts', async () => {
     // A real ban alert produces an `alerts` row + one `decisions` row.
-    // The unban event has no decisions associated. getDecisionStats joins
-    // decisions to alerts and must filter out the unban side, so the result
-    // should reflect exactly the 1 ban decision.
+    // The manual-ban audit event has no decisions associated. getDecisionStats
+    // joins decisions to alerts and must filter out the audit side, so the
+    // result should reflect exactly the 1 ban decision.
     await storage.storeAlerts([createBanAlert({ uuid: 'real-2' })], noFilter(1));
-    await storage.recordUnbanEvent({
-      ip: '203.0.113.5',
+    await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.81',
       scope: 'ip',
-      comment: 'unban',
+      comment: 'manual ban',
       server: 'lapi',
-      decisionId: 1,
+      duration: '4h',
       actor: 'alice',
     });
 
     const decisionStats = await storage.getDecisionStats();
     expect(decisionStats).toBeDefined();
-    // Exactly one decision (from the ban alert). The unban row does not pull
-    // in any decision rows because recordUnbanEvent never inserts into the
-    // decisions table.
+    // Exactly one decision (from the ban alert). The audit row does not pull
+    // in any decision rows because recordManualBanAuditEvent never inserts
+    // into the decisions table.
     expect(decisionStats.totalDecisions).toBe(1);
     // All breakdown buckets should reflect the single real ban decision.
     expect(decisionStats.topScenarios.length).toBeGreaterThanOrEqual(1);
     expect(decisionStats.topScenarios[0].scenario).toBe('crowdsecurity/ssh-bf');
     expect(decisionStats.topScenarios[0].count).toBe(1);
   });
-});
 
-describe('storeAlerts extracts actor from event meta', () => {
-  let storage: AlertStorage;
-
-  beforeEach(() => {
-    setupTestDatabase();
-    storage = createStorage();
-  });
-
-  afterEach(() => {
-    sqlite.close();
-  });
-
-  it('writes actor to the alerts.actor column when an event meta entry has key=actor', async () => {
-    const alert = createBanAlert({
-      uuid: 'with-actor',
-      events: [
-        {
-          timestamp: new Date().toISOString(),
-          meta: [
-            { key: 'source', value: 'crowdsieve-dashboard' },
-            { key: 'reason', value: 'Manual ban from test' },
-            { key: 'actor', value: 'carol@example.com' },
-          ],
-        },
-      ],
+  it('excludes both unban and manual-ban audit rows from stats simultaneously', async () => {
+    await storage.storeAlerts([createBanAlert({ uuid: 'real-3' })], noFilter(1));
+    await storage.recordUnbanEvent({
+      ip: '203.0.113.90',
+      scope: 'ip',
+      comment: 'unban',
+      server: 'lapi',
+      decisionId: 1,
+      actor: 'alice',
+    });
+    await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.91',
+      scope: 'ip',
+      comment: 'manual ban',
+      server: 'lapi',
+      duration: '4h',
+      actor: 'bob',
     });
 
-    await storage.storeAlerts([alert], noFilter(1));
+    const stats = await storage.getStats();
+    expect(stats.total).toBe(1);
 
-    const rows = sqlite
-      .prepare('SELECT actor FROM alerts WHERE uuid = ?')
-      .all('with-actor') as Array<{ actor: string | null }>;
-    expect(rows).toHaveLength(1);
-    expect(rows[0].actor).toBe('carol@example.com');
+    const all = await storage.queryAlerts({});
+    expect(all).toHaveLength(3);
   });
 
-  it('leaves actor null when no event meta carries it', async () => {
-    const alert = createBanAlert({ uuid: 'no-actor', events: [] });
-    await storage.storeAlerts([alert], noFilter(1));
-
-    const row = sqlite
-      .prepare('SELECT actor FROM alerts WHERE uuid = ?')
-      .get('no-actor') as { actor: string | null };
-    expect(row.actor).toBeNull();
-  });
-
-  it('truncates excessive actor values to MAX_ACTOR_LENGTH', async () => {
-    const huge = 'x'.repeat(MAX_ACTOR_LENGTH + 100);
-    const alert = createBanAlert({
-      uuid: 'huge-actor',
-      events: [
-        {
-          timestamp: new Date().toISOString(),
-          meta: [{ key: 'actor', value: huge }],
-        },
-      ],
+  it('surfaces unban + manual ban audit rows in per-IP history (queryAlerts by sourceIp)', async () => {
+    await storage.recordUnbanEvent({
+      ip: '198.51.100.42',
+      scope: 'ip',
+      comment: 'admin removed ban',
+      server: 'lapi',
+      decisionId: 1,
+      actor: 'alice',
     });
-    await storage.storeAlerts([alert], noFilter(1));
+    await storage.recordManualBanAuditEvent({
+      ip: '198.51.100.42',
+      scope: 'ip',
+      comment: 'admin issued ban',
+      server: 'lapi',
+      duration: '4h',
+      actor: 'alice',
+    });
+    // Decoy: a row for a different IP that must NOT appear in the per-IP query.
+    await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.99',
+      scope: 'ip',
+      comment: 'unrelated',
+      server: 'lapi',
+      duration: '4h',
+      actor: 'bob',
+    });
 
-    const row = sqlite
-      .prepare('SELECT actor FROM alerts WHERE uuid = ?')
-      .get('huge-actor') as { actor: string | null };
-    expect(row.actor).toHaveLength(MAX_ACTOR_LENGTH);
-  });
-});
-
-describe('extractActorHeader', () => {
-  it('returns null for missing/empty/whitespace-only inputs', () => {
-    expect(extractActorHeader(undefined)).toBeNull();
-    expect(extractActorHeader('')).toBeNull();
-    expect(extractActorHeader('   ')).toBeNull();
-    expect(extractActorHeader([])).toBeNull();
-  });
-
-  it('returns the trimmed first entry for array-valued headers', () => {
-    expect(extractActorHeader(['  alice@example.com  ', 'bob'])).toBe('alice@example.com');
-  });
-
-  it('skips empty/whitespace entries and returns the first usable one', () => {
-    expect(extractActorHeader(['', '  ', '  carol@example.com', 'dave'])).toBe('carol@example.com');
-  });
-
-  it('truncates to MAX_ACTOR_LENGTH', () => {
-    const big = 'a'.repeat(MAX_ACTOR_LENGTH + 50);
-    const out = extractActorHeader(big);
-    expect(out).not.toBeNull();
-    expect(out!.length).toBe(MAX_ACTOR_LENGTH);
+    const history = await storage.queryAlerts({ sourceIp: '198.51.100.42' });
+    expect(history).toHaveLength(2);
+    const scenarios = history.map((r) => r.scenario).sort();
+    expect(scenarios).toEqual(['crowdsieve/manual-audit', 'crowdsieve/unban']);
+    // Audit rows must carry the local_audit flag so the UI renders the badge.
+    for (const row of history) {
+      expect(row.localAudit).toBe(true);
+    }
   });
 });

@@ -51,7 +51,12 @@ export interface StoredAlert {
   filterReasons?: string;
   forwardedToCapi: boolean;
   replicated: boolean;
-  unban?: boolean;
+  /**
+   * True for locally-recorded audit rows (unban, manual-ban audit). The
+   * specific kind is identified by `scenario` (`crowdsieve/unban` or
+   * `crowdsieve/manual-audit`).
+   */
+  localAudit?: boolean;
   actor?: string;
 }
 

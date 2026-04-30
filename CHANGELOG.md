@@ -5,6 +5,16 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Manual ban audit events**: `POST /api/decisions/ban` now records an immediate local audit row (`scenario=crowdsieve/manual-audit`, `localAudit=true`) right after the LAPI ban succeeds, capturing the dashboard user (from OIDC), the comment, the duration and the LAPI-returned decision id. The row appears in the timeline (orange "Manual ban" badge) without waiting for the LAPI -> signals roundtrip and is excluded from alert/decision statistics.
+
+### Changed
+
+- **Schema**: `The column `local_audit` now generalizes any locally-recorded audit-only event (unban + manual-ban audit). The specific kind is identified by `scenario` (`crowdsieve/unban` or `crowdsieve/manual`). Existing databases are migrated automatically.
+
 ## [0.4.0] - 2026-04-26
 
 ### Added

@@ -55,7 +55,7 @@ function setupTestDatabase() {
       filter_reasons TEXT,
       forwarded_to_capi INTEGER DEFAULT 0,
       forwarded_at TEXT,
-      unban INTEGER DEFAULT 0,
+      local_audit INTEGER DEFAULT 0,
       actor TEXT,
       raw_json TEXT
     );

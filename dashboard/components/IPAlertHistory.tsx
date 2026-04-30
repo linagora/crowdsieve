@@ -160,9 +160,13 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
                   <span className="font-mono text-sm truncate">{alert.scenario}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                  {alert.unban ? (
+                  {alert.localAudit && alert.scenario === 'crowdsieve/unban' ? (
                     <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded">
                       Unban
+                    </span>
+                  ) : alert.localAudit && alert.scenario === 'crowdsieve/manual-audit' ? (
+                    <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded">
+                      Manual ban
                     </span>
                   ) : (
                     <>

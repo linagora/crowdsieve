@@ -83,7 +83,7 @@ const POSTGRES_MIGRATIONS = `
     filter_reasons TEXT,
     forwarded_to_capi BOOLEAN DEFAULT FALSE,
     forwarded_at TEXT,
-    unban BOOLEAN DEFAULT FALSE,
+    local_audit BOOLEAN DEFAULT FALSE,
     actor TEXT,
     raw_json TEXT
   );
@@ -214,15 +214,17 @@ export async function initializePostgres(
       END $$;
     `);
 
-    // Migration: Add unban column to alerts if it doesn't exist
+    // Migration: Add local_audit column to alerts if it doesn't exist.
+    // Flags locally-recorded audit-only rows (unban + manual ban audit) so they
+    // are excluded from stats and never forwarded to CAPI.
     await pool.query(`
       DO $$
       BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns
-          WHERE table_name = 'alerts' AND column_name = 'unban'
+          WHERE table_name = 'alerts' AND column_name = 'local_audit'
         ) THEN
-          ALTER TABLE alerts ADD COLUMN unban BOOLEAN DEFAULT FALSE;
+          ALTER TABLE alerts ADD COLUMN local_audit BOOLEAN DEFAULT FALSE;
         END IF;
       END $$;
     `);
@@ -242,9 +244,7 @@ export async function initializePostgres(
       END $$;
     `);
 
-    // Index on `unban` is created here (after the ADD COLUMN above) so existing
-    // databases that pre-date the column don't error out on first startup.
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_unban ON alerts(unban);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit);`);
 
     // Migration: Add unique partial index on uuid (only for non-null values)
     // This prevents duplicate alerts and improves lookup performance
