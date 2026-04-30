@@ -218,28 +218,76 @@ Response format:
 
 ## Back-Channel Logout
 
-CrowdSieve supports OIDC Back-Channel Logout for single sign-out. When a user logs out from the OIDC provider, all their sessions across applications are terminated.
+CrowdSieve supports [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html) for single sign-out. When a user logs out from the OIDC provider, the matching dashboard session is terminated.
 
-**Endpoint:**
+> **Hard prerequisite (IdP side):** the OIDC provider **MUST** issue id_tokens that carry a `sid` claim. The dashboard stores `claims.sid` on the session cookie at callback time and revocation is keyed on it: a session without a `sid` cannot be revoked at all. The logout token MUST also carry a matching `sid` (the in-memory revocation store is indexed by `sid`).
 
-```
-POST /api/auth/backchannel-logout
-Content-Type: application/x-www-form-urlencoded
+> **Note:** this endpoint lives on the Next.js dashboard, not on the Fastify backend, so it does **not** appear in the generated `openapi.json` (which only covers the proxy/management API). The reference below is the canonical contract.
 
-logout_token=<JWT>
-```
+### Endpoint reference
 
-**Features:**
+| Item                 | Value                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method               | `POST`                                                                                                                                                                 |
+| Path                 | `/api/auth/backchannel-logout`                                                                                                                                         |
+| Public URL           | `https://crowdsieve.example.com/api/auth/backchannel-logout`                                                                                                           |
+| Content-Type         | `application/x-www-form-urlencoded`                                                                                                                                    |
+| Authentication       | None at the HTTP layer — the request is authenticated by the JWT signature on `logout_token`, verified against the provider's JWKS (fetched from `<issuer>/.well-known/openid-configuration`). |
+| Caller               | Direct call from the OIDC provider (server-to-server, no browser involvement).                                                                                         |
 
-- Automatic session revocation
-- Support for encrypted logout tokens (JWE)
-- Replay attack protection (jti tracking)
-- Session-specific or user-wide logout
+#### Request body
 
-**Provider configuration:**
+A single form-encoded parameter:
+
+| Field          | Type   | Required | Description                                                                                               |
+| -------------- | ------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `logout_token` | string | Yes      | A JWS or JWE token issued by the OIDC provider. Compact serialization (3 parts for JWS, 5 parts for JWE). |
+
+##### `logout_token` claims
+
+The token is decrypted (when JWE is enabled and the token has 5 segments) then signature-verified. Claims are validated per the spec:
+
+| Claim    | Required           | Validation                                                                                                                |
+| -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `iss`    | Yes                | Must match the configured `OIDC_ISSUER`.                                                                                  |
+| `aud`    | Yes                | Must match the configured `OIDC_CLIENT_ID` (single audience or array containing it).                                      |
+| `iat`    | Yes                | Issued-at timestamp.                                                                                                      |
+| `jti`    | Yes                | Unique token id; tracked in memory for 5 minutes to reject replays. Tokens missing `jti` are rejected.                    |
+| `events` | Yes                | Must contain the key `http://schemas.openid.net/event/backchannel-logout` with an empty object value (per spec).          |
+| `sid`    | Yes (in practice)  | Session identifier. Required for revocation to take effect (see prerequisite above) — must match `claims.sid` of the original id_token. |
+| `sub`    | At least one of `sub`/`sid` per spec | Subject identifier. The endpoint accepts `sub`-only logout tokens, but they only revoke if the session itself carries a `sid`.        |
+| `nonce`  | Forbidden          | Per spec a logout token MUST NOT carry a nonce; the request is rejected if it does.                                       |
+
+#### Responses
+
+| Status                       | When                                                                                                                                                                                              | Body                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `200 OK`                     | Token verified and (if applicable) matching session(s) revoked. Empty body, `Cache-Control: no-store` per spec. **A 200 is also returned when no session matched** — revocation is best-effort.   | _(empty)_                                                     |
+| `400 Bad Request`            | Missing/empty `logout_token`, JWE decryption failure, signature failure, claim validation failure (issuer / audience / event / nonce-forbidden / `sub`-or-`sid` missing), `jti` reuse (replay).   | Plain-text error message (e.g. `Invalid logout_token: …`).    |
+| `404 Not Found`              | OIDC mode is not enabled on this dashboard.                                                                                                                                                       | `Not Found`                                                   |
+| `500 Internal Server Error`  | OIDC is flagged as enabled but the runtime config is missing.                                                                                                                                     | `OIDC not configured`                                         |
+
+### Features
+
+- Per-session revocation, keyed on the `sid` stored in the session cookie at login time.
+- Support for encrypted logout tokens (JWE), decrypted with the dashboard's private key from `JWE_KEYS_PATH`.
+- Signature verification via the provider's JWKS (key rotation handled transparently by `jose`).
+- Replay protection: each accepted `jti` is rejected for the next 5 minutes.
+
+### Provider configuration
 
 - Back-channel logout URL: `https://crowdsieve.example.com/api/auth/backchannel-logout`
-- Back-channel logout session required: `ON` (recommended)
+- **Back-channel logout session required: `ON`** — this is what makes the IdP include `sid` in id_tokens and in logout tokens. Without it, revocation will be a no-op.
+
+### Manual smoke test
+
+```bash
+# Build a logout token with your provider's signing key, then:
+curl -i -X POST https://crowdsieve.example.com/api/auth/backchannel-logout \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode "logout_token=$LOGOUT_TOKEN"
+# Expected: HTTP/1.1 200 OK with `Cache-Control: no-store`.
+```
 
 ## Supported Algorithms
 
