@@ -59,7 +59,19 @@ export interface AlertStats {
   total: number;
   filtered: number;
   forwarded: number;
+  /**
+   * Top 10 scenarios by count, excluding locally-recorded audit rows
+   * (unban + manual-ban audit). Used by the stats panel.
+   */
   topScenarios: Array<{ scenario: string; count: number }>;
+  /**
+   * Distinct scenarios present in the alerts table since `since`, with their
+   * row counts. Includes locally-recorded audit rows (`crowdsieve/unban`,
+   * `crowdsieve/manual-audit`). Not capped — used to populate the scenario
+   * filter dropdown so every scenario the user has interacted with is
+   * selectable.
+   */
+  allScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
   timeBounds: { min: string | null; max: string | null };
 }
@@ -693,6 +705,29 @@ export function createStorage(): AlertStorage {
         ).all();
       }
 
+      // All distinct scenarios — populates the scenario filter dropdown.
+      // Unlike `topScenarios`, this is uncapped and includes locally-recorded
+      // audit rows so the user can filter on `crowdsieve/unban`,
+      // `crowdsieve/manual-audit`, `crowdsieve/manual`, etc.
+      const allScenariosQuery = db
+        .select({
+          scenario: schema.alerts.scenario,
+          count: sql<number>`count(*) as count`,
+        })
+        .from(schema.alerts)
+        .where(sinceCondition)
+        .groupBy(schema.alerts.scenario)
+        .orderBy(sql`count desc`);
+
+      let allScenarios: Array<{ scenario: string; count: number }>;
+      if (isPostgres) {
+        allScenarios = await allScenariosQuery;
+      } else {
+        allScenarios = (
+          allScenariosQuery as unknown as { all(): Array<{ scenario: string; count: number }> }
+        ).all();
+      }
+
       // Top countries
       const countriesQuery = db
         .select({
@@ -720,6 +755,10 @@ export function createStorage(): AlertStorage {
         filtered: Number(totalResult?.filtered) || 0,
         forwarded: Number(totalResult?.forwarded) || 0,
         topScenarios: topScenarios.map((s) => ({
+          scenario: s.scenario,
+          count: Number(s.count),
+        })),
+        allScenarios: allScenarios.map((s) => ({
           scenario: s.scenario,
           count: Number(s.count),
         })),

@@ -30,7 +30,9 @@ export function ScenarioFilter({
   const [open, setOpen] = useState(false);
 
   const selectedItem = scenarios.find((s) => s.scenario === selectedScenario);
-  const displayName = selectedItem ? selectedItem.scenario.split('/').pop() : 'All scenarios';
+  // Show the fully-qualified scenario name (e.g. `crowdsecurity/http-bad-user-agent`)
+  // rather than just the last path segment, so namespaces aren't ambiguous.
+  const displayName = selectedItem ? selectedItem.scenario : 'All scenarios';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -81,7 +83,7 @@ export function ScenarioFilter({
                     )}
                   />
                   <span className="flex-1 truncate" title={s.scenario}>
-                    {s.scenario.split('/').pop()}
+                    {s.scenario}
                   </span>
                   <span className="ml-2 text-xs text-slate-400">{s.count}</span>
                 </CommandItem>

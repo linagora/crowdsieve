@@ -67,7 +67,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
         filters={filters}
         onFiltersChange={updateFilters}
         onReset={resetFilters}
-        scenarios={stats.topScenarios}
+        scenarios={stats.allScenarios}
         machines={machines}
         timeBounds={timeBounds}
         hasActiveFilters={hasActiveFilters}
