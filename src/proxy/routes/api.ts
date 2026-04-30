@@ -39,9 +39,25 @@ const MAX_SCENARIO_LENGTH = 200;
 // Exported constants for use in tests
 export const MAX_REASON_LENGTH = 500;
 export const MAX_MACHINE_ID_LENGTH = 255;
+export const MAX_ACTOR_LENGTH = 256;
 export const DURATION_REGEX = /^\d+[smh]$/;
 export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
+
+/**
+ * Read the X-Crowdsieve-Actor header propagated by the dashboard proxy.
+ * Returns null when the header is missing, empty/whitespace-only, or coerces
+ * to no usable value. Truncates to MAX_ACTOR_LENGTH defensively. Multi-value
+ * headers are flattened to the first non-empty entry.
+ */
+export function extractActorHeader(header: string | string[] | undefined): string | null {
+  if (!header) return null;
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  return trimmed.slice(0, MAX_ACTOR_LENGTH);
+}
 
 /**
  * Validate and parse an IP address or CIDR notation
@@ -693,6 +709,12 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             .send({ error: 'Invalid reason: must not be blank or whitespace-only' });
         }
 
+        // Optional actor header forwarded by the dashboard from the OIDC session.
+        // Threaded through the alert payload's events[].meta so it survives the
+        // LAPI -> signals roundtrip and lands in the alerts.actor column when
+        // the manual ban alert comes back through the signals path.
+        const actor = extractActorHeader(request.headers['x-crowdsieve-actor']);
+
         // Find the LAPI server
         const { config } = fastify;
         const lapiServer = (config.lapi_servers || []).find((s: LapiServer) => s.name === server);
@@ -743,6 +765,9 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
                 meta: [
                   { key: 'source', value: 'crowdsieve-dashboard' },
                   { key: 'reason', value: message },
+                  // Conditionally include the actor so unauthenticated callers
+                  // (no OIDC session) don't end up with a literal empty value.
+                  ...(actor ? [{ key: 'actor', value: actor }] : []),
                 ],
                 source: {
                   scope: targetScope,
@@ -838,6 +863,13 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         querystring: Type.Object({
           server: ServerName,
         }),
+        // The dashboard must supply a non-empty `reason` (audit trail) and the
+        // target `ip` (or CIDR) so we can record a local unban event. DELETE
+        // bodies are supported in Fastify 4+.
+        body: Type.Object({
+          reason: Type.String({ minLength: 1, maxLength: MAX_REASON_LENGTH }),
+          ip: Type.String({ minLength: 1 }),
+        }),
         response: {
           200: SuccessResponse,
           400: ErrorResponse,
@@ -852,6 +884,25 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
       try {
         const { id: decisionId } = request.params;
         const { server } = request.query;
+        const { reason, ip } = request.body;
+
+        // Trim and reject whitespace-only reasons (schema only enforces minLength).
+        const trimmedReason = reason.trim();
+        if (trimmedReason.length === 0) {
+          return reply
+            .code(400)
+            .send({ error: 'Invalid reason: must not be blank or whitespace-only' });
+        }
+
+        // Validate IP / CIDR — schema only enforces non-empty.
+        const parsed = parseIpOrCidr(ip);
+        if (!parsed.valid) {
+          return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
+        }
+
+        // Optional actor header forwarded by the dashboard from the OIDC session.
+        // Used purely for audit trail; missing/blank values do not block deletion.
+        const actor = extractActorHeader(request.headers['x-crowdsieve-actor']);
 
         // Find the LAPI server
         const { config } = fastify;
@@ -913,6 +964,24 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         }
 
         logger.info({ server: lapiServer.name, decisionId }, 'Decision deleted successfully');
+
+        // Record a local unban event for audit & timeline visibility.
+        // Failures here must not bubble: the LAPI delete already succeeded.
+        try {
+          await storage.recordUnbanEvent({
+            ip: parsed.value,
+            scope: parsed.scope,
+            comment: trimmedReason,
+            server: lapiServer.name,
+            decisionId,
+            actor,
+          });
+        } catch (recordErr) {
+          logger.error(
+            { err: recordErr, server: lapiServer.name, decisionId },
+            'Failed to record unban event (LAPI delete already succeeded)'
+          );
+        }
 
         return reply.send({
           success: true,

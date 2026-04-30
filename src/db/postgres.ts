@@ -83,6 +83,8 @@ const POSTGRES_MIGRATIONS = `
     filter_reasons TEXT,
     forwarded_to_capi BOOLEAN DEFAULT FALSE,
     forwarded_at TEXT,
+    unban BOOLEAN DEFAULT FALSE,
+    actor TEXT,
     raw_json TEXT
   );
 
@@ -92,6 +94,7 @@ const POSTGRES_MIGRATIONS = `
   CREATE INDEX IF NOT EXISTS idx_country_code ON alerts(geo_country_code);
   CREATE INDEX IF NOT EXISTS idx_filtered ON alerts(filtered);
   CREATE INDEX IF NOT EXISTS idx_machine_id ON alerts(machine_id);
+  CREATE INDEX IF NOT EXISTS idx_unban ON alerts(unban);
 
   -- Decisions table
   CREATE TABLE IF NOT EXISTS decisions (
@@ -208,6 +211,34 @@ export async function initializePostgres(
           WHERE table_name = 'alerts' AND column_name = 'replicated'
         ) THEN
           ALTER TABLE alerts ADD COLUMN replicated BOOLEAN DEFAULT FALSE;
+        END IF;
+      END $$;
+    `);
+
+    // Migration: Add unban column to alerts if it doesn't exist
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'alerts' AND column_name = 'unban'
+        ) THEN
+          ALTER TABLE alerts ADD COLUMN unban BOOLEAN DEFAULT FALSE;
+        END IF;
+      END $$;
+    `);
+
+    // Migration: Add actor column to alerts if it doesn't exist.
+    // Stores the human user identifier (email/name/sub) for audit trails on
+    // manual bans and unban events. Idempotent: safe to run on every startup.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'alerts' AND column_name = 'actor'
+        ) THEN
+          ALTER TABLE alerts ADD COLUMN actor TEXT;
         END IF;
       END $$;
     `);

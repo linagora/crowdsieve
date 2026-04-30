@@ -5,6 +5,7 @@ import type { FilterEngineResult } from '../filters/types.js';
 import { getDatabaseContext } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
 import { extractIpFromValue } from '../ipinfo/index.js';
+import { CROWDSIEVE_VERSION } from '../auth/machineToken.js';
 
 /**
  * Escape SQL LIKE wildcards to prevent injection.
@@ -70,6 +71,22 @@ export interface StoreAlertsResult {
   replicableIndices: number[];
 }
 
+export interface RecordUnbanEventInput {
+  ip: string;
+  scope: 'ip' | 'range';
+  comment: string;
+  server: string;
+  decisionId: number;
+  /**
+   * Identifier of the human user who triggered the unban (e.g. email/name/sub
+   * sourced from the dashboard OIDC session). Stored in the `actor` column for
+   * audit trails. Truncated by the caller to <= 256 chars; null/undefined when
+   * the request was unauthenticated.
+   */
+  actor?: string | null;
+  geoipLookup?: (ip: string) => GeoIPInfo | null;
+}
+
 export interface AlertStorage {
   storeAlerts(
     alerts: Alert[],
@@ -78,6 +95,7 @@ export interface AlertStorage {
   ): Promise<StoreAlertsResult>;
   markAlertsForwarded(indices: number[]): Promise<void>;
   markAlertsReplicated(indices: number[]): Promise<void>;
+  recordUnbanEvent(input: RecordUnbanEventInput): Promise<number>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
   getAlertById(id: number): Promise<SelectAlert | null>;
   hasAlertsNewerThan(timestamp: Date): Promise<boolean>;
@@ -163,6 +181,23 @@ export function createStorage(): AlertStorage {
         const ipToLookup = extractIpFromValue(rawIpValue);
         const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
 
+        // Extract actor from event meta if propagated by the dashboard ban path.
+        // The /api/decisions/ban handler injects { key: 'actor', value: <login> }
+        // into the alert payload's events[].meta so the human identity survives
+        // the LAPI -> signals roundtrip and lands in the alerts table.
+        let actorFromMeta: string | null = null;
+        if (alert.events && alert.events.length > 0) {
+          for (const ev of alert.events) {
+            if (ev.meta && Array.isArray(ev.meta)) {
+              const found = ev.meta.find((m) => m && m.key === 'actor');
+              if (found?.value) {
+                actorFromMeta = String(found.value).slice(0, 256);
+                break;
+              }
+            }
+          }
+        }
+
         // Track alerts with replicable decisions (to be marked as replicated after successful replication)
         const hasReplicable = hasReplicableDecisions(alert);
         if (hasReplicable) {
@@ -212,6 +247,7 @@ export function createStorage(): AlertStorage {
                 detail.matchedFilters.length > 0
                   ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
                   : null,
+              actor: actorFromMeta,
               rawJson: JSON.stringify(alert),
             } as typeof schema.alerts.$inferInsert)
             .returning({ id: schema.alerts.id });
@@ -311,6 +347,73 @@ export function createStorage(): AlertStorage {
       }
     },
 
+    async recordUnbanEvent(input): Promise<number> {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const { ip, scope, comment, server, decisionId, geoipLookup } = input;
+      // Normalize actor: empty/whitespace-only -> null so the column stays NULL
+      // instead of holding a meaningless empty string.
+      const actor = input.actor && input.actor.trim().length > 0 ? input.actor : null;
+
+      // GeoIP enrichment when IP is valid (mirror storeAlerts behavior)
+      const ipToLookup = extractIpFromValue(ip);
+      const geoip = net.isIP(ipToLookup) ? geoipLookup?.(ipToLookup) || null : null;
+
+      const insertQuery = db
+        .insert(schema.alerts)
+        .values({
+          scenario: 'crowdsieve/unban',
+          scenarioVersion: CROWDSIEVE_VERSION,
+          message: comment,
+          simulated: false,
+          remediation: false,
+          hasDecisions: false,
+          replicated: false,
+          sourceScope: scope,
+          sourceValue: ip,
+          sourceIp: scope === 'ip' ? ip : undefined,
+          geoCountryCode: geoip?.countryCode,
+          geoCountryName: geoip?.countryName,
+          geoCity: geoip?.city,
+          geoRegion: geoip?.region,
+          geoLatitude: geoip?.latitude,
+          geoLongitude: geoip?.longitude,
+          geoTimezone: geoip?.timezone,
+          geoIsp: geoip?.isp,
+          geoOrg: geoip?.org,
+          // Defensive: mark as filtered so any future signal-forwarding logic that
+          // operates on un-filtered alerts will skip these. recordUnbanEvent does
+          // not go through the signals path, but this prevents accidental forwarding.
+          filtered: true,
+          forwardedToCapi: false,
+          unban: true,
+          actor,
+          rawJson: JSON.stringify({
+            kind: 'unban',
+            server,
+            decisionId,
+            comment,
+            ip,
+            scope,
+            actor,
+          }),
+        } as typeof schema.alerts.$inferInsert)
+        .returning({ id: schema.alerts.id });
+
+      let result: { id: number } | undefined;
+      if (isPostgres) {
+        const rows = await insertQuery;
+        result = rows[0];
+      } else {
+        result = (insertQuery as unknown as { get(): { id: number } | undefined }).get();
+      }
+
+      if (!result) {
+        throw new Error('Failed to record unban event');
+      }
+
+      return result.id;
+    },
+
     async queryAlerts(query) {
       const { db, schema, isPostgres } = getDatabaseContext();
       const conditions = [];
@@ -397,6 +500,8 @@ export function createStorage(): AlertStorage {
       const { db, schema, isPostgres } = getDatabaseContext();
       const sinceDate = since?.toISOString();
       const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
+      // Exclude locally-recorded unban events from all alert/decision statistics.
+      const notUnban = sql`(${schema.alerts.unban} IS NULL OR ${schema.alerts.unban} = ${isPostgres ? sql`FALSE` : sql`0`})`;
 
       // Use Drizzle's sql template with schema column references
       // This lets Drizzle handle the boolean representation for each database
@@ -413,7 +518,7 @@ export function createStorage(): AlertStorage {
           maxTime: sql<string | null>`max(${schema.alerts.receivedAt})`,
         })
         .from(schema.alerts)
-        .where(sinceCondition);
+        .where(and(sinceCondition, notUnban));
 
       let totalResult:
         | {
@@ -443,7 +548,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined)
+        .where(and(sinceCondition, notUnban))
         .groupBy(schema.alerts.scenario)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -464,12 +569,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(
-          and(
-            sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined,
-            sql`geo_country_code is not null`
-          )
-        )
+        .where(and(sinceCondition, notUnban, sql`geo_country_code is not null`))
         .groupBy(schema.alerts.geoCountryCode)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -507,6 +607,8 @@ export function createStorage(): AlertStorage {
       const { db, schema, isPostgres } = getDatabaseContext();
       const sinceDate = since?.toISOString();
       const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
+      // Exclude locally-recorded unban events from time-distribution stats.
+      const notUnban = sql`(${schema.alerts.unban} IS NULL OR ${schema.alerts.unban} = ${isPostgres ? sql`FALSE` : sql`0`})`;
 
       const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -532,7 +634,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*)`,
         })
         .from(schema.alerts)
-        .where(sinceCondition)
+        .where(and(sinceCondition, notUnban))
         .groupBy(dayOfWeekExpr)
         .orderBy(dayOfWeekExpr);
 
@@ -543,7 +645,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*)`,
         })
         .from(schema.alerts)
-        .where(sinceCondition)
+        .where(and(sinceCondition, notUnban))
         .groupBy(hourOfDayExpr)
         .orderBy(hourOfDayExpr);
 
@@ -555,7 +657,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`))
+        .where(and(sinceCondition, notUnban, sql`${schema.alerts.geoCountryCode} is not null`))
         .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
         .orderBy(sql`count desc`)
         .limit(15);
@@ -567,7 +669,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*) as count`,
         })
         .from(schema.alerts)
-        .where(sinceCondition)
+        .where(and(sinceCondition, notUnban))
         .groupBy(schema.alerts.scenario)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -579,7 +681,7 @@ export function createStorage(): AlertStorage {
           count: sql<number>`count(*)`,
         })
         .from(schema.alerts)
-        .where(sinceCondition)
+        .where(and(sinceCondition, notUnban))
         .groupBy(dateExpr)
         .orderBy(dateExpr);
 
@@ -591,7 +693,7 @@ export function createStorage(): AlertStorage {
           maxDate: sql<string | null>`max(${schema.alerts.receivedAt})`,
         })
         .from(schema.alerts)
-        .where(sinceCondition);
+        .where(and(sinceCondition, notUnban));
 
       // Execute queries
       let byDayOfWeek: Array<{ day: number; count: number }>;
@@ -702,6 +804,8 @@ export function createStorage(): AlertStorage {
       // Join decisions with alerts to filter by date
       // We need to filter decisions based on their associated alert's receivedAt
       const sinceCondition = sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined;
+      // Exclude locally-recorded unban events from decision statistics.
+      const notUnban = sql`(${schema.alerts.unban} IS NULL OR ${schema.alerts.unban} = ${isPostgres ? sql`FALSE` : sql`0`})`;
 
       // Query: Total decisions count
       const totalQuery = db
@@ -710,7 +814,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(sinceCondition);
+        .where(and(sinceCondition, notUnban));
 
       const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -732,7 +836,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(sinceCondition)
+        .where(and(sinceCondition, notUnban))
         .groupBy(dayOfWeekExpr)
         .orderBy(dayOfWeekExpr);
 
@@ -744,7 +848,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(sinceCondition)
+        .where(and(sinceCondition, notUnban))
         .groupBy(hourOfDayExpr)
         .orderBy(hourOfDayExpr);
 
@@ -775,7 +879,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, sql`${schema.decisions.duration} is not null`))
+        .where(and(sinceCondition, notUnban, sql`${schema.decisions.duration} is not null`))
         .groupBy(durationCategoryExpr)
         .orderBy(sql`count desc`);
 
@@ -788,7 +892,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, sql`${schema.decisions.scenario} is not null`))
+        .where(and(sinceCondition, notUnban, sql`${schema.decisions.scenario} is not null`))
         .groupBy(schema.decisions.scenario)
         .orderBy(sql`count desc`)
         .limit(10);
@@ -803,7 +907,7 @@ export function createStorage(): AlertStorage {
         })
         .from(schema.decisions)
         .innerJoin(schema.alerts, eq(schema.decisions.alertId, schema.alerts.id))
-        .where(and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`))
+        .where(and(sinceCondition, notUnban, sql`${schema.alerts.geoCountryCode} is not null`))
         .groupBy(schema.alerts.geoCountryCode, schema.alerts.geoCountryName)
         .orderBy(sql`count desc`)
         .limit(15);

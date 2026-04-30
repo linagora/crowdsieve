@@ -160,15 +160,23 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
                   <span className="font-mono text-sm truncate">{alert.scenario}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                  {alert.filtered && (
-                    <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded">
-                      Filtered
+                  {alert.unban ? (
+                    <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded">
+                      Unban
                     </span>
-                  )}
-                  {alert.forwardedToCapi && (
-                    <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
-                      Fwd
-                    </span>
+                  ) : (
+                    <>
+                      {alert.filtered && (
+                        <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded">
+                          Filtered
+                        </span>
+                      )}
+                      {alert.forwardedToCapi && (
+                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
+                          Fwd
+                        </span>
+                      )}
+                    </>
                   )}
                   <span className="text-xs text-slate-500 whitespace-nowrap">
                     {formatRelativeTime(alert.receivedAt)}

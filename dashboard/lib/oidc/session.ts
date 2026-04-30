@@ -1,6 +1,6 @@
 import { getIronSession, IronSession } from 'iron-session';
 import { cookies } from 'next/headers';
-import { getSessionSecret } from './config';
+import { getActorClaim, getSessionSecret } from './config';
 import { isSessionRevoked } from './revocation';
 
 export interface SessionUser {
@@ -91,4 +91,18 @@ export async function isSessionValid(): Promise<boolean> {
 export async function clearSession(): Promise<void> {
   const session = await getSession();
   session.destroy();
+}
+
+/**
+ * Resolve the audit-log "actor" string for a session user using the configured
+ * OIDC claim (OIDC_ACTOR_CLAIM, defaults to "sub"). Falls back to "sub" when
+ * the configured claim is missing on the user (e.g. provider didn't return an
+ * email). Returns an empty string when the user is null.
+ */
+export function resolveActor(user: SessionUser | null | undefined): string {
+  if (!user) return '';
+  const claim = getActorClaim();
+  const value = user[claim];
+  if (value && value.trim().length > 0) return value;
+  return user.sub;
 }
