@@ -5,20 +5,29 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-04-30
 
 ### Added
 
-- **Manual ban audit events**: `POST /api/decisions/ban` now records an immediate local audit row (`scenario=crowdsieve/manual-audit`, `localAudit=true`) right after the LAPI ban succeeds, capturing the dashboard user (from OIDC), the comment, the duration and the LAPI-returned decision id. The row appears in the timeline (orange "Manual ban" badge) without waiting for the LAPI -> signals roundtrip and is excluded from alert/decision statistics.
-- **Audit-friendly logging for human-actor actions**: a new `notice` log level (syslog-equivalent, value 35) is emitted for manual bans (`event: manual_ban`) and unbans (`event: manual_unban`). Each entry carries the actor (when present), target IP/CIDR, scope, server, duration (bans) and the reason, so audit trails can be filtered out of regular operational noise. Other ban/unban-related logs are also enriched with the actor when available.
+#### Authentication
+
+- **HTTP Headers authentication mode**: new `AUTH_MODE=headers` enables deployments behind a "handler"-style reverse proxy (LemonLDAP-NG, NGINX `auth_request`, Apache `mod_auth_*`)
+- **Configurable actor claim**: `AUTH_ACTOR_CLAIM` (or legacy `OIDC_ACTOR_CLAIM`) selects which claim identifies the human actor recorded on every manual events. Defaults to `sub`
+
+#### Audit & timeline
+
+- **Decision unban events**: `DELETE /api/decisions/:id` now records a local unban event on the `alerts` table
+- **Manual ban audit events**: `POST /api/decisions/ban` now records an immediate local audit row also
+- **Audit-friendly logging for human-actor actions**: a new `notice` log level (syslog-equivalent, value 35) is emitted for manual bans (`event: manual_ban`) and unbans (`event: manual_unban`).
 
 ### Changed
 
-- **Schema**: a new boolean column `local_audit` on the `alerts` table flags locally-recorded audit-only events (unban + manual-ban audit). The specific kind is identified by `scenario` (`crowdsieve/unban` or `crowdsieve/manual-audit`).
+- **Breaking: `DELETE /api/decisions/:id` requires a body**: the endpoint now expects a JSON body `{ reason: string, ip: string }`. A non-empty `reason` is mandatory (audit trail).
+- **Schema**: new boolean column `local_audit` on the `alerts` table flags locally-recorded audit-only events (unban + manual-ban audit). New text column `actor` records the dashboard user that issued the action (sourced from the OIDC/headers session and forwarded via `X-Crowdsieve-Actor`). Migrations are idempotent.
 
 ### Fixed
 
-- **Manual ban alert payload**: `POST /api/decisions/ban` now also sets `source.ip` (scope=ip) or `source.range` (scope=range) on the alert pushed to the LAPI, in addition to `source.value`. Previously these fields were missing, so user-defined filters keyed on `source.ip` (e.g. a `cidr` rule on internal ranges) silently missed every manual ban when the LAPI roundtripped the alert back through `/v2/signals`. The shape now matches what a CrowdSec agent produces.
+- **Manual ban alert payload**: `POST /api/decisions/ban` now also sets `source.ip` (scope=ip) or `source.range` (scope=range) on the alert pushed to the LAPI, in addition to `source.value`.
 
 ## [0.4.0] - 2026-04-26
 
