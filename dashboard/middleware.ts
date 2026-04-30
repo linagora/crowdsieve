@@ -2,17 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSafeRedirect } from '@/lib/oidc/validation';
 
 /**
- * SECURITY: Middleware for OIDC authentication gate
+ * SECURITY: Middleware for the dashboard's authentication gate.
  *
- * This middleware runs in Edge Runtime and performs lightweight session checks.
- * Full session validation (expiration, revocation) happens in page/API routes
- * because Edge Runtime has limited crypto capabilities.
+ * Runs in the Edge Runtime, so we MUST avoid any Node-only API (no fs,
+ * no crypto, no `next/headers`). Helper logic is inlined or imported from
+ * Edge-compatible modules in `lib/auth/`.
  *
- * Security considerations:
- * - Only checks cookie presence, not validity (defense in depth with route checks)
- * - Public paths are explicitly allowlisted to prevent auth bypass
- * - Redirect parameter uses pathname only (validated in login page to prevent open redirect)
+ * Three modes are supported (selected via AUTH_MODE or auto-detected):
+ *   - 'none'    : allow everything.
+ *   - 'oidc'    : check the iron-session cookie, redirect to /login when absent.
+ *   - 'headers' : require a valid `Auth-Sub` header from a trusted upstream.
+ *
+ * Edge runtime caveat: full session validation (expiration, revocation) for
+ * OIDC mode happens in page/API routes — middleware only checks cookie
+ * presence as a first gate (defense in depth).
  */
+
+import { getAuthMode } from '@/lib/auth/mode';
+import { getClientIp, isTrustedProxy } from '@/lib/auth/trust';
+import { parseAuthHeaders } from '@/lib/auth/headers';
 
 // Public paths that don't require authentication
 // SECURITY: Be careful adding paths - they bypass authentication
@@ -31,24 +39,47 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(path + '/'));
 }
 
-// Check if OIDC is enabled by looking at environment variables
-// Note: We can't use the config module here because middleware runs in Edge Runtime
-function isOidcEnabled(): boolean {
-  return !!(process.env.OIDC_ISSUER && process.env.OIDC_CLIENT_ID);
-}
-
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  // If OIDC is not configured, allow all requests (current behavior)
-  if (!isOidcEnabled()) {
+  const mode = getAuthMode();
+
+  // 'none': no auth — allow everything (current behavior pre-headers-mode).
+  if (mode === 'none') {
     return NextResponse.next();
   }
 
-  // Allow public paths
+  // Allow public paths in both 'oidc' and 'headers' modes. In headers mode,
+  // /login renders a static "Authentication required" page that does NOT
+  // initiate any login flow.
   if (isPublicPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
-  // Check for session cookie
+  if (mode === 'headers') {
+    // Defense-in-depth: optionally restrict by the source IP of the
+    // immediate caller. When TRUSTED_PROXY_IPS is unset, we trust the
+    // network layer to ensure only the proxy can reach this dashboard.
+    const clientIp = getClientIp(request);
+    if (!isTrustedProxy(clientIp)) {
+      return new NextResponse('Forbidden: untrusted proxy', { status: 403 });
+    }
+
+    // Validate identity headers. parseAuthHeaders enforces the presence of
+    // a non-empty Auth-Sub.
+    const user = parseAuthHeaders(request.headers);
+    if (user === null) {
+      return new NextResponse(
+        'Authentication required. This dashboard is configured to authenticate via an upstream proxy.',
+        {
+          status: 401,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        }
+      );
+    }
+
+    return NextResponse.next();
+  }
+
+  // OIDC mode (existing behavior).
   const sessionCookie = request.cookies.get('crowdsieve-session');
   if (!sessionCookie) {
     // Redirect to login with the original path for post-login redirect

@@ -90,6 +90,35 @@ spec:
             - name: CORS_ORIGIN
               value: {{ .Values.crowdsieve.dashboard.corsOrigin | quote }}
             {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth }}
+            {{- if .Values.crowdsieve.dashboard.auth.mode }}
+            # Authentication mode (oidc | headers | none).
+            # When unset, auto-detected from OIDC env vars (oidc if configured, none otherwise).
+            - name: AUTH_MODE
+              value: {{ .Values.crowdsieve.dashboard.auth.mode | quote }}
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth.actorClaim }}
+            # Claim used as the audit-log actor (any non-empty string, defaults to "sub").
+            - name: AUTH_ACTOR_CLAIM
+              value: {{ .Values.crowdsieve.dashboard.auth.actorClaim | quote }}
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth.headers }}
+            {{- if .Values.crowdsieve.dashboard.auth.headers.trustedProxyIps }}
+            # Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges.
+            # Empty = no IP check (rely on network isolation).
+            - name: TRUSTED_PROXY_IPS
+              value: {{ .Values.crowdsieve.dashboard.auth.headers.trustedProxyIps | quote }}
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth.headers.logoutUrl }}
+            - name: AUTH_LOGOUT_URL
+              value: {{ .Values.crowdsieve.dashboard.auth.headers.logoutUrl | quote }}
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth.headers.loginUrl }}
+            - name: AUTH_LOGIN_URL
+              value: {{ .Values.crowdsieve.dashboard.auth.headers.loginUrl | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.crowdsieve.dashboard.oidc.enabled }}
             # OIDC Configuration
             - name: OIDC_ISSUER

@@ -1,13 +1,25 @@
 import { getIronSession, IronSession } from 'iron-session';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { getActorClaim, getSessionSecret } from './config';
 import { isSessionRevoked } from './revocation';
+import { getAuthMode } from '../auth/mode';
+import { parseAuthHeaders } from '../auth/headers';
 
+/**
+ * SessionUser carries the minimal identity claims used by the dashboard.
+ *
+ * The known fields (`sub`, `email`, `name`, `picture`) are populated by the
+ * OIDC flow. The headers-auth mode can add arbitrary additional claims (e.g.
+ * `familyName`, `givenName`, `preferredUsername`) via the index signature —
+ * these are surfaced to consumers like UserMenu and `resolveActor`.
+ */
 export interface SessionUser {
   sub: string;
   email?: string;
   name?: string;
   picture?: string;
+  /** Arbitrary additional claims (used by headers mode). */
+  [claim: string]: string | undefined;
 }
 
 /**
@@ -67,12 +79,29 @@ export async function getSession(): Promise<IronSession<SessionData>> {
   });
 }
 
+/**
+ * Resolve the current SessionUser. In OIDC mode this reads the iron-session
+ * cookie; in headers mode it reads the per-request `Auth-*` headers.
+ */
 export async function getSessionUser(): Promise<SessionUser | null> {
+  if (getAuthMode() === 'headers') {
+    const h = await headers();
+    return parseAuthHeaders(h);
+  }
   const session = await getSession();
   return session.user ?? null;
 }
 
+/**
+ * Whether the current request carries a valid session. Headers mode requires
+ * only that `Auth-Sub` is present and parseable; OIDC mode adds expiration
+ * and revocation checks.
+ */
 export async function isSessionValid(): Promise<boolean> {
+  if (getAuthMode() === 'headers') {
+    const h = await headers();
+    return parseAuthHeaders(h) !== null;
+  }
   const session = await getSession();
   if (!session.user) {
     return false;
@@ -94,16 +123,20 @@ export async function clearSession(): Promise<void> {
 }
 
 /**
- * Resolve the audit-log "actor" string for a session user using the configured
- * OIDC claim (OIDC_ACTOR_CLAIM, defaults to "sub"). Falls back to "sub" when
- * the configured claim is missing on the user (e.g. provider didn't return an
- * email). Returns an empty string when the user is null.
+ * Resolve the audit-log "actor" string for a session user using the
+ * configured actor claim (`AUTH_ACTOR_CLAIM` or `OIDC_ACTOR_CLAIM`,
+ * defaults to `sub`). Falls back to `sub` when the configured claim is
+ * missing or whitespace-only on the user. Returns an empty string when the
+ * user is null/undefined.
+ *
+ * Supports arbitrary claim names so headers-mode-only fields like
+ * `familyName` or `preferredUsername` work seamlessly.
  */
 export function resolveActor(user: SessionUser | null | undefined): string {
   if (!user) return '';
   const claim = getActorClaim();
   const value = user[claim];
-  if (value) {
+  if (typeof value === 'string') {
     const trimmed = value.trim();
     if (trimmed.length > 0) return trimmed;
   }

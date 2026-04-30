@@ -4,9 +4,11 @@ export interface OidcConfig {
   clientSecret?: string;
 }
 
-export type ActorClaim = 'sub' | 'email' | 'name';
-
-const VALID_ACTOR_CLAIMS: readonly ActorClaim[] = ['sub', 'email', 'name'] as const;
+/**
+ * The actor claim is now an arbitrary (non-empty) claim name. We keep this
+ * type alias for back-compat; consumers should treat it as a plain string.
+ */
+export type ActorClaim = string;
 
 export function getOidcConfig(): OidcConfig | null {
   const issuer = process.env.OIDC_ISSUER;
@@ -26,15 +28,24 @@ export function isOidcEnabled(): boolean {
 }
 
 /**
- * Resolve the OIDC claim used to identify the human actor for audit logging.
- * Defaults to "sub" (the only claim guaranteed to be present and stable).
- * Override via OIDC_ACTOR_CLAIM=email|name|sub. Unknown values fall back to "sub".
+ * Resolve the claim used to identify the human actor for audit logging.
+ * Defaults to `sub` (always present and stable).
+ *
+ * Override priority:
+ *   1. `AUTH_ACTOR_CLAIM` (canonical name in the new auth-mode world)
+ *   2. `OIDC_ACTOR_CLAIM` (kept for back-compat)
+ *
+ * Any non-empty string is accepted verbatim (after trimming). This allows
+ * callers to use claims forwarded by the headers-auth mode such as
+ * `preferredUsername`, `familyName`, etc.
+ *
+ * Empty / whitespace-only values fall back to `sub`.
  */
 export function getActorClaim(): ActorClaim {
-  const raw = process.env.OIDC_ACTOR_CLAIM?.trim().toLowerCase();
-  if (raw && (VALID_ACTOR_CLAIMS as readonly string[]).includes(raw)) {
-    return raw as ActorClaim;
-  }
+  const fromAuth = process.env.AUTH_ACTOR_CLAIM?.trim();
+  if (fromAuth && fromAuth.length > 0) return fromAuth;
+  const fromOidc = process.env.OIDC_ACTOR_CLAIM?.trim();
+  if (fromOidc && fromOidc.length > 0) return fromOidc;
   return 'sub';
 }
 
