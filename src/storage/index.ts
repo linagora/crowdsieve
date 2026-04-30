@@ -250,6 +250,7 @@ async function recordLocalAuditEvent(input: RecordLocalAuditEventInput): Promise
       sourceScope: scope,
       sourceValue: ip,
       sourceIp: scope === 'ip' ? ip : undefined,
+      sourceRange: scope === 'range' ? ip : undefined,
       geoCountryCode: geoip?.countryCode,
       geoCountryName: geoip?.countryName,
       geoCity: geoip?.city,
