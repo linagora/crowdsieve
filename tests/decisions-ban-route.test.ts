@@ -375,3 +375,85 @@ describe('POST /api/decisions/ban — actor propagation', () => {
     expect(recordManualBanAuditCalls).toHaveLength(0);
   });
 });
+
+describe('POST /api/decisions/ban — LAPI alert payload shape', () => {
+  // Helper: pull the JSON body sent to /v1/alerts from the most recent fetch
+  // call. The handler stringifies the payload, so we parse it back.
+  function lastAlertPayload(): unknown {
+    for (let i = mockFetch.mock.calls.length - 1; i >= 0; i--) {
+      const [url, init] = mockFetch.mock.calls[i] as [string | URL, RequestInit?];
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/v1/alerts') && init?.body && typeof init.body === 'string') {
+        return JSON.parse(init.body);
+      }
+    }
+    throw new Error('no /v1/alerts fetch captured');
+  }
+
+  it('sets source.ip (and events[].source.ip) when scope=ip', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decisions/ban',
+      headers: { 'X-API-Key': TEST_API_KEY, 'Content-Type': 'application/json' },
+      payload: {
+        server: 'test-lapi',
+        ip: '192.168.23.45',
+        duration: '4h',
+        reason: 'internal-ips test',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = lastAlertPayload() as Array<{
+      source: { scope: string; value: string; ip?: string; range?: string };
+      events: Array<{ source: { scope: string; value: string; ip?: string; range?: string } }>;
+      decisions: Array<{ scope: string; value: string }>;
+    }>;
+    expect(Array.isArray(body)).toBe(true);
+    expect(body[0].source).toMatchObject({
+      scope: 'ip',
+      value: '192.168.23.45',
+      ip: '192.168.23.45',
+    });
+    expect(body[0].source.range).toBeUndefined();
+    expect(body[0].events[0].source).toMatchObject({
+      scope: 'ip',
+      value: '192.168.23.45',
+      ip: '192.168.23.45',
+    });
+    expect(body[0].decisions[0]).toMatchObject({ scope: 'ip', value: '192.168.23.45' });
+  });
+
+  it('sets source.range (and events[].source.range) when scope=range', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decisions/ban',
+      headers: { 'X-API-Key': TEST_API_KEY, 'Content-Type': 'application/json' },
+      payload: {
+        server: 'test-lapi',
+        ip: '10.0.0.0/24',
+        duration: '4h',
+        reason: 'cidr test',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = lastAlertPayload() as Array<{
+      source: { scope: string; value: string; ip?: string; range?: string };
+      events: Array<{ source: { scope: string; value: string; ip?: string; range?: string } }>;
+      decisions: Array<{ scope: string; value: string }>;
+    }>;
+    expect(body[0].source).toMatchObject({
+      scope: 'range',
+      value: '10.0.0.0/24',
+      range: '10.0.0.0/24',
+    });
+    expect(body[0].source.ip).toBeUndefined();
+    expect(body[0].events[0].source).toMatchObject({
+      scope: 'range',
+      value: '10.0.0.0/24',
+      range: '10.0.0.0/24',
+    });
+    expect(body[0].decisions[0]).toMatchObject({ scope: 'range', value: '10.0.0.0/24' });
+  });
+});
