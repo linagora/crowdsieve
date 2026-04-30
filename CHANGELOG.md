@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Schema**: a new boolean column `local_audit` on the `alerts` table flags locally-recorded audit-only events (unban + manual-ban audit). The specific kind is identified by `scenario` (`crowdsieve/unban` or `crowdsieve/manual-audit`).
 
+### Fixed
+
+- **Manual ban alert payload**: `POST /api/decisions/ban` now also sets `source.ip` (scope=ip) or `source.range` (scope=range) on the alert pushed to the LAPI, in addition to `source.value`. Previously these fields were missing, so user-defined filters keyed on `source.ip` (e.g. a `cidr` rule on internal ranges) silently missed every manual ban when the LAPI roundtripped the alert back through `/v2/signals`. The shape now matches what a CrowdSec agent produces.
+
 ## [0.4.0] - 2026-04-26
 
 ### Added

@@ -744,6 +744,17 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         const scenarioHash = createHash('sha256').update(scenario).digest('hex');
         const message = trimmedReason;
 
+        // Match the shape produced by a CrowdSec agent so user-defined filters
+        // keyed on `source.ip` (scope=ip) or `source.range` (scope=range)
+        // catch the alert when it comes back through /v2/signals or /v3/signals.
+        // Without these, a filter like `field: source.ip, op: cidr` silently
+        // misses every manual ban.
+        const sourceFields: Record<string, string> = {
+          scope: targetScope,
+          value: targetValue,
+          ...(targetScope === 'ip' ? { ip: targetValue } : { range: targetValue }),
+        };
+
         const alertPayload = [
           {
             scenario,
@@ -757,10 +768,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             leakspeed: '1s',
             simulated: false,
             remediation: true,
-            source: {
-              scope: targetScope,
-              value: targetValue,
-            },
+            source: sourceFields,
             events: [
               {
                 timestamp,
@@ -771,10 +779,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
                   // (no OIDC session) don't end up with a literal empty value.
                   ...(actor ? [{ key: 'actor', value: actor }] : []),
                 ],
-                source: {
-                  scope: targetScope,
-                  value: targetValue,
-                },
+                source: sourceFields,
               },
             ],
             decisions: [
