@@ -19,10 +19,14 @@ export type AuthMode = 'oidc' | 'headers' | 'none';
 export function getAuthMode(): AuthMode {
   const explicit = process.env.AUTH_MODE?.trim().toLowerCase();
   if (explicit === 'oidc' || explicit === 'headers' || explicit === 'none') {
+    // Note: an explicit `AUTH_MODE=oidc` with missing OIDC_ISSUER /
+    // OIDC_CLIENT_ID is a misconfiguration. We honor the explicit choice and
+    // let the /login page render a clear configuration error — returning
+    // 'none' here would silently disable auth, which is worse.
     return explicit;
   }
   // Auto-detect: enable OIDC if it's configured, otherwise no auth.
-  const oidcConfigured = !!(process.env.OIDC_ISSUER && process.env.OIDC_CLIENT_ID);
+  const oidcConfigured = !!(process.env.OIDC_ISSUER?.trim() && process.env.OIDC_CLIENT_ID?.trim());
   return oidcConfigured ? 'oidc' : 'none';
 }
 

@@ -35,7 +35,6 @@ function buildDisplayName(user: SessionUser): string {
   const composed = [user.givenName, user.familyName].filter(Boolean).join(' ').trim();
   if (composed.length > 0) return composed;
   if (user.email) return user.email;
-  if (user.preferredUsername) return user.preferredUsername;
   return user.sub || 'User';
 }
 

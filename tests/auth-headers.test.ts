@@ -228,6 +228,15 @@ describe('getAuthMode', () => {
     expect(getAuthMode()).toBe('oidc');
   });
 
+  it('auto-detect treats whitespace-only OIDC env vars as unset', async () => {
+    delete process.env.AUTH_MODE;
+    process.env.OIDC_ISSUER = '   ';
+    process.env.OIDC_CLIENT_ID = 'my-client';
+
+    const { getAuthMode } = await import('../dashboard/lib/auth/mode.js');
+    expect(getAuthMode()).toBe('none');
+  });
+
   it('isHeadersAuthEnabled mirrors getAuthMode', async () => {
     process.env.AUTH_MODE = 'headers';
     const { isHeadersAuthEnabled } = await import('../dashboard/lib/auth/mode.js');
