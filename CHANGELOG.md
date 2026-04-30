@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Schema**: `The column `local_audit` now generalizes any locally-recorded audit-only event (unban + manual-ban audit). The specific kind is identified by `scenario` (`crowdsieve/unban` or `crowdsieve/manual`). Existing databases are migrated automatically.
+- **Schema**: a new boolean column `local_audit` on the `alerts` table flags locally-recorded audit-only events (unban + manual-ban audit). The specific kind is identified by `scenario` (`crowdsieve/unban` or `crowdsieve/manual-audit`).
 
 ## [0.4.0] - 2026-04-26
 

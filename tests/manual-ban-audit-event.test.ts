@@ -304,12 +304,18 @@ describe('Manual ban audit event recording', () => {
     });
 
     const row = sqlite
-      .prepare('SELECT source_scope, source_value, source_ip FROM alerts WHERE id = ?')
-      .get(id) as { source_scope: string; source_value: string; source_ip: string | null };
+      .prepare('SELECT source_scope, source_value, source_ip, source_range FROM alerts WHERE id = ?')
+      .get(id) as {
+      source_scope: string;
+      source_value: string;
+      source_ip: string | null;
+      source_range: string | null;
+    };
 
     expect(row.source_scope).toBe('range');
     expect(row.source_value).toBe('203.0.113.0/24');
     expect(row.source_ip).toBeNull();
+    expect(row.source_range).toBe('203.0.113.0/24');
   });
 });
 
