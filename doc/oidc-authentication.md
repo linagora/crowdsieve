@@ -50,20 +50,20 @@ sequenceDiagram
 
 ### Environment Variables
 
-| Variable                | Required | Default | Description                                                                                                                                                            |
-| ----------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`             | No       | auto    | `oidc`, `headers`, or `none`. Auto-detects to `oidc` when `OIDC_ISSUER` + `OIDC_CLIENT_ID` are set, otherwise `none`.                                                  |
-| `OIDC_ISSUER`           | Yes\*    | -       | OIDC provider URL (e.g., `https://auth.example.com/`). \*Required for OIDC mode.                                                                                       |
-| `OIDC_CLIENT_ID`        | Yes\*    | -       | OAuth2 client ID. \*Required for OIDC mode.                                                                                                                            |
-| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required for OIDC unless JWS is enabled).                                                                                                      |
-| `AUTH_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor. Any non-empty string (e.g. `sub`, `email`, `name`, `preferredUsername`, `familyName`). Wins over `OIDC_ACTOR_CLAIM` when both are set.   |
-| `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Legacy alias for `AUTH_ACTOR_CLAIM`. Kept for back-compat.                                                                                                             |
-| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode.                                                                                              |
-| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development.                                                                                                                              |
-| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set).                                                                                                                     |
-| `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges. Empty = no IP check.                                                           |
-| `AUTH_LOGOUT_URL`       | No       | -       | (Headers mode only) External logout URL the dashboard redirects to when a user clicks "Sign out". When unset, the link is hidden.                                      |
-| `AUTH_LOGIN_URL`        | No       | -       | (Headers mode only) External login URL surfaced as a "Go to login portal" button on the headers-mode 401 page.                                                         |
+| Variable                | Required | Default | Description                                                                                                                                                           |
+| ----------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`             | No       | auto    | `oidc`, `headers`, or `none`. Auto-detects to `oidc` when `OIDC_ISSUER` + `OIDC_CLIENT_ID` are set, otherwise `none`.                                                 |
+| `OIDC_ISSUER`           | Yes\*    | -       | OIDC provider URL (e.g., `https://auth.example.com/`). \*Required for OIDC mode.                                                                                      |
+| `OIDC_CLIENT_ID`        | Yes\*    | -       | OAuth2 client ID. \*Required for OIDC mode.                                                                                                                           |
+| `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required for OIDC unless JWS is enabled).                                                                                                     |
+| `AUTH_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor. Any non-empty string (e.g. `sub`, `email`, `name`, `preferredUsername`, `familyName`). Wins over `OIDC_ACTOR_CLAIM` when both are set. |
+| `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Legacy alias for `AUTH_ACTOR_CLAIM`. Kept for back-compat.                                                                                                            |
+| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode.                                                                                             |
+| `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development.                                                                                                                             |
+| `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set).                                                                                                                    |
+| `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges. Empty = no IP check.                                                          |
+| `AUTH_LOGOUT_URL`       | No       | -       | (Headers mode only) External logout URL the dashboard redirects to when a user clicks "Sign out". When unset, the link is hidden.                                     |
+| `AUTH_LOGIN_URL`        | No       | -       | (Headers mode only) External login URL surfaced as a "Go to login portal" button on the headers-mode 401 page.                                                        |
 
 The `AUTH_ACTOR_CLAIM` (or legacy `OIDC_ACTOR_CLAIM`) variable controls which
 claim identifies the user that issued or revoked a decision (recorded on every
@@ -226,14 +226,14 @@ CrowdSieve supports [OpenID Connect Back-Channel Logout 1.0](https://openid.net/
 
 ### Endpoint reference
 
-| Item                 | Value                                                                                                                                                                  |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Method               | `POST`                                                                                                                                                                 |
-| Path                 | `/api/auth/backchannel-logout`                                                                                                                                         |
-| Public URL           | `https://crowdsieve.example.com/api/auth/backchannel-logout`                                                                                                           |
-| Content-Type         | `application/x-www-form-urlencoded`                                                                                                                                    |
-| Authentication       | None at the HTTP layer — the request is authenticated by the JWT signature on `logout_token`, verified against the provider's JWKS (fetched from `<issuer>/.well-known/openid-configuration`). |
-| Caller               | Direct call from the OIDC provider (server-to-server, no browser involvement).                                                                                         |
+| Item           | Value                                                                                                                                                                                          |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method         | `POST`                                                                                                                                                                                         |
+| Path           | `/api/auth/backchannel-logout`                                                                                                                                                                 |
+| Public URL     | `https://crowdsieve.example.com/api/auth/backchannel-logout`                                                                                                                                   |
+| Content-Type   | `application/x-www-form-urlencoded`                                                                                                                                                            |
+| Authentication | None at the HTTP layer — the request is authenticated by the JWT signature on `logout_token`, verified against the provider's JWKS (fetched from `<issuer>/.well-known/openid-configuration`). |
+| Caller         | Direct call from the OIDC provider (server-to-server, no browser involvement).                                                                                                                 |
 
 #### Request body
 
@@ -247,25 +247,25 @@ A single form-encoded parameter:
 
 The token is decrypted (when JWE is enabled and the token has 5 segments) then signature-verified. Claims are validated per the spec:
 
-| Claim    | Required           | Validation                                                                                                                |
-| -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `iss`    | Yes                | Must match the configured `OIDC_ISSUER`.                                                                                  |
-| `aud`    | Yes                | Must match the configured `OIDC_CLIENT_ID` (single audience or array containing it).                                      |
-| `iat`    | Yes                | Issued-at timestamp.                                                                                                      |
-| `jti`    | Yes                | Unique token id; tracked in memory for 5 minutes to reject replays. Tokens missing `jti` are rejected.                    |
-| `events` | Yes                | Must contain the key `http://schemas.openid.net/event/backchannel-logout` with an empty object value (per spec).          |
-| `sid`    | Yes (in practice)  | Session identifier. Required for revocation to take effect (see prerequisite above) — must match `claims.sid` of the original id_token. |
-| `sub`    | At least one of `sub`/`sid` per spec | Subject identifier. The endpoint accepts `sub`-only logout tokens, but they only revoke if the session itself carries a `sid`.        |
-| `nonce`  | Forbidden          | Per spec a logout token MUST NOT carry a nonce; the request is rejected if it does.                                       |
+| Claim    | Required                             | Validation                                                                                                                              |
+| -------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `iss`    | Yes                                  | Must match the configured `OIDC_ISSUER`.                                                                                                |
+| `aud`    | Yes                                  | Must match the configured `OIDC_CLIENT_ID` (single audience or array containing it).                                                    |
+| `iat`    | Yes                                  | Issued-at timestamp.                                                                                                                    |
+| `jti`    | Yes                                  | Unique token id; tracked in memory for 5 minutes to reject replays. Tokens missing `jti` are rejected.                                  |
+| `events` | Yes                                  | Must contain the key `http://schemas.openid.net/event/backchannel-logout` with an empty object value (per spec).                        |
+| `sid`    | Yes (in practice)                    | Session identifier. Required for revocation to take effect (see prerequisite above) — must match `claims.sid` of the original id_token. |
+| `sub`    | At least one of `sub`/`sid` per spec | Subject identifier. The endpoint accepts `sub`-only logout tokens, but they only revoke if the session itself carries a `sid`.          |
+| `nonce`  | Forbidden                            | Per spec a logout token MUST NOT carry a nonce; the request is rejected if it does.                                                     |
 
 #### Responses
 
-| Status                       | When                                                                                                                                                                                              | Body                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `200 OK`                     | Token verified and (if applicable) matching session(s) revoked. Empty body, `Cache-Control: no-store` per spec. **A 200 is also returned when no session matched** — revocation is best-effort.   | _(empty)_                                                     |
-| `400 Bad Request`            | Missing/empty `logout_token`, JWE decryption failure, signature failure, claim validation failure (issuer / audience / event / nonce-forbidden / `sub`-or-`sid` missing), `jti` reuse (replay).   | Plain-text error message (e.g. `Invalid logout_token: …`).    |
-| `404 Not Found`              | OIDC mode is not enabled on this dashboard.                                                                                                                                                       | `Not Found`                                                   |
-| `500 Internal Server Error`  | OIDC is flagged as enabled but the runtime config is missing.                                                                                                                                     | `OIDC not configured`                                         |
+| Status                      | When                                                                                                                                                                                            | Body                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `200 OK`                    | Token verified and (if applicable) matching session(s) revoked. Empty body, `Cache-Control: no-store` per spec. **A 200 is also returned when no session matched** — revocation is best-effort. | _(empty)_                                                  |
+| `400 Bad Request`           | Missing/empty `logout_token`, JWE decryption failure, signature failure, claim validation failure (issuer / audience / event / nonce-forbidden / `sub`-or-`sid` missing), `jti` reuse (replay). | Plain-text error message (e.g. `Invalid logout_token: …`). |
+| `404 Not Found`             | OIDC mode is not enabled on this dashboard.                                                                                                                                                     | `Not Found`                                                |
+| `500 Internal Server Error` | OIDC is flagged as enabled but the runtime config is missing.                                                                                                                                   | `OIDC not configured`                                      |
 
 ### Features
 
@@ -488,15 +488,15 @@ AUTH_ACTOR_CLAIM=preferredUsername
 
 Identity is forwarded as `Auth-<Field>` headers. The dashboard maps each `Auth-Foo-Bar-Baz` header to a `fooBarBaz` claim on the SessionUser:
 
-| Header                    | Claim               | Notes                                    |
-| ------------------------- | ------------------- | ---------------------------------------- |
-| `Auth-Sub`                | `sub`               | **Required.** Stable, opaque user id.    |
-| `Auth-Email`              | `email`             | Optional.                                |
-| `Auth-Name`               | `name`              | Optional, full display name.             |
-| `Auth-Family-Name`        | `familyName`        | Optional.                                |
-| `Auth-Given-Name`         | `givenName`         | Optional.                                |
-| `Auth-Picture`            | `picture`           | Optional. Only `http://` / `https://` accepted. |
-| `Auth-Preferred-Username` | `preferredUsername` | Optional, useful as `AUTH_ACTOR_CLAIM`.  |
+| Header                    | Claim               | Notes                                               |
+| ------------------------- | ------------------- | --------------------------------------------------- |
+| `Auth-Sub`                | `sub`               | **Required.** Stable, opaque user id.               |
+| `Auth-Email`              | `email`             | Optional.                                           |
+| `Auth-Name`               | `name`              | Optional, full display name.                        |
+| `Auth-Family-Name`        | `familyName`        | Optional.                                           |
+| `Auth-Given-Name`         | `givenName`         | Optional.                                           |
+| `Auth-Picture`            | `picture`           | Optional. Only `http://` / `https://` accepted.     |
+| `Auth-Preferred-Username` | `preferredUsername` | Optional, useful as `AUTH_ACTOR_CLAIM`.             |
 | `Auth-<Anything>`         | `<camelCase>`       | Any custom field. `Auth-Foo-Bar-Baz` → `fooBarBaz`. |
 
 Mapping rule: strip the `auth-` prefix (case-insensitive), then convert the remaining kebab-case suffix to camelCase. Header values are trimmed, stripped of CR/LF, and capped at 1024 characters as a defensive measure.
@@ -563,12 +563,12 @@ server {
 
 `TRUSTED_PROXY_IPS` is a comma-separated allowlist applied to the immediate caller of the dashboard:
 
-| Entry format            | Match semantics                                                                          |
-| ----------------------- | ---------------------------------------------------------------------------------------- |
-| `10.0.0.5`              | Exact IPv4.                                                                              |
-| `10.0.0.0/16`           | IPv4 CIDR.                                                                               |
-| `2001:db8::1`           | Exact IPv6 (IPv6 CIDRs are matched as exact strings only in v1).                          |
-| `::ffff:10.0.0.1`       | IPv4-mapped IPv6, normalized to the IPv4 form for comparison against IPv4/IPv4-CIDR entries. |
+| Entry format      | Match semantics                                                                              |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| `10.0.0.5`        | Exact IPv4.                                                                                  |
+| `10.0.0.0/16`     | IPv4 CIDR.                                                                                   |
+| `2001:db8::1`     | Exact IPv6 (IPv6 CIDRs are matched as exact strings only in v1).                             |
+| `::ffff:10.0.0.1` | IPv4-mapped IPv6, normalized to the IPv4 form for comparison against IPv4/IPv4-CIDR entries. |
 
 The client IP is resolved in this order:
 
