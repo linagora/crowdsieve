@@ -706,9 +706,11 @@ export function createStorage(): AlertStorage {
       }
 
       // All distinct scenarios — populates the scenario filter dropdown.
-      // Unlike `topScenarios`, this is uncapped and includes locally-recorded
-      // audit rows so the user can filter on `crowdsieve/unban`,
-      // `crowdsieve/manual-audit`, `crowdsieve/manual`, etc.
+      // Unlike `topScenarios`, this includes locally-recorded audit rows so
+      // the user can filter on `crowdsieve/unban`, `crowdsieve/manual-audit`,
+      // `crowdsieve/manual`, etc. Capped at 500 to keep the `/api/stats`
+      // payload and aggregation cost bounded — far above any realistic
+      // CrowdSec scenario cardinality.
       const allScenariosQuery = db
         .select({
           scenario: schema.alerts.scenario,
@@ -717,7 +719,8 @@ export function createStorage(): AlertStorage {
         .from(schema.alerts)
         .where(sinceCondition)
         .groupBy(schema.alerts.scenario)
-        .orderBy(sql`count desc`);
+        .orderBy(sql`count desc`)
+        .limit(500);
 
       let allScenarios: Array<{ scenario: string; count: number }>;
       if (isPostgres) {

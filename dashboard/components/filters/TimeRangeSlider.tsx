@@ -113,7 +113,7 @@ export function TimeRangeSlider({
               Calendar
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[1000]" align="end">
+          <PopoverContent className="w-auto p-0" align="end">
             <Calendar
               mode="range"
               selected={{ from: since || undefined, to: until || undefined }}
