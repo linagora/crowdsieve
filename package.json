@@ -1,6 +1,6 @@
 {
   "name": "crowdsieve",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "CrowdSieve - CrowdSec CAPI filtering proxy with dashboard",
   "license": "AGPL-3.0-only",
   "type": "module",

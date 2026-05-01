@@ -5,6 +5,25 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-01
+
+### Fixed
+
+#### Dashboard
+
+- **Scenario filter completeness**: the filter dropdown now lists every distinct scenario seen in the selected window (capped at 500), including locally-recorded audit scenarios such as `crowdsieve/unban`, `crowdsieve/manual-audit`, and `crowdsieve/manual`. Previously it was sourced from `topScenarios` (top 10, audit rows excluded), so users could not filter on manual events from the timeline.
+- **Scenario names**: the filter renders fully-qualified scenario names (e.g. `crowdsecurity/http-bad-user-agent`) instead of just the last path segment, removing namespace ambiguity. Truncated selections expose the full value via a `title` tooltip on hover.
+- **Filter popovers above the map**: scenario / server / time-range popovers now stack above the Leaflet zoom controls. The z-index is centralized in the base `PopoverContent` component to avoid future drift.
+
+### Added
+
+- **`allScenarios` on `/api/stats`**: new uncapped-by-default (hard cap 500) array of distinct scenarios with counts on the stats payload. `topScenarios` is unchanged (top 10, audit rows excluded) and remains the source for the dashboard summary panel.
+- **OpenAPI**: published spec regenerated to include `allScenarios` on `StatsResponse`.
+
+### Documentation
+
+- **Back-channel logout endpoint**: expanded reference for the OIDC back-channel logout endpoint.
+
 ## [0.5.0] - 2026-04-30
 
 ### Added
