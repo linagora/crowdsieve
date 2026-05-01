@@ -71,7 +71,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.300.0",
     "pino-pretty": "^10.3.0",
-    "postcss": "^8.4.33",
+    "postcss": "^8.5.10",
     "prettier": "^3.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -87,6 +87,9 @@
     "node": ">=20.0.0"
   },
   "overrides": {
-    "minimatch": "^10.2.1"
+    "minimatch": "^10.2.1",
+    "next": {
+      "postcss": "^8.5.10"
+    }
   }
 }
