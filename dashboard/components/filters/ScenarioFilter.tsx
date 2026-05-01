@@ -45,6 +45,7 @@ export function ScenarioFilter({
             'justify-between min-w-[200px]',
             isLoading && 'opacity-50 pointer-events-none'
           )}
+          title={displayName}
         >
           <span className="truncate">{displayName}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
