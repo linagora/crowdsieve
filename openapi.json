@@ -3,7 +3,7 @@
   "info": {
     "title": "CrowdSieve API",
     "description": "CrowdSec CAPI filtering proxy — internal management API + signals passthrough.",
-    "version": "0.3.5"
+    "version": "0.5.0"
   },
   "components": {
     "securitySchemes": {
@@ -209,6 +209,8 @@
                       "filterReasons",
                       "forwardedToCapi",
                       "forwardedAt",
+                      "localAudit",
+                      "actor",
                       "rawJson"
                     ],
                     "properties": {
@@ -571,6 +573,26 @@
                           }
                         ]
                       },
+                      "localAudit": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "actor": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "rawJson": {
                         "anyOf": [
                           {
@@ -707,6 +729,8 @@
                     "filterReasons",
                     "forwardedToCapi",
                     "forwardedAt",
+                    "localAudit",
+                    "actor",
                     "rawJson"
                   ],
                   "properties": {
@@ -1069,6 +1093,26 @@
                         }
                       ]
                     },
+                    "localAudit": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "rawJson": {
                       "anyOf": [
                         {
@@ -1177,6 +1221,7 @@
                     "filtered",
                     "forwarded",
                     "topScenarios",
+                    "allScenarios",
                     "topCountries",
                     "timeBounds"
                   ],
@@ -1191,6 +1236,24 @@
                       "type": "integer"
                     },
                     "topScenarios": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "scenario",
+                          "count"
+                        ],
+                        "properties": {
+                          "scenario": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "allScenarios": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -2353,6 +2416,31 @@
         "tags": [
           "decisions"
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "ip"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "ip": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "parameters": [
           {
             "schema": {

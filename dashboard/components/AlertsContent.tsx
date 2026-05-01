@@ -44,7 +44,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
         filters={filters}
         onFiltersChange={updateFilters}
         onReset={resetFilters}
-        scenarios={stats.topScenarios}
+        scenarios={stats.allScenarios}
         machines={machines}
         timeBounds={timeBounds}
         hasActiveFilters={hasActiveFilters}

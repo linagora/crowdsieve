@@ -64,7 +64,13 @@ export interface AlertStats {
   total: number;
   filtered: number;
   forwarded: number;
+  /** Top 10 scenarios for the stats panel — excludes audit-only rows. */
   topScenarios: Array<{ scenario: string; count: number }>;
+  /**
+   * Distinct scenarios for the filter dropdown. Uncapped, includes audit-only
+   * rows (`crowdsieve/unban`, `crowdsieve/manual-audit`, `crowdsieve/manual`).
+   */
+  allScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
   timeBounds: { min: string | null; max: string | null };
 }

@@ -300,6 +300,15 @@ describe('Stats exclude unban events; listings include them', () => {
 
     const stats = await storage.getStats();
     expect(stats.total).toBe(1);
+    // topScenarios excludes audit-only rows so it stays useful for the stats
+    // panel (only `crowdsecurity/ssh-bf` here, not `crowdsieve/unban`).
+    expect(stats.topScenarios.map((s) => s.scenario)).not.toContain('crowdsieve/unban');
+    expect(stats.topScenarios.map((s) => s.scenario)).toContain('crowdsecurity/ssh-bf');
+    // allScenarios is the dropdown source: it MUST surface audit scenarios
+    // so the user can filter on them from the timeline.
+    const allScenarioNames = stats.allScenarios.map((s) => s.scenario);
+    expect(allScenarioNames).toContain('crowdsecurity/ssh-bf');
+    expect(allScenarioNames).toContain('crowdsieve/unban');
 
     const timeStats = await storage.getTimeDistributionStats();
     expect(timeStats.totalAlerts).toBe(1);
