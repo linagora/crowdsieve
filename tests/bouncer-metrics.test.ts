@@ -29,6 +29,49 @@ function setupTestDatabase() {
   sqlite.pragma('foreign_keys = ON');
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT,
+      machine_id TEXT,
+      scenario TEXT NOT NULL DEFAULT '',
+      scenario_hash TEXT,
+      scenario_version TEXT,
+      message TEXT,
+      events_count INTEGER,
+      capacity INTEGER,
+      leakspeed TEXT,
+      start_at TEXT,
+      stop_at TEXT,
+      created_at TEXT,
+      received_at TEXT NOT NULL DEFAULT (datetime('now')),
+      simulated INTEGER DEFAULT 0,
+      remediation INTEGER DEFAULT 0,
+      has_decisions INTEGER DEFAULT 0,
+      replicated INTEGER DEFAULT 0,
+      source_scope TEXT,
+      source_value TEXT,
+      source_ip TEXT,
+      source_range TEXT,
+      source_as_number TEXT,
+      source_as_name TEXT,
+      source_cn TEXT,
+      geo_country_code TEXT,
+      geo_country_name TEXT,
+      geo_city TEXT,
+      geo_region TEXT,
+      geo_latitude REAL,
+      geo_longitude REAL,
+      geo_timezone TEXT,
+      geo_isp TEXT,
+      geo_org TEXT,
+      filtered INTEGER DEFAULT 0,
+      filter_reasons TEXT,
+      forwarded_to_capi INTEGER DEFAULT 0,
+      forwarded_at TEXT,
+      local_audit INTEGER DEFAULT 0,
+      actor TEXT,
+      raw_json TEXT
+    );
     CREATE TABLE IF NOT EXISTS bouncer_metrics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lapi_server_name TEXT NOT NULL,
@@ -376,6 +419,47 @@ describe('Bouncer metrics storage', () => {
     expect(names).toHaveLength(3);
     const keys = names.map((n) => `${n.lapiServerName}::${n.bouncerName}`).sort();
     expect(keys).toEqual(['srv1::b1', 'srv1::b2', 'srv2::b1']);
+  });
+
+  it('getStats activeBans sums activeDecisions from latest snapshot per bouncer', async () => {
+    const now = Date.now();
+    // Two snapshots for (srv1, fw-1): older=10, newer=25 → expect 25
+    await storage.saveBouncerMetrics([
+      makeRow({ lapiServerName: 'srv1', bouncerName: 'fw-1', activeDecisions: 10, collectedAt: now - 10000 }),
+      makeRow({ lapiServerName: 'srv1', bouncerName: 'fw-1', activeDecisions: 25, collectedAt: now - 1000 }),
+      // A different bouncer on srv2: single snapshot → 7
+      makeRow({ lapiServerName: 'srv2', bouncerName: 'fw-2', activeDecisions: 7, collectedAt: now - 2000 }),
+      // A log_processor row — must NOT be counted
+      makeRow({ lapiServerName: 'srv1', bouncerName: 'lp-1', componentKind: 'log_processor', activeDecisions: 99, collectedAt: now }),
+    ]);
+
+    const stats = await storage.getStats();
+    expect(stats.activeBans).toBe(32); // 25 + 7 (10 is older, 99 is log_processor)
+    // Sanity: other fields still exist
+    expect(typeof stats.total).toBe('number');
+    expect(typeof stats.filtered).toBe('number');
+    expect(typeof stats.forwarded).toBe('number');
+  });
+
+  it('getStats blockedRequests sums droppedItems from latest snapshot per bouncer', async () => {
+    const t1 = Date.now() - 10000;
+    const t2 = Date.now() - 1000;
+    await storage.saveBouncerMetrics([
+      // Two snapshots for (A, fw): older=100, newer=250 → expect 250
+      makeRow({ lapiServerName: 'A', bouncerName: 'fw', componentKind: 'remediation', droppedItems: 100, collectedAt: t1 }),
+      makeRow({ lapiServerName: 'A', bouncerName: 'fw', componentKind: 'remediation', droppedItems: 250, collectedAt: t2 }),
+      // Single snapshot for (A, nginx): 40
+      makeRow({ lapiServerName: 'A', bouncerName: 'nginx', componentKind: 'remediation', droppedItems: 40, collectedAt: t1 }),
+      // Wrong kind — must be excluded
+      makeRow({ lapiServerName: 'A', bouncerName: 'fw', componentKind: 'log_processor', droppedItems: 999, collectedAt: t2 }),
+    ]);
+
+    const stats = await storage.getStats();
+    expect(stats.blockedRequests).toBe(290); // 250 (latest fw) + 40 (only nginx)
+    // Sanity: other fields still exist
+    expect(typeof stats.total).toBe('number');
+    expect(typeof stats.filtered).toBe('number');
+    expect(typeof stats.forwarded).toBe('number');
   });
 
   it('cleanupBouncerMetrics deletes only old rows', async () => {
