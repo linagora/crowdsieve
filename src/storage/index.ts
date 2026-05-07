@@ -60,9 +60,13 @@ export interface AlertStats {
   filtered: number;
   forwarded: number;
   /**
-   * Sum of `droppedItems` from the latest bouncer_metrics snapshot per
+   * Total requests dropped by all bouncers over the last 30 days, computed
+   * as the sum of positive deltas between consecutive snapshots per
    * (lapiServerName, bouncerName) where componentKind='remediation'.
-   * This is a cumulative counter since each bouncer last restarted.
+   * Counter-reset detection: if droppedItems decreases between two snapshots
+   * (bouncer/agent restarted), the new value is treated as a fresh delta.
+   * The very first snapshot per pair within the window contributes 0 (it is
+   * treated as the baseline, not new blocks).
    * Returns 0 when bouncer metrics are disabled or no data is available.
    */
   blockedRequests: number;
@@ -782,36 +786,50 @@ export function createStorage(): AlertStorage {
         ).all();
       }
 
-      // Blocked requests: sum of droppedItems from the latest bouncer_metrics
-      // snapshot per (lapiServerName, bouncerName) where componentKind='remediation'.
-      // The `since` parameter does NOT apply — this is a cumulative counter.
-      const m2 = schema.bouncerMetrics;
-      const blockedRequestsQuery = db
-        .select({
-          droppedItems: sql<number>`coalesce(sum(${m2.droppedItems}), 0)`,
-        })
-        .from(m2)
-        .where(
-          sql`${m2.componentKind} = 'remediation'
-            AND ${m2.collectedAt} = (
-              SELECT MAX(m3.collected_at)
-              FROM bouncer_metrics m3
-              WHERE m3.lapi_server_name = ${m2.lapiServerName}
-                AND m3.bouncer_name = ${m2.bouncerName}
-                AND m3.component_kind = 'remediation'
-            )`
-        );
+      // Blocked requests: sum of positive deltas between consecutive snapshots
+      // per (lapiServerName, bouncerName) where componentKind='remediation',
+      // within the last 30 days.  Counter-reset detection: if droppedItems
+      // decreases between two snapshots the new value is used as the delta
+      // (bouncer restarted).  The first snapshot per pair has no predecessor
+      // and contributes 0 (treated as the window baseline, not new blocks).
+      // NOTE: the retention window is hardcoded to 30 days here; it will be
+      // wired to config.bouncer_metrics.retention_days when storage gains
+      // config access.
+      const blockedRequestsCutoffMs = Date.now() - 30 * 86400 * 1000;
+      const blockedRequestsQuery = sql<{ total: number }>`
+        WITH deltas AS (
+          SELECT
+            lapi_server_name,
+            bouncer_name,
+            dropped_items,
+            LAG(dropped_items) OVER (
+              PARTITION BY lapi_server_name, bouncer_name
+              ORDER BY collected_at
+            ) AS prev_dropped
+          FROM bouncer_metrics
+          WHERE component_kind = 'remediation'
+            AND collected_at >= ${blockedRequestsCutoffMs}
+        )
+        SELECT COALESCE(SUM(
+          CASE
+            WHEN prev_dropped IS NULL THEN 0
+            WHEN dropped_items >= prev_dropped THEN dropped_items - prev_dropped
+            ELSE dropped_items
+          END
+        ), 0) AS total
+        FROM deltas
+      `;
 
       let blockedRequests = 0;
       try {
         if (isPostgres) {
-          const rows = await blockedRequestsQuery;
-          blockedRequests = Number(rows[0]?.droppedItems) || 0;
+          const rows = await db.execute(blockedRequestsQuery);
+          blockedRequests = Number((rows as unknown as Array<{ total: number }>)[0]?.total) || 0;
         } else {
-          const result = (
-            blockedRequestsQuery as unknown as { get(): { droppedItems: number } | undefined }
-          ).get();
-          blockedRequests = Number(result?.droppedItems) || 0;
+          const rows = (db as unknown as { all<T>(q: unknown): T[] }).all<{ total: number }>(
+            blockedRequestsQuery
+          );
+          blockedRequests = Number(rows[0]?.total) || 0;
         }
       } catch {
         // bouncerMetrics table may not exist yet (pre-migration envs); fall back to 0

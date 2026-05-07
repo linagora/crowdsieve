@@ -467,25 +467,47 @@ describe('Bouncer metrics storage', () => {
     expect(keys).toEqual(['srv1::b1', 'srv1::b2', 'srv2::b1']);
   });
 
-  it('getStats blockedRequests sums droppedItems from latest snapshot per bouncer', async () => {
-    const t1 = Date.now() - 10000;
-    const t2 = Date.now() - 1000;
+  it('getStats blockedRequests sums windowed deltas with reset detection', async () => {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+
     await storage.saveBouncerMetrics([
-      // Two snapshots for (A, fw): older=100, newer=250 → expect 250
-      makeRow({ lapiServerName: 'A', bouncerName: 'fw', componentKind: 'remediation', droppedItems: 100, collectedAt: t1 }),
-      makeRow({ lapiServerName: 'A', bouncerName: 'fw', componentKind: 'remediation', droppedItems: 250, collectedAt: t2 }),
-      // Single snapshot for (A, nginx): 40
-      makeRow({ lapiServerName: 'A', bouncerName: 'nginx', componentKind: 'remediation', droppedItems: 40, collectedAt: t1 }),
-      // Wrong kind — must be excluded
-      makeRow({ lapiServerName: 'A', bouncerName: 'fw', componentKind: 'log_processor', droppedItems: 999, collectedAt: t2 }),
+      // (serverA, fwBouncer): 5 snapshots — first contributes 0 (baseline)
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 100, collectedAt: now - 25 * day }),
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 250, collectedAt: now - 20 * day }), // delta +150
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 80,  collectedAt: now - 15 * day }), // reset → delta +80
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now - 10 * day }), // delta +220
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now -  5 * day }), // delta 0
+
+      // (serverA, nginxBouncer): 2 snapshots — first contributes 0 (baseline)
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 50,  collectedAt: now - 12 * day }),
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 170, collectedAt: now -  1 * day }), // delta +120
+
+      // log_processor row — must be excluded from the total
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'log_processor', droppedItems: 999, collectedAt: now - 5 * day }),
     ]);
 
     const stats = await storage.getStats();
-    expect(stats.blockedRequests).toBe(290); // 250 (latest fw) + 40 (only nginx)
-    // Sanity: other fields still exist
+    // fwBouncer:    0 + 150 + 80 + 220 + 0  = 450
+    // nginxBouncer: 0 + 120                  = 120
+    // log_processor excluded
+    expect(stats.blockedRequests).toBe(570);
+
+    // Sanity: other fields still exist and are numeric
     expect(typeof stats.total).toBe('number');
     expect(typeof stats.filtered).toBe('number');
     expect(typeof stats.forwarded).toBe('number');
+  });
+
+  it('getStats blockedRequests contributes 0 for a bouncer with only one snapshot in window', async () => {
+    const now = Date.now();
+    await storage.saveBouncerMetrics([
+      makeRow({ lapiServerName: 'serverB', bouncerName: 'singleBouncer', componentKind: 'remediation', droppedItems: 500, collectedAt: now - 1000 }),
+    ]);
+
+    const stats = await storage.getStats();
+    // Single snapshot has no predecessor → treated as baseline, delta = 0
+    expect(stats.blockedRequests).toBe(0);
   });
 
   it('cleanupBouncerMetrics deletes only old rows', async () => {
