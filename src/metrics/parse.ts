@@ -148,7 +148,30 @@ function buildRowsForComponent(
   if (!rawName) return [];
   const bouncerName = canonicalizeBouncerName(rawName);
 
-  // Block form: one row per block.
+  // Build a "registration-only" row for components that emit no usable
+  // metrics (e.g. LemonLDAP-NG / libwww-perl bouncers that query LAPI but
+  // never push counters). Without this, the bouncer is invisible in the
+  // dashboard even though it is registered. The metricsJson stays `'[]'`
+  // so the homepage SUM (which filters on `metrics_json != '[]'`) ignores
+  // these rows.
+  const emptyRow = (): NewBouncerMetric => ({
+    lapiServerName,
+    componentKind: kind,
+    bouncerName,
+    bouncerType: component.type ?? null,
+    osName: component.os?.name ?? null,
+    osVersion: component.os?.version ?? null,
+    version: component.version ?? null,
+    activeDecisions: 0,
+    processedItems: 0,
+    droppedItems: 0,
+    bytesProcessed: 0,
+    collectedAt: fallbackCollectedAt,
+    metricsJson: '[]',
+  });
+
+  // Block form: one row per non-empty block. If no block carries items at
+  // all, fall through to the registration-only row below.
   if (Array.isArray(component.metrics) && isBlockForm(component.metrics)) {
     const rows: NewBouncerMetric[] = [];
     let blockIndex = 0;
@@ -156,7 +179,6 @@ function buildRowsForComponent(
       if (!entry || typeof entry !== 'object') continue;
       const block = entry as MetricsBlock;
       const items: MetricsItem[] = Array.isArray(block.items) ? (block.items as MetricsItem[]) : [];
-      // Skip empty blocks (fresh registrations / placeholder entries).
       if (items.length === 0) {
         blockIndex++;
         continue;
@@ -189,12 +211,12 @@ function buildRowsForComponent(
       });
       blockIndex++;
     }
-    return rows;
+    return rows.length > 0 ? rows : [emptyRow()];
   }
 
   // Flat form (legacy/test): treat the whole array as one block → one row.
   const flatItems = Array.isArray(component.metrics) ? (component.metrics as MetricsItem[]) : [];
-  if (flatItems.length === 0) return [];
+  if (flatItems.length === 0) return [emptyRow()];
   const counters = sumItemsByName(flatItems);
   return [
     {

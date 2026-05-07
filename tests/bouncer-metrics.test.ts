@@ -672,11 +672,12 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows[0].collectedAt).toBe(1730125256 * 1000);
   });
 
-  it('skips components with no items (no phantom 0 rows for freshly registered bouncers)', () => {
-    // CrowdSec relays a registration entry before the bouncer reports any
-    // metrics. Persisting droppedItems=0 here would later be misread as a
-    // baseline of 0 against the next real cumulative push, inflating delta
-    // calculations.
+  it('emits a registration-only row for components with no usable items', () => {
+    // Bouncers like LemonLDAP-NG / libwww-perl register with the LAPI and pull
+    // decisions, but never POST usage-metrics. CrowdSec still includes them in
+    // each relay with `metrics: []`. We must keep them visible (one row with
+    // all-zero counters and metricsJson='[]') so the dashboard lists them.
+    // The homepage SUM filters on `metrics_json != '[]'` to exclude them.
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -688,9 +689,13 @@ describe('buildRowsFromPayload (parser)', () => {
       },
       0
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].bouncerName).toBe('has-data');
-    expect(rows[0].droppedItems).toBe(7);
+    expect(rows).toHaveLength(3);
+    const byName = Object.fromEntries(rows.map((r) => [r.bouncerName, r]));
+    expect(byName['just-registered'].droppedItems).toBe(0);
+    expect(byName['just-registered'].metricsJson).toBe('[]');
+    expect(byName['has-empty-block'].droppedItems).toBe(0);
+    expect(byName['has-empty-block'].metricsJson).toBe('[]');
+    expect(byName['has-data'].droppedItems).toBe(7);
   });
 
   it('flat form still works (legacy back-compat)', () => {
