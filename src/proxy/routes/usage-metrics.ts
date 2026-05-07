@@ -179,6 +179,10 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
 
   const routeOpts = {
     attachValidation: true,
+    // CrowdSec LAPI relays accumulated bouncer/agent metrics every ~30 min
+    // and the body can easily exceed the 1 MiB default (especially after a
+    // CAPI outage where multiple cycles backlog).
+    bodyLimit: 50 * 1024 * 1024,
     schema: {
       tags: ['metrics'],
       summary: 'Intercept CrowdSec LAPI -> CAPI usage-metrics relay',
