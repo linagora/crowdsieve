@@ -455,6 +455,107 @@ describe('buildRowsFromPayload (parser)', () => {
     );
     expect(rows).toHaveLength(0);
   });
+
+  it('block form picks latest snapshot by utc_now_timestamp', () => {
+    // Two blocks: older has dropped=100, newer has dropped=250.
+    // Must pick the newer block → droppedItems === 250, NOT 350.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456, window_size_seconds: 900 },
+                items: [{ name: 'dropped', value: 100, labels: { ip_type: 'ipv4' } }],
+              },
+              {
+                meta: { utc_now_timestamp: 1730125256, window_size_seconds: 900 },
+                items: [{ name: 'dropped', value: 250, labels: { ip_type: 'ipv4' } }],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(250);
+    expect(rows[0].collectedAt).toBe(1730125256 * 1000);
+  });
+
+  it('block form sums per-label items within the latest block', () => {
+    // One block with two dropped items for different labels → total 250.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456 },
+                items: [
+                  { name: 'dropped', value: 200, labels: { ip_type: 'ipv4' } },
+                  { name: 'dropped', value: 50, labels: { ip_type: 'ipv6' } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(250);
+  });
+
+  it('block form with missing meta picks last block by array order', () => {
+    // Two blocks without meta; second one has dropped=300.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              { items: [{ name: 'dropped', value: 100, labels: {} }] },
+              { items: [{ name: 'dropped', value: 300, labels: {} }] },
+            ],
+          },
+        ],
+      },
+      5000
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(300);
+    // No timestamp in meta → falls back to collectedAt parameter.
+    expect(rows[0].collectedAt).toBe(5000);
+  });
+
+  it('flat form still works (legacy back-compat)', () => {
+    // Legacy payload: metrics is a flat array of items with top-level name/value.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              { name: 'dropped', value: 42 },
+              { name: 'processed', value: 100 },
+            ],
+          },
+        ],
+      },
+      9000
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(42);
+    expect(rows[0].processedItems).toBe(100);
+    expect(rows[0].collectedAt).toBe(9000);
+  });
 });
 
 describe('Bouncer metrics storage', () => {

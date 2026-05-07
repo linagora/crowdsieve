@@ -26,6 +26,11 @@ export interface MetricsBlock {
    * both in {@link buildRowsFromPayload}.
    */
   items?: MetricsItem[];
+  meta?: {
+    utc_now_timestamp?: number;
+    window_size_seconds?: number;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -54,52 +59,87 @@ const HOT_COUNTER_NAMES = {
 type HotCounterKey = (typeof HOT_COUNTER_NAMES)[keyof typeof HOT_COUNTER_NAMES];
 
 /**
- * Flatten the `metrics` field of a component into a single list of items.
+ * Determine whether the `metrics` array uses the block form
+ * (`Array<{ items?: [], meta?: {...} }>`) or the flat item form
+ * (`Array<{ name, value, ... }>`).
  *
- * CrowdSec's serialization is inconsistent across releases / component kinds:
- *   - some emit a flat `metrics: [{ name, value, ... }, ...]`
- *   - some emit `metrics: [{ items: [{ name, value, ... }, ...] }, ...]`
- * We accept both and merge them.
+ * The block form is the modern CrowdSec shape; flat is legacy/test data.
+ * An array is considered block form when at least one entry contains an
+ * `items` array or a `meta` object (and none of the entries look purely like
+ * flat items with a `name` string at the top level on entries that also lack
+ * `items`/`meta`).
+ *
+ * Strategy: an entry is a block if it has `items` or `meta`; it is a flat
+ * item if it has a top-level `name` string. We treat the array as block form
+ * when ANY entry is identified as a block.
  */
-function flattenItems(metrics: MetricsComponent['metrics']): MetricsItem[] {
-  if (!Array.isArray(metrics)) return [];
-  const out: MetricsItem[] = [];
+function isBlockForm(metrics: MetricsComponent['metrics']): boolean {
+  if (!Array.isArray(metrics)) return false;
   for (const entry of metrics) {
     if (!entry || typeof entry !== 'object') continue;
-    // Heuristic: an entry with a `name` looks like an item; an entry with
-    // `items[]` is a wrapper. Some payloads can have both shapes mixed in
-    // the same array, so we handle each case independently.
-    const block = entry as MetricsBlock & MetricsItem;
-    if (Array.isArray(block.items)) {
-      for (const it of block.items) {
-        if (it && typeof it === 'object') out.push(it);
-      }
-    }
-    if (typeof block.name === 'string') {
-      out.push(block as MetricsItem);
+    const e = entry as Record<string, unknown>;
+    if (Array.isArray(e['items']) || (e['meta'] !== undefined && typeof e['meta'] === 'object')) {
+      return true;
     }
   }
-  return out;
+  return false;
 }
 
-/** Sum same-name metric items (CrowdSec emits one per label combination). */
-function buildRow(
-  lapiServerName: string,
-  component: MetricsComponent,
-  kind: ComponentKind,
-  collectedAt: number
-): NewBouncerMetric | null {
-  const bouncerName = component.name?.trim();
-  if (!bouncerName) return null;
+/**
+ * Pick the most recent block from a block-form metrics array.
+ *
+ * "Most recent" is determined by `block.meta.utc_now_timestamp` (largest
+ * value wins). When no block carries a timestamp, we fall back to the last
+ * entry in array order (CrowdSec appends blocks chronologically).
+ */
+function pickLatestBlock(metrics: MetricsComponent['metrics']): MetricsBlock | null {
+  if (!Array.isArray(metrics) || metrics.length === 0) return null;
 
+  let bestBlock: MetricsBlock | null = null;
+  let bestTs: number | null = null;
+  let anyTimestamp = false;
+
+  for (const entry of metrics) {
+    if (!entry || typeof entry !== 'object') continue;
+    const block = entry as MetricsBlock;
+    const ts =
+      typeof block.meta?.utc_now_timestamp === 'number' ? block.meta.utc_now_timestamp : null;
+    if (ts !== null) {
+      anyTimestamp = true;
+      if (bestTs === null || ts > bestTs) {
+        bestTs = ts;
+        bestBlock = block;
+      }
+    } else {
+      // No timestamp on this block — track it as the "last seen" fallback.
+      if (!anyTimestamp) {
+        bestBlock = block;
+      }
+    }
+  }
+
+  // If we found at least one timestamped block, bestBlock already points to
+  // the best one.  If no block had a timestamp, bestBlock is the last entry
+  // because we kept overwriting it with each timestamp-less entry (and the
+  // `!anyTimestamp` guard means we stop updating once a timestamped entry is
+  // seen — but in the pure no-timestamp case we always keep the latest seen,
+  // which is the last array element).
+  return bestBlock;
+}
+
+/**
+ * Sum same-name metric items within a single block.
+ *
+ * CrowdSec emits one item per label combination (e.g. dropped{ipv4} + dropped{ipv6}).
+ * We collapse them into a single total per counter name.
+ */
+function sumItemsByName(items: MetricsItem[]): Record<HotCounterKey, number> {
   const counters: Record<HotCounterKey, number> = {
     activeDecisions: 0,
     processedItems: 0,
     droppedItems: 0,
     bytesProcessed: 0,
   };
-
-  const items = flattenItems(component.metrics);
   for (const item of items) {
     if (!item || typeof item.name !== 'string') continue;
     const target = HOT_COUNTER_NAMES[item.name as keyof typeof HOT_COUNTER_NAMES];
@@ -109,6 +149,51 @@ function buildRow(
       counters[target] += value;
     }
   }
+  return counters;
+}
+
+/**
+ * Select the items to sum and the block's timestamp (ms) from the component's
+ * `metrics` field.
+ *
+ * Block form (modern): picks the latest block's `items[]`.
+ * Flat form (legacy):  treats the whole array as `MetricsItem[]`.
+ */
+function pickLatestSnapshot(
+  metrics: MetricsComponent['metrics'],
+  _collectedAtFallback: number
+): { items: MetricsItem[]; blockTimestampMs: number | null } {
+  if (!Array.isArray(metrics) || metrics.length === 0) {
+    return { items: [], blockTimestampMs: null };
+  }
+
+  if (isBlockForm(metrics)) {
+    const block = pickLatestBlock(metrics);
+    if (!block) return { items: [], blockTimestampMs: null };
+    const items: MetricsItem[] = Array.isArray(block.items) ? (block.items as MetricsItem[]) : [];
+    const ts =
+      typeof block.meta?.utc_now_timestamp === 'number'
+        ? block.meta.utc_now_timestamp * 1000
+        : null;
+    return { items, blockTimestampMs: ts };
+  }
+
+  // Flat / legacy form: treat every entry directly as a MetricsItem.
+  return { items: metrics as MetricsItem[], blockTimestampMs: null };
+}
+
+/** Build a single bouncer metric row from a component descriptor. */
+function buildRow(
+  lapiServerName: string,
+  component: MetricsComponent,
+  kind: ComponentKind,
+  collectedAt: number
+): NewBouncerMetric | null {
+  const bouncerName = component.name?.trim();
+  if (!bouncerName) return null;
+
+  const { items, blockTimestampMs } = pickLatestSnapshot(component.metrics, collectedAt);
+  const counters = sumItemsByName(items);
 
   return {
     lapiServerName,
@@ -122,7 +207,7 @@ function buildRow(
     processedItems: counters.processedItems,
     droppedItems: counters.droppedItems,
     bytesProcessed: counters.bytesProcessed,
-    collectedAt,
+    collectedAt: blockTimestampMs ?? collectedAt,
     metricsJson: JSON.stringify(items),
   };
 }
