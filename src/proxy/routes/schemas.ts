@@ -191,6 +191,7 @@ export const StatsResponse = Type.Object({
   total: Type.Integer(),
   filtered: Type.Integer(),
   forwarded: Type.Integer(),
+  blockedRequests: Type.Integer(),
   topScenarios: Type.Array(ScenarioCount),
   allScenarios: Type.Array(ScenarioCount),
   topCountries: Type.Array(CountryCount),
