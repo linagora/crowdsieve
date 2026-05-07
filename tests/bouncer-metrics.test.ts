@@ -534,6 +534,51 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows[0].collectedAt).toBe(5000);
   });
 
+  it('canonicalizes bouncer name by stripping trailing @<ipv4>', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw-bouncer-1@172.22.0.3',
+            metrics: [{ name: 'dropped', value: 5 }],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].bouncerName).toBe('fw-bouncer-1');
+  });
+
+  it('canonicalizes bouncer name by stripping trailing @<ipv6>', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          { name: 'svc@2001:db8::1', metrics: [{ name: 'dropped', value: 1 }] },
+          { name: 'svc@[fe80::1]', metrics: [{ name: 'dropped', value: 1 }] },
+        ],
+      },
+      0
+    );
+    expect(rows.map((r) => r.bouncerName)).toEqual(['svc', 'svc']);
+  });
+
+  it('leaves names without an IP suffix untouched', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          { name: 'plain-bouncer', metrics: [{ name: 'dropped', value: 1 }] },
+          { name: 'svc@hostname', metrics: [{ name: 'dropped', value: 1 }] },
+        ],
+      },
+      0
+    );
+    expect(rows.map((r) => r.bouncerName)).toEqual(['plain-bouncer', 'svc@hostname']);
+  });
+
   it('flat form still works (legacy back-compat)', () => {
     // Legacy payload: metrics is a flat array of items with top-level name/value.
     const rows = buildRowsFromPayload(

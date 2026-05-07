@@ -182,6 +182,17 @@ function pickLatestSnapshot(
   return { items: metrics as MetricsItem[], blockTimestampMs: null };
 }
 
+/**
+ * CrowdSec appends `@<source-ip>` to bouncer names registered without an
+ * explicit name. The IP changes whenever the bouncer container restarts with
+ * a fresh Docker IP, so the SAME logical bouncer ends up split across multiple
+ * rows. We strip the trailing IPv4/IPv6 suffix so cumulative counters and the
+ * delta-with-reset computation treat reboots transparently.
+ */
+function canonicalizeBouncerName(name: string): string {
+  return name.replace(/@(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]|[0-9a-f:]+)$/i, '');
+}
+
 /** Build a single bouncer metric row from a component descriptor. */
 function buildRow(
   lapiServerName: string,
@@ -189,8 +200,9 @@ function buildRow(
   kind: ComponentKind,
   collectedAt: number
 ): NewBouncerMetric | null {
-  const bouncerName = component.name?.trim();
-  if (!bouncerName) return null;
+  const rawName = component.name?.trim();
+  if (!rawName) return null;
+  const bouncerName = canonicalizeBouncerName(rawName);
 
   const { items, blockTimestampMs } = pickLatestSnapshot(component.metrics, collectedAt);
   const counters = sumItemsByName(items);
