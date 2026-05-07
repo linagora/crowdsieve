@@ -3,7 +3,7 @@
   "info": {
     "title": "CrowdSieve API",
     "description": "CrowdSec CAPI filtering proxy — internal management API + signals passthrough.",
-    "version": "0.5.1"
+    "version": "0.5.2"
   },
   "components": {
     "securitySchemes": {
