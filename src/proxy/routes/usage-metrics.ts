@@ -1,5 +1,6 @@
 /**
- * Route handler for POST /v1/usage-metrics.
+ * Route handler for POST /v1/usage-metrics and POST /v3/usage-metrics.
+ * (LAPI->CAPI uses v3, bouncers->LAPI use v1; we capture both.)
  *
  * CrowdSec LAPI relays bouncer/log-processor metrics to CAPI by POSTing this
  * endpoint. CrowdSieve sits between LAPI and CAPI as the configured CAPI proxy
@@ -153,7 +154,7 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
         }
       }
 
-      const response = await fetch(`${capiUrl}/v1/usage-metrics`, {
+      const response = await fetch(`${capiUrl}${request.url}`, {
         method: 'POST',
         headers: forwardHeaders,
         body: outgoing,
@@ -197,9 +198,15 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     },
   };
 
-  fastify.post('/v1/usage-metrics', routeOpts, (request, reply) =>
-    handle(request as FastifyRequest<{ Body: UsageMetricsPayload }>, reply)
-  );
+  // CrowdSec LAPI uses URLPrefix "v3" when talking to CAPI
+  // (pkg/apiserver/apic.go), and bouncers post to "/v1/usage-metrics" on a
+  // LAPI directly. We register both so that whichever client lands on the
+  // CrowdSieve proxy port is captured.
+  for (const path of ['/v1/usage-metrics', '/v3/usage-metrics']) {
+    fastify.post(path, routeOpts, (request, reply) =>
+      handle(request as FastifyRequest<{ Body: UsageMetricsPayload }>, reply)
+    );
+  }
 };
 
 export default usageMetricsRoute;
