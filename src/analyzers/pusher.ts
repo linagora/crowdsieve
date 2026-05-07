@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import type { Decision } from './config.js';
 import type { DetectionResult } from './detection.js';
 import type { LapiServer } from '../config/index.js';
-import { CROWDSIEVE_VERSION, getMachineToken } from '../lapi/client.js';
+import { CROWDSIEVE_VERSION, getMachineToken } from '../auth/machineToken.js';
 
 export interface PushResult {
   server: string;
