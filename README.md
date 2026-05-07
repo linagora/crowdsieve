@@ -11,6 +11,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Configurable detection rules (YAML) with grouping, distinct counting, and thresholds
   - Global whitelist for IPs and CIDR ranges
   - Push decisions to all your CrowdSec LAPI servers
+- **Bouncer Metrics**: Optional periodic collection of CrowdSec `usage-metrics` from each LAPI server (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
 - **Dashboard Authentication**: Two modes, both documented in [doc/oidc-authentication.md](./doc/oidc-authentication.md)
@@ -470,6 +471,43 @@ The dashboard includes an **Analyzers** page showing:
 - `POST /api/analyzers/:id/run` - Trigger manual run
 
 See the [full REST API reference](https://linagora.github.io/crowdsieve/api/) for all endpoints, schemas, and examples (also available as a raw [OpenAPI 3.x spec](https://linagora.github.io/crowdsieve/api/openapi.json)).
+
+## Bouncer Metrics
+
+CrowdSieve can periodically poll each configured LAPI server's `GET /v1/usage-metrics` endpoint (CrowdSec ≥ 1.6) and store per-bouncer snapshots. This surfaces in the dashboard as:
+
+- A **"Blocked Requests"** stat on the homepage — total requests dropped by all bouncers (cumulative since each bouncer started).
+- A **Bouncers** page with per-bouncer time-series charts of active decisions, processed items, dropped items, and bytes processed.
+
+The feature is disabled by default. It uses the existing `api_key` from each `lapi_servers[]` entry — no extra credentials.
+
+### Configuration
+
+Enable in `config/filters.yaml`:
+
+```yaml
+bouncer_metrics:
+  enabled: true
+  interval_seconds: 300 # Poll every 5 minutes
+  retention_days: 30 # Keep snapshots for 30 days
+  request_timeout_ms: 10000 # Per-request timeout
+```
+
+| Field                | Default | Description                                              |
+| -------------------- | ------- | -------------------------------------------------------- |
+| `enabled`            | `false` | Set to `true` to start polling on boot                   |
+| `interval_seconds`   | `300`   | Seconds between polls per LAPI server                    |
+| `retention_days`     | `30`    | Snapshots older than this are deleted by a daily cleanup |
+| `request_timeout_ms` | `10000` | Timeout for each `/v1/usage-metrics` HTTP call           |
+
+### Bouncer Metrics API Endpoints
+
+- `GET /api/bouncer-metrics` — Query stored snapshots, with filters `machine`, `bouncer`, `since`, `until`, `limit`
+- `GET /api/bouncer-metrics/names` — List distinct `(lapiServerName, bouncerName, bouncerType)` tuples for the dashboard dropdown
+
+### Storage
+
+Snapshots are stored in the `bouncer_metrics` table (auto-created at startup on both SQLite and PostgreSQL). Each row has hot columns for the common counters (`activeDecisions`, `processedItems`, `droppedItems`, `bytesProcessed`) plus a `metricsJson` blob preserving any extra fields reported by the bouncer.
 
 ## Environment Variables
 
