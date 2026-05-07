@@ -5,6 +5,25 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-05-07
+
+### Changed
+
+#### Dependencies
+
+- **React 19**: bumped the dashboard React ecosystem (`react`, `react-dom`, `react-leaflet`, `lucide-react`) to React 19.
+- **Tailwind CSS 4**: migrated to Tailwind CSS 4.
+
+### Fixed
+
+#### Dashboard
+
+- **Actor on alert detail**: the human author (login) of a manual ban / unban audit row is now displayed on the alert detail page.
+
+### Security
+
+- Update dependencies.
+
 ## [0.5.1] - 2026-05-01
 
 ### Fixed
