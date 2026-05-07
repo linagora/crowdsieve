@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { User } from 'lucide-react';
 import type { StoredAlert } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
 import { BanIPForm } from '@/components/BanIPForm';
@@ -115,6 +116,12 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
           <div>
             <h1 className="text-2xl font-bold">{alert.scenario}</h1>
             <p className="text-slate-600 mt-1">{alert.message}</p>
+            {alert.actor && (
+              <p className="text-sm text-slate-500 mt-2 flex items-center gap-1">
+                <User className="w-4 h-4" />
+                by {alert.actor}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             {alert.filtered && (
