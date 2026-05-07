@@ -579,6 +579,27 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows.map((r) => r.bouncerName)).toEqual(['plain-bouncer', 'svc@hostname']);
   });
 
+  it('skips components with no items (no phantom 0 rows for freshly registered bouncers)', () => {
+    // CrowdSec relays a registration entry before the bouncer reports any
+    // metrics. Persisting droppedItems=0 here would later be misread as a
+    // baseline of 0 against the next real cumulative push, inflating delta
+    // calculations.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          { name: 'just-registered', metrics: [] },
+          { name: 'has-empty-block', metrics: [{ items: [] }] },
+          { name: 'has-data', metrics: [{ items: [{ name: 'dropped', value: 7 }] }] },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].bouncerName).toBe('has-data');
+    expect(rows[0].droppedItems).toBe(7);
+  });
+
   it('flat form still works (legacy back-compat)', () => {
     // Legacy payload: metrics is a flat array of items with top-level name/value.
     const rows = buildRowsFromPayload(
@@ -629,7 +650,7 @@ describe('Bouncer metrics storage', () => {
       droppedItems: 5,
       bytesProcessed: 2048,
       collectedAt: Date.now(),
-      metricsJson: '[]',
+      metricsJson: '[{"name":"dropped","value":5}]',
       ...over,
     };
   }

@@ -809,6 +809,7 @@ export function createStorage(): AlertStorage {
           FROM bouncer_metrics
           WHERE component_kind = 'remediation'
             AND collected_at >= ${blockedRequestsCutoffMs}
+            AND metrics_json != '[]'
         )
         SELECT COALESCE(SUM(
           CASE

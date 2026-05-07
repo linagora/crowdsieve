@@ -205,6 +205,15 @@ function buildRow(
   const bouncerName = canonicalizeBouncerName(rawName);
 
   const { items, blockTimestampMs } = pickLatestSnapshot(component.metrics, collectedAt);
+
+  // Skip components that have no actual metrics yet — typically a freshly
+  // registered bouncer that the LAPI relays before it has pushed any
+  // counters. Storing a phantom 0-row would corrupt later delta computation:
+  // when the bouncer eventually reports a real cumulative value, the SQL
+  // window function would interpret `0 -> N` as a `+N` delta instead of the
+  // window baseline.
+  if (items.length === 0) return null;
+
   const counters = sumItemsByName(items);
 
   return {
