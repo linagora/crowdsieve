@@ -147,11 +147,15 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
       });
   }, [bouncers, serverFilter, activityScores]);
 
+  // `active_decisions` is a LAPI-global gauge: every bouncer reports the same
+  // count (the number of decisions currently held by the LAPI it queries).
+  // Summing across bouncers would multiply it by N — take the max instead so
+  // the summary card shows the actual LAPI-wide count.
   const totalActive = useMemo(
     () =>
-      Array.from(byBouncer.values()).reduce((sum, rows) => {
+      Array.from(byBouncer.values()).reduce((max, rows) => {
         const latest = rows[0]; // API returns newest-first
-        return sum + (latest?.activeDecisions ?? 0);
+        return Math.max(max, latest?.activeDecisions ?? 0);
       }, 0),
     [byBouncer]
   );

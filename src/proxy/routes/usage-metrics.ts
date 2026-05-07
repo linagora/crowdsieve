@@ -148,12 +148,19 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       const outgoing = JSON.stringify(body);
 
       // Mirror signals.ts: forward all headers except hop-by-hop ones.
+      // Also drop `content-encoding`: Fastify already gunzipped the request
+      // for us and we re-serialize the body as plain JSON below — keeping
+      // an inbound `Content-Encoding: gzip` header would make CAPI try to
+      // gunzip a plain JSON payload and reject it (415 Unsupported Media
+      // Type). Same idea for `accept-encoding` — let fetch negotiate.
       const headersToSkip = new Set([
         'host',
         'connection',
         'keep-alive',
         'transfer-encoding',
         'content-length',
+        'content-encoding',
+        'accept-encoding',
         'te',
         'trailer',
         'upgrade',
