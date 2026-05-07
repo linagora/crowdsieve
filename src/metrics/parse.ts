@@ -153,6 +153,64 @@ function sumItemsByName(items: MetricsItem[]): Record<HotCounterKey, number> {
 }
 
 /**
+ * Sum the per-window counters (`dropped`, `processed`, `bytes`) across **all**
+ * blocks in a component's `metrics` array.
+ *
+ * CrowdSec emits one block per `WindowSizeSeconds` window with **per-window**
+ * counter values (NOT cumulative): each block's `dropped`/`processed`/`bytes`
+ * count only what happened during that window. Producing a meaningful total
+ * therefore requires summing every block we receive in the relay.
+ *
+ * The active-decisions gauge is handled separately (see {@link pickLatestSnapshot})
+ * — gauges represent a current state, so we take the latest block's value
+ * rather than summing.
+ *
+ * Both block-form (`Array<{ items?, meta? }>`) and flat-form
+ * (`Array<MetricsItem>`) inputs are accepted, mirroring {@link pickLatestSnapshot}.
+ * For the flat form, summing across "all blocks" reduces to summing across
+ * all top-level items, since the whole array is a single implicit block.
+ *
+ * Returns an object holding totals only for the per-window counters; the
+ * `activeDecisions` field is intentionally NOT touched here (always 0).
+ */
+function aggregateAllBlocks(metrics: MetricsComponent['metrics']): Record<HotCounterKey, number> {
+  const counters: Record<HotCounterKey, number> = {
+    activeDecisions: 0,
+    processedItems: 0,
+    droppedItems: 0,
+    bytesProcessed: 0,
+  };
+  if (!Array.isArray(metrics) || metrics.length === 0) return counters;
+
+  const accumulate = (items: MetricsItem[]) => {
+    for (const item of items) {
+      if (!item || typeof item.name !== 'string') continue;
+      // Skip the gauge — its value comes from the latest block only.
+      if (item.name === 'active_decisions') continue;
+      const target = HOT_COUNTER_NAMES[item.name as keyof typeof HOT_COUNTER_NAMES];
+      if (!target) continue;
+      const value = typeof item.value === 'number' ? item.value : Number(item.value);
+      if (Number.isFinite(value)) {
+        counters[target] += value;
+      }
+    }
+  };
+
+  if (isBlockForm(metrics)) {
+    for (const entry of metrics) {
+      if (!entry || typeof entry !== 'object') continue;
+      const block = entry as MetricsBlock;
+      const items: MetricsItem[] = Array.isArray(block.items) ? (block.items as MetricsItem[]) : [];
+      accumulate(items);
+    }
+  } else {
+    accumulate(metrics as MetricsItem[]);
+  }
+
+  return counters;
+}
+
+/**
  * Select the items to sum and the block's timestamp (ms) from the component's
  * `metrics` field.
  *
@@ -186,8 +244,8 @@ function pickLatestSnapshot(
  * CrowdSec appends `@<source-ip>` to bouncer names registered without an
  * explicit name. The IP changes whenever the bouncer container restarts with
  * a fresh Docker IP, so the SAME logical bouncer ends up split across multiple
- * rows. We strip the trailing IPv4/IPv6 suffix so cumulative counters and the
- * delta-with-reset computation treat reboots transparently.
+ * rows. We strip the trailing IPv4/IPv6 suffix so per-window counters
+ * accumulate consistently across reboots.
  */
 function canonicalizeBouncerName(name: string): string {
   return name.replace(/@(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]|[0-9a-f:]+)$/i, '');
@@ -204,17 +262,30 @@ function buildRow(
   if (!rawName) return null;
   const bouncerName = canonicalizeBouncerName(rawName);
 
-  const { items, blockTimestampMs } = pickLatestSnapshot(component.metrics, collectedAt);
+  // Different metric kinds have different semantics:
+  // - Counters (`dropped`, `processed`, `bytes`) are **per-window** values:
+  //   each block reports only what happened during its window. We sum them
+  //   across every block the relay carries.
+  // - The gauge (`active_decisions`) reports a **current state**: we take the
+  //   latest block's value (and sum within that block across labels).
+  //
+  // We compute both halves independently and merge into one row.
+  const counters = aggregateAllBlocks(component.metrics);
+  const { items: latestItems, blockTimestampMs } = pickLatestSnapshot(
+    component.metrics,
+    collectedAt
+  );
+  const gauge = sumItemsByName(latestItems);
 
-  // Skip components that have no actual metrics yet — typically a freshly
+  // Skip components that have no metrics at all — typically a freshly
   // registered bouncer that the LAPI relays before it has pushed any
-  // counters. Storing a phantom 0-row would corrupt later delta computation:
-  // when the bouncer eventually reports a real cumulative value, the SQL
-  // window function would interpret `0 -> N` as a `+N` delta instead of the
-  // window baseline.
-  if (items.length === 0) return null;
-
-  const counters = sumItemsByName(items);
+  // counters. We still emit a row whenever any per-window counter
+  // contributed any value, even if the gauge happens to be empty (e.g. an
+  // empty latest block following an active window).
+  const hasGaugeData = latestItems.length > 0;
+  const hasCounterData =
+    counters.processedItems !== 0 || counters.droppedItems !== 0 || counters.bytesProcessed !== 0;
+  if (!hasGaugeData && !hasCounterData) return null;
 
   return {
     lapiServerName,
@@ -224,12 +295,12 @@ function buildRow(
     osName: component.os?.name ?? null,
     osVersion: component.os?.version ?? null,
     version: component.version ?? null,
-    activeDecisions: counters.activeDecisions,
+    activeDecisions: gauge.activeDecisions,
     processedItems: counters.processedItems,
     droppedItems: counters.droppedItems,
     bytesProcessed: counters.bytesProcessed,
     collectedAt: blockTimestampMs ?? collectedAt,
-    metricsJson: JSON.stringify(items),
+    metricsJson: JSON.stringify(latestItems),
   };
 }
 

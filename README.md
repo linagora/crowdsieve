@@ -478,7 +478,7 @@ CrowdSieve transparently captures the `usage-metrics` payloads that CrowdSec LAP
 
 This surfaces in the dashboard as:
 
-- A **"Blocked Requests"** stat on the homepage — total requests dropped by all bouncers **over the configured retention window** (default 30 days). Computed from per-snapshot deltas with counter-reset detection, so bouncer/agent restarts don't undercount.
+- A **"Blocked Requests"** stat on the homepage — total requests dropped by all bouncers **over the configured retention window** (default 30 days). CrowdSec emits these as **per-window counters** (one block per `WindowSizeSeconds`, default 15 minutes), so we sum them straight; no delta or reset detection needed.
 - A **Bouncers** page with per-bouncer time-series charts of active decisions, processed items, dropped items, and bytes processed.
 
 ### Configuration

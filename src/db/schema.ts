@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const alerts = sqliteTable(
   'alerts',
@@ -207,6 +207,16 @@ export const bouncerMetrics = sqliteTable(
     ),
     bouncerCollectedIdx: index('idx_bouncer_metrics_bouncer_collected').on(
       table.bouncerName,
+      table.collectedAt
+    ),
+    // Deduplication: CrowdSec LAPI may re-relay the same usage-metrics block
+    // (same `meta.utc_now_timestamp`, hence same collectedAt). The unique
+    // index combined with `INSERT OR IGNORE` (see saveBouncerMetrics) keeps
+    // per-window counters from being double-counted on retries.
+    uniqueSnapshotIdx: uniqueIndex('bouncer_metrics_unique').on(
+      table.lapiServerName,
+      table.bouncerName,
+      table.componentKind,
       table.collectedAt
     ),
   })

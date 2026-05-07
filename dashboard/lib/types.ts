@@ -65,9 +65,10 @@ export interface AlertStats {
   filtered: number;
   forwarded: number;
   /**
-   * Sum of droppedItems from the latest bouncer_metrics snapshot per
-   * (lapiServerName, bouncerName) where componentKind='remediation'.
-   * This is a cumulative counter since each bouncer last restarted.
+   * Sum of `droppedItems` across every `componentKind='remediation'`
+   * bouncer_metrics snapshot in the retention window. CrowdSec emits
+   * `dropped` as a per-window counter (one block per `WindowSizeSeconds`),
+   * so a plain sum gives the total dropped requests over the window.
    * 0 when bouncer metrics are disabled or no data is available.
    */
   blockedRequests: number;

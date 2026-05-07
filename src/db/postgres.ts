@@ -277,6 +277,24 @@ export async function initializePostgres(
       ON alerts(uuid)
       WHERE uuid IS NOT NULL;
     `);
+
+    // Migration: Deduplicate bouncer_metrics on the natural snapshot key,
+    // then add the unique index. Pre-existing deployments (PR #37 upgrade
+    // path) may contain duplicate rows from the previous parser, which
+    // would make the unique index creation fail. Order matters: dedup MUST
+    // run before index creation. The DELETE keeps the lowest id per group
+    // as the canonical row.
+    await pool.query(`
+      DELETE FROM bouncer_metrics
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM bouncer_metrics
+        GROUP BY lapi_server_name, bouncer_name, component_kind, collected_at
+      );
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS bouncer_metrics_unique
+      ON bouncer_metrics(lapi_server_name, bouncer_name, component_kind, collected_at);
+    `);
   } catch (err) {
     if (isPermissionError(err)) {
       logger.error(

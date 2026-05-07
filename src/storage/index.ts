@@ -60,13 +60,12 @@ export interface AlertStats {
   filtered: number;
   forwarded: number;
   /**
-   * Total requests dropped by all bouncers over the last 30 days, computed
-   * as the sum of positive deltas between consecutive snapshots per
-   * (lapiServerName, bouncerName) where componentKind='remediation'.
-   * Counter-reset detection: if droppedItems decreases between two snapshots
-   * (bouncer/agent restarted), the new value is treated as a fresh delta.
-   * The very first snapshot per pair within the window contributes 0 (it is
-   * treated as the baseline, not new blocks).
+   * Total requests dropped by all bouncers over the last 30 days, computed as
+   * the sum of `dropped_items` across every `componentKind='remediation'`
+   * snapshot in the window. CrowdSec emits `dropped` as a per-window counter
+   * (one block per `WindowSizeSeconds`, value scoped to that window only), so
+   * a straight sum is the correct aggregation — no delta or reset detection
+   * needed.
    * Returns 0 when bouncer metrics are disabled or no data is available.
    */
   blockedRequests: number;
@@ -786,39 +785,28 @@ export function createStorage(): AlertStorage {
         ).all();
       }
 
-      // Blocked requests: sum of positive deltas between consecutive snapshots
-      // per (lapiServerName, bouncerName) where componentKind='remediation',
-      // within the last 30 days.  Counter-reset detection: if droppedItems
-      // decreases between two snapshots the new value is used as the delta
-      // (bouncer restarted).  The first snapshot per pair has no predecessor
-      // and contributes 0 (treated as the window baseline, not new blocks).
+      // Blocked requests: straight sum of `dropped_items` across every
+      // remediation snapshot in the retention window. CrowdSec's
+      // `usage-metrics` payload reports `dropped`/`processed`/`bytes` as
+      // **per-window counters** (one block per `WindowSizeSeconds`, value
+      // scoped to that window only) — the parser already sums across blocks
+      // before persisting, so each row holds a per-window total. Aggregating
+      // them is therefore a plain SUM; no delta-with-reset windowing.
+      //
+      // The `metrics_json != '[]'` guard skips pre-existing phantom rows
+      // produced by older parser code that emitted an empty-items snapshot
+      // for freshly-registered bouncers.
+      //
       // NOTE: the retention window is hardcoded to 30 days here; it will be
       // wired to config.bouncer_metrics.retention_days when storage gains
       // config access.
       const blockedRequestsCutoffMs = Date.now() - 30 * 86400 * 1000;
       const blockedRequestsQuery = sql<{ total: number }>`
-        WITH deltas AS (
-          SELECT
-            lapi_server_name,
-            bouncer_name,
-            dropped_items,
-            LAG(dropped_items) OVER (
-              PARTITION BY lapi_server_name, bouncer_name
-              ORDER BY collected_at
-            ) AS prev_dropped
-          FROM bouncer_metrics
-          WHERE component_kind = 'remediation'
-            AND collected_at >= ${blockedRequestsCutoffMs}
-            AND metrics_json != '[]'
-        )
-        SELECT COALESCE(SUM(
-          CASE
-            WHEN prev_dropped IS NULL THEN 0
-            WHEN dropped_items >= prev_dropped THEN dropped_items - prev_dropped
-            ELSE dropped_items
-          END
-        ), 0) AS total
-        FROM deltas
+        SELECT COALESCE(SUM(dropped_items), 0) AS total
+        FROM bouncer_metrics
+        WHERE component_kind = 'remediation'
+          AND collected_at >= ${blockedRequestsCutoffMs}
+          AND metrics_json != '[]'
       `;
 
       let blockedRequests = 0;
@@ -1267,7 +1255,14 @@ export function createStorage(): AlertStorage {
     async saveBouncerMetrics(rows) {
       if (rows.length === 0) return;
       const { db, schema, isPostgres } = getDatabaseContext();
-      const insertQuery = db.insert(schema.bouncerMetrics).values(rows);
+      // Same (lapiServerName, bouncerName, componentKind, collectedAt) tuple
+      // can be re-relayed by the LAPI when CrowdSec retries POST /v1/usage-metrics.
+      // The unique index `bouncer_metrics_unique` enforces this; we ignore
+      // conflicts on insert so retries don't double-count per-window counters.
+      // Drizzle's `onConflictDoNothing()` translates to:
+      //   - SQLite:   INSERT OR IGNORE
+      //   - Postgres: INSERT ... ON CONFLICT (...) DO NOTHING
+      const insertQuery = db.insert(schema.bouncerMetrics).values(rows).onConflictDoNothing();
       if (isPostgres) {
         await insertQuery;
       } else {

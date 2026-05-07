@@ -7,6 +7,7 @@ import {
   boolean,
   serial,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 export const alerts = pgTable(
@@ -216,6 +217,16 @@ export const bouncerMetrics = pgTable(
     ),
     bouncerCollectedIdx: index('idx_bouncer_metrics_bouncer_collected').on(
       table.bouncerName,
+      table.collectedAt
+    ),
+    // Deduplication: CrowdSec LAPI may re-relay the same usage-metrics block
+    // (same `meta.utc_now_timestamp`, hence same collectedAt). The unique
+    // index combined with `ON CONFLICT DO NOTHING` (see saveBouncerMetrics)
+    // keeps per-window counters from being double-counted on retries.
+    uniqueSnapshotIdx: uniqueIndex('bouncer_metrics_unique').on(
+      table.lapiServerName,
+      table.bouncerName,
+      table.componentKind,
       table.collectedAt
     ),
   })

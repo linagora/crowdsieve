@@ -99,6 +99,8 @@ function setupTestDatabase() {
       ON bouncer_metrics(lapi_server_name, collected_at);
     CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_bouncer_collected
       ON bouncer_metrics(bouncer_name, collected_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS bouncer_metrics_unique
+      ON bouncer_metrics(lapi_server_name, bouncer_name, component_kind, collected_at);
   `);
 }
 
@@ -456,9 +458,10 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows).toHaveLength(0);
   });
 
-  it('block form picks latest snapshot by utc_now_timestamp', () => {
+  it('block form sums per-window counters across all blocks (dropped/processed/bytes)', () => {
     // Two blocks: older has dropped=100, newer has dropped=250.
-    // Must pick the newer block → droppedItems === 250, NOT 350.
+    // `dropped` is a per-window counter — sum across blocks → 350.
+    // `collectedAt` still tracks the latest block's timestamp (used for ordering).
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -481,12 +484,13 @@ describe('buildRowsFromPayload (parser)', () => {
       0
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].droppedItems).toBe(250);
+    expect(rows[0].droppedItems).toBe(350);
     expect(rows[0].collectedAt).toBe(1730125256 * 1000);
   });
 
-  it('block form sums per-label items within the latest block', () => {
+  it('block form sums per-label items within a block (single block)', () => {
     // One block with two dropped items for different labels → total 250.
+    // Within ONE block, per-label items always sum.
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -511,8 +515,9 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows[0].droppedItems).toBe(250);
   });
 
-  it('block form with missing meta picks last block by array order', () => {
-    // Two blocks without meta; second one has dropped=300.
+  it('block form with missing meta sums dropped across all blocks', () => {
+    // Two blocks without meta. Per-window counters sum across blocks → 400.
+    // No timestamp anywhere → collectedAt falls back to the parameter (5000).
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -529,9 +534,46 @@ describe('buildRowsFromPayload (parser)', () => {
       5000
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].droppedItems).toBe(300);
+    expect(rows[0].droppedItems).toBe(400);
     // No timestamp in meta → falls back to collectedAt parameter.
     expect(rows[0].collectedAt).toBe(5000);
+  });
+
+  it('mixed semantics: counters sum across blocks, gauge picks latest block', () => {
+    // Block 1: dropped=100, active_decisions=10
+    // Block 2: dropped=200, active_decisions=15
+    // Counter (dropped): 100 + 200 = 300 (summed across windows)
+    // Gauge (active_decisions): 15 (latest block only — current state)
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456, window_size_seconds: 900 },
+                items: [
+                  { name: 'dropped', value: 100, labels: {} },
+                  { name: 'active_decisions', value: 10, labels: {} },
+                ],
+              },
+              {
+                meta: { utc_now_timestamp: 1730125256, window_size_seconds: 900 },
+                items: [
+                  { name: 'dropped', value: 200, labels: {} },
+                  { name: 'active_decisions', value: 15, labels: {} },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(300);
+    expect(rows[0].activeDecisions).toBe(15);
   });
 
   it('canonicalizes bouncer name by stripping trailing @<ipv4>', () => {
@@ -698,31 +740,31 @@ describe('Bouncer metrics storage', () => {
     expect(keys).toEqual(['srv1::b1', 'srv1::b2', 'srv2::b1']);
   });
 
-  it('getStats blockedRequests sums windowed deltas with reset detection', async () => {
+  it('getStats blockedRequests sums per-window dropped counters across the retention window', async () => {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
 
     await storage.saveBouncerMetrics([
-      // (serverA, fwBouncer): 5 snapshots — first contributes 0 (baseline)
+      // (serverA, fwBouncer): 5 per-window snapshots — every value is summed.
       makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 100, collectedAt: now - 25 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 250, collectedAt: now - 20 * day }), // delta +150
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 80,  collectedAt: now - 15 * day }), // reset → delta +80
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now - 10 * day }), // delta +220
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now -  5 * day }), // delta 0
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 250, collectedAt: now - 20 * day }),
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 80,  collectedAt: now - 15 * day }),
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now - 10 * day }),
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now -  5 * day }),
 
-      // (serverA, nginxBouncer): 2 snapshots — first contributes 0 (baseline)
+      // (serverA, nginxBouncer): 2 per-window snapshots.
       makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 50,  collectedAt: now - 12 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 170, collectedAt: now -  1 * day }), // delta +120
+      makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 170, collectedAt: now -  1 * day }),
 
-      // log_processor row — must be excluded from the total
+      // log_processor row — must be excluded from the total.
       makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'log_processor', droppedItems: 999, collectedAt: now - 5 * day }),
     ]);
 
     const stats = await storage.getStats();
-    // fwBouncer:    0 + 150 + 80 + 220 + 0  = 450
-    // nginxBouncer: 0 + 120                  = 120
+    // fwBouncer:    100 + 250 + 80 + 300 + 300 = 1030
+    // nginxBouncer: 50 + 170                    = 220
     // log_processor excluded
-    expect(stats.blockedRequests).toBe(570);
+    expect(stats.blockedRequests).toBe(1250);
 
     // Sanity: other fields still exist and are numeric
     expect(typeof stats.total).toBe('number');
@@ -730,15 +772,44 @@ describe('Bouncer metrics storage', () => {
     expect(typeof stats.forwarded).toBe('number');
   });
 
-  it('getStats blockedRequests contributes 0 for a bouncer with only one snapshot in window', async () => {
+  it('getStats blockedRequests counts a single snapshot directly (no baseline subtraction)', async () => {
     const now = Date.now();
     await storage.saveBouncerMetrics([
       makeRow({ lapiServerName: 'serverB', bouncerName: 'singleBouncer', componentKind: 'remediation', droppedItems: 500, collectedAt: now - 1000 }),
     ]);
 
     const stats = await storage.getStats();
-    // Single snapshot has no predecessor → treated as baseline, delta = 0
-    expect(stats.blockedRequests).toBe(0);
+    // A single per-window row contributes its full value — no baseline pairing.
+    expect(stats.blockedRequests).toBe(500);
+  });
+
+  it('saveBouncerMetrics ignores duplicates on (server, bouncer, kind, collectedAt)', async () => {
+    // CrowdSec LAPI sometimes re-relays the SAME usage-metrics block (same
+    // utc_now_timestamp, hence same collectedAt). The unique index +
+    // onConflictDoNothing must keep us from double-counting per-window
+    // counters in that case.
+    const ts = Date.now() - 1000;
+    await storage.saveBouncerMetrics([
+      makeRow({ lapiServerName: 'srvX', bouncerName: 'bX', componentKind: 'remediation', droppedItems: 100, collectedAt: ts }),
+    ]);
+    // Same key, different value — must be silently dropped.
+    await storage.saveBouncerMetrics([
+      makeRow({ lapiServerName: 'srvX', bouncerName: 'bX', componentKind: 'remediation', droppedItems: 999, collectedAt: ts }),
+    ]);
+    // Different componentKind on same (server, bouncer, ts) is allowed.
+    await storage.saveBouncerMetrics([
+      makeRow({ lapiServerName: 'srvX', bouncerName: 'bX', componentKind: 'log_processor', droppedItems: 7, collectedAt: ts }),
+    ]);
+
+    const rows = await storage.getBouncerMetrics({});
+    expect(rows).toHaveLength(2);
+    const remediation = rows.find((r) => r.componentKind === 'remediation');
+    // Original 100 wins — second insert was conflict-ignored.
+    expect(remediation?.droppedItems).toBe(100);
+
+    // And the homepage stat sees the canonical 100, not 100 + 999.
+    const stats = await storage.getStats();
+    expect(stats.blockedRequests).toBe(100);
   });
 
   it('cleanupBouncerMetrics deletes only old rows', async () => {
