@@ -178,6 +178,40 @@ export const analyzerResults = sqliteTable(
   })
 );
 
+// Bouncer usage-metrics snapshots polled from LAPI /v1/usage-metrics.
+// Hot counters are flattened into typed columns for fast time-series queries;
+// the rest of the metric items are kept verbatim in `metricsJson` so we don't
+// lose any fields the upstream LAPI may add later.
+export const bouncerMetrics = sqliteTable(
+  'bouncer_metrics',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    lapiServerName: text('lapi_server_name').notNull(),
+    componentKind: text('component_kind').notNull(), // 'remediation' | 'log_processor'
+    bouncerName: text('bouncer_name').notNull(),
+    bouncerType: text('bouncer_type'),
+    osName: text('os_name'),
+    osVersion: text('os_version'),
+    version: text('version'),
+    activeDecisions: integer('active_decisions'),
+    processedItems: integer('processed_items'),
+    droppedItems: integer('dropped_items'),
+    bytesProcessed: integer('bytes_processed'),
+    collectedAt: integer('collected_at').notNull(),
+    metricsJson: text('metrics_json').notNull(),
+  },
+  (table) => ({
+    serverCollectedIdx: index('idx_bouncer_metrics_server_collected').on(
+      table.lapiServerName,
+      table.collectedAt
+    ),
+    bouncerCollectedIdx: index('idx_bouncer_metrics_bouncer_collected').on(
+      table.bouncerName,
+      table.collectedAt
+    ),
+  })
+);
+
 // Types for inserting
 export type InsertAlert = typeof alerts.$inferInsert;
 export type SelectAlert = typeof alerts.$inferSelect;
@@ -189,3 +223,5 @@ export type InsertAnalyzerRun = typeof analyzerRuns.$inferInsert;
 export type SelectAnalyzerRun = typeof analyzerRuns.$inferSelect;
 export type InsertAnalyzerResult = typeof analyzerResults.$inferInsert;
 export type SelectAnalyzerResult = typeof analyzerResults.$inferSelect;
+export type InsertBouncerMetric = typeof bouncerMetrics.$inferInsert;
+export type SelectBouncerMetric = typeof bouncerMetrics.$inferSelect;

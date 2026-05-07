@@ -216,6 +216,30 @@ function runSQLiteMigrations(sqlite: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_analyzer_results_run_id ON analyzer_results(run_id);
     CREATE INDEX IF NOT EXISTS idx_analyzer_results_source_ip ON analyzer_results(source_ip);
+
+    -- Bouncer usage-metrics snapshots (GET /v1/usage-metrics). Hot counters in
+    -- typed columns for fast time-series queries; raw items in metrics_json.
+    CREATE TABLE IF NOT EXISTS bouncer_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lapi_server_name TEXT NOT NULL,
+      component_kind TEXT NOT NULL,
+      bouncer_name TEXT NOT NULL,
+      bouncer_type TEXT,
+      os_name TEXT,
+      os_version TEXT,
+      version TEXT,
+      active_decisions INTEGER,
+      processed_items INTEGER,
+      dropped_items INTEGER,
+      bytes_processed INTEGER,
+      collected_at INTEGER NOT NULL,
+      metrics_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_server_collected
+      ON bouncer_metrics(lapi_server_name, collected_at);
+    CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_bouncer_collected
+      ON bouncer_metrics(bouncer_name, collected_at);
   `);
 
   // Migration: Add replicated column to alerts if it doesn't exist

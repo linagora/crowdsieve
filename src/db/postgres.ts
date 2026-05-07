@@ -137,6 +137,30 @@ const POSTGRES_MIGRATIONS = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
+
+  -- Bouncer usage-metrics snapshots (GET /v1/usage-metrics). Hot counters in
+  -- typed columns for fast time-series queries; raw items in metrics_json.
+  CREATE TABLE IF NOT EXISTS bouncer_metrics (
+    id SERIAL PRIMARY KEY,
+    lapi_server_name TEXT NOT NULL,
+    component_kind TEXT NOT NULL,
+    bouncer_name TEXT NOT NULL,
+    bouncer_type TEXT,
+    os_name TEXT,
+    os_version TEXT,
+    version TEXT,
+    active_decisions INTEGER,
+    processed_items INTEGER,
+    dropped_items INTEGER,
+    bytes_processed INTEGER,
+    collected_at BIGINT NOT NULL,
+    metrics_json TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_server_collected
+    ON bouncer_metrics(lapi_server_name, collected_at);
+  CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_bouncer_collected
+    ON bouncer_metrics(bouncer_name, collected_at);
 `;
 
 /**

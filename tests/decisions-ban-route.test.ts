@@ -117,6 +117,11 @@ function buildMockStorage(): AlertStorage {
       notImplemented as unknown as AlertStorage['getTimeDistributionStats'],
     getDecisionStats: notImplemented as unknown as AlertStorage['getDecisionStats'],
     cleanup: notImplemented as unknown as AlertStorage['cleanup'],
+    saveBouncerMetrics: notImplemented as unknown as AlertStorage['saveBouncerMetrics'],
+    getBouncerMetrics: notImplemented as unknown as AlertStorage['getBouncerMetrics'],
+    getBouncerNames: notImplemented as unknown as AlertStorage['getBouncerNames'],
+    cleanupBouncerMetrics:
+      notImplemented as unknown as AlertStorage['cleanupBouncerMetrics'],
   };
 }
 

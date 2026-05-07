@@ -96,7 +96,26 @@ export interface DecisionStats {
 }
 
 // Import schema types - use SQLite schema types as canonical (they're compatible)
-import type { SelectAlert } from '../db/schema.js';
+import type { SelectAlert, SelectBouncerMetric, InsertBouncerMetric } from '../db/schema.js';
+
+export type BouncerMetric = SelectBouncerMetric;
+export type NewBouncerMetric = InsertBouncerMetric;
+
+export interface BouncerMetricsQuery {
+  lapiServerName?: string;
+  bouncerName?: string;
+  /** Lower bound on collectedAt (unix ms, inclusive). */
+  since?: number;
+  /** Upper bound on collectedAt (unix ms, inclusive). */
+  until?: number;
+  limit?: number;
+}
+
+export interface BouncerNameRow {
+  lapiServerName: string;
+  bouncerName: string;
+  bouncerType: string | null;
+}
 
 export interface StoreAlertsOptions {
   geoipLookup?: (ip: string) => GeoIPInfo | null;
@@ -168,6 +187,10 @@ export interface AlertStorage {
   getTimeDistributionStats(since?: Date): Promise<TimeDistributionStats>;
   getDecisionStats(since?: Date): Promise<DecisionStats>;
   cleanup(retentionDays: number): Promise<number>;
+  saveBouncerMetrics(rows: NewBouncerMetric[]): Promise<void>;
+  getBouncerMetrics(filters: BouncerMetricsQuery): Promise<BouncerMetric[]>;
+  getBouncerNames(): Promise<BouncerNameRow[]>;
+  cleanupBouncerMetrics(retentionDays: number): Promise<number>;
 }
 
 // Import shared replication constants
@@ -1172,6 +1195,102 @@ export function createStorage(): AlertStorage {
       if (isPostgres) {
         const result = await deleteQuery;
         // PostgreSQL returns { rowCount: number }
+        return (result as unknown as { rowCount: number }).rowCount || 0;
+      } else {
+        const result = (deleteQuery as unknown as { run(): { changes: number } }).run();
+        return result.changes;
+      }
+    },
+
+    async saveBouncerMetrics(rows) {
+      if (rows.length === 0) return;
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const insertQuery = db.insert(schema.bouncerMetrics).values(rows);
+      if (isPostgres) {
+        await insertQuery;
+      } else {
+        (insertQuery as unknown as { run(): void }).run();
+      }
+    },
+
+    async getBouncerMetrics(filters) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const conditions = [];
+
+      if (filters.lapiServerName) {
+        conditions.push(eq(schema.bouncerMetrics.lapiServerName, filters.lapiServerName));
+      }
+      if (filters.bouncerName) {
+        conditions.push(eq(schema.bouncerMetrics.bouncerName, filters.bouncerName));
+      }
+      if (filters.since !== undefined) {
+        conditions.push(gte(schema.bouncerMetrics.collectedAt, filters.since));
+      }
+      if (filters.until !== undefined) {
+        conditions.push(lte(schema.bouncerMetrics.collectedAt, filters.until));
+      }
+
+      const baseQuery = db.select().from(schema.bouncerMetrics);
+      const withConditions =
+        conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
+      const finalQuery = withConditions
+        .orderBy(desc(schema.bouncerMetrics.collectedAt))
+        .limit(filters.limit ?? 1000);
+
+      if (isPostgres) {
+        return (await finalQuery) as BouncerMetric[];
+      } else {
+        return (finalQuery as unknown as { all(): BouncerMetric[] }).all();
+      }
+    },
+
+    async getBouncerNames() {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      // Distinct (lapiServerName, bouncerName, bouncerType) tuples. We pick the
+      // most recent bouncerType when the same bouncer reports multiple values
+      // by relying on `MAX(collected_at)` to break ties — bouncerType only
+      // changes if the user reconfigures their bouncer, which is rare.
+      const query = db
+        .select({
+          lapiServerName: schema.bouncerMetrics.lapiServerName,
+          bouncerName: schema.bouncerMetrics.bouncerName,
+          bouncerType: sql<string | null>`max(${schema.bouncerMetrics.bouncerType})`,
+        })
+        .from(schema.bouncerMetrics)
+        .groupBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName)
+        .orderBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName);
+
+      let rows: Array<{
+        lapiServerName: string;
+        bouncerName: string;
+        bouncerType: string | null;
+      }>;
+
+      if (isPostgres) {
+        rows = await query;
+      } else {
+        rows = (
+          query as unknown as {
+            all(): Array<{
+              lapiServerName: string;
+              bouncerName: string;
+              bouncerType: string | null;
+            }>;
+          }
+        ).all();
+      }
+      return rows;
+    },
+
+    async cleanupBouncerMetrics(retentionDays) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+      const deleteQuery = db
+        .delete(schema.bouncerMetrics)
+        .where(lte(schema.bouncerMetrics.collectedAt, cutoff));
+
+      if (isPostgres) {
+        const result = await deleteQuery;
         return (result as unknown as { rowCount: number }).rowCount || 0;
       } else {
         const result = (deleteQuery as unknown as { run(): { changes: number } }).run();

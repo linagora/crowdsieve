@@ -154,3 +154,30 @@ export interface DecisionStats {
   topScenarios: Array<{ scenario: string; count: number }>;
   byCountry: Array<{ countryCode: string; countryName: string; count: number }>;
 }
+
+/**
+ * Single snapshot of bouncer usage-metrics, mirroring the backend
+ * BouncerMetricResponse schema (src/proxy/routes/schemas.ts).
+ */
+export interface BouncerMetric {
+  id: number;
+  lapiServerName: string;
+  componentKind: string;
+  bouncerName: string;
+  bouncerType: string | null;
+  osName: string | null;
+  osVersion: string | null;
+  version: string | null;
+  activeDecisions: number | null;
+  processedItems: number | null;
+  droppedItems: number | null;
+  bytesProcessed: number | null;
+  collectedAt: number;
+  metricsJson: string;
+}
+
+export interface BouncerName {
+  lapiServerName: string;
+  bouncerName: string;
+  bouncerType: string | null;
+}

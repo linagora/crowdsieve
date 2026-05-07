@@ -204,7 +204,19 @@ const ConfigSchema = z.object({
         .default({}),
     })
     .default({}),
+  // Periodic poll of CrowdSec LAPI's GET /v1/usage-metrics endpoint to record
+  // bouncer rejection statistics. Disabled by default; opt-in per deployment.
+  bouncer_metrics: z
+    .object({
+      enabled: z.boolean().default(false),
+      interval_seconds: z.number().int().positive().default(300),
+      retention_days: z.number().int().positive().default(30),
+      request_timeout_ms: z.number().int().positive().default(10000),
+    })
+    .default({}),
 });
+
+export type BouncerMetricsConfig = z.infer<typeof ConfigSchema.shape.bouncer_metrics>;
 
 export type Config = z.infer<typeof ConfigSchema>;
 

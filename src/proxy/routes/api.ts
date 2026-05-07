@@ -13,6 +13,8 @@ import {
   AnalyzerRunTriggerResponse,
   AnalyzerRunsResponse,
   AnalyzersListResponse,
+  BouncerMetricResponse,
+  BouncerNamesResponse,
   CountryCode,
   DecisionStatsResponse,
   DecisionsResponse,
@@ -1194,6 +1196,73 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
       } catch (err) {
         logger.error({ err }, 'Failed to get analyzer runs');
         return reply.code(500).send({ error: 'Failed to get analyzer runs' });
+      }
+    }
+  );
+
+  // ============== Bouncer Metrics API Endpoints ==============
+
+  // List bouncer usage-metrics snapshots (filtered).
+  fastify.get(
+    '/api/bouncer-metrics',
+    {
+      schema: {
+        tags: ['bouncer-metrics'],
+        summary: 'List bouncer usage-metrics snapshots',
+        querystring: Type.Object({
+          machine: Type.Optional(ServerName),
+          bouncer: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+          since: Type.Optional(Type.Integer({ minimum: 0 })),
+          until: Type.Optional(Type.Integer({ minimum: 0 })),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_LIMIT, default: 1000 })),
+        }),
+        response: {
+          200: Type.Array(BouncerMetricResponse),
+          400: ErrorResponse,
+          401: ErrorResponse,
+          500: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { machine, bouncer, since, until, limit } = request.query;
+        const rows = await storage.getBouncerMetrics({
+          lapiServerName: machine,
+          bouncerName: bouncer,
+          since,
+          until,
+          limit,
+        });
+        return reply.send(rows);
+      } catch (err) {
+        logger.error({ err }, 'Failed to list bouncer metrics');
+        return reply.code(500).send({ error: 'Failed to list bouncer metrics' });
+      }
+    }
+  );
+
+  // Distinct bouncer names for the UI dropdown.
+  fastify.get(
+    '/api/bouncer-metrics/names',
+    {
+      schema: {
+        tags: ['bouncer-metrics'],
+        summary: 'Distinct bouncer names with their LAPI server',
+        response: {
+          200: BouncerNamesResponse,
+          401: ErrorResponse,
+          500: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const bouncers = await storage.getBouncerNames();
+        return reply.send({ bouncers });
+      } catch (err) {
+        logger.error({ err }, 'Failed to list bouncer names');
+        return reply.code(500).send({ error: 'Failed to list bouncer names' });
       }
     }
   );

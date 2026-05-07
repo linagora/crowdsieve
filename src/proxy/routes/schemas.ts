@@ -339,3 +339,38 @@ export const SignalsBody = Type.Array(Type.Object({}, { additionalProperties: tr
 export const SignalsResponse = Type.Object({
   message: Type.String(),
 });
+
+// --- Bouncer metrics ---------------------------------------------------------
+
+/**
+ * One row of bouncer usage-metrics, mirroring the SelectBouncerMetric type
+ * from src/db/schema.ts. `metricsJson` is the raw `metrics[]` array verbatim
+ * for callers that want to drill into per-label values; the dashboard's
+ * standard graphs only need the typed counters.
+ */
+export const BouncerMetricResponse = Type.Object({
+  id: Type.Integer(),
+  lapiServerName: Type.String(),
+  componentKind: Type.String(),
+  bouncerName: Type.String(),
+  bouncerType: Nullable(Type.String()),
+  osName: Nullable(Type.String()),
+  osVersion: Nullable(Type.String()),
+  version: Nullable(Type.String()),
+  activeDecisions: Nullable(Type.Integer()),
+  processedItems: Nullable(Type.Integer()),
+  droppedItems: Nullable(Type.Integer()),
+  bytesProcessed: Nullable(Type.Integer()),
+  collectedAt: Type.Integer(),
+  metricsJson: Type.String(),
+});
+
+export const BouncerNameRow = Type.Object({
+  lapiServerName: Type.String(),
+  bouncerName: Type.String(),
+  bouncerType: Nullable(Type.String()),
+});
+
+export const BouncerNamesResponse = Type.Object({
+  bouncers: Type.Array(BouncerNameRow),
+});

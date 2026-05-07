@@ -11,6 +11,7 @@ import { ClientValidator } from './validation/index.js';
 import { initializeAnalyzerEngine, getAnalyzerEngine } from './analyzers/index.js';
 import { createAnalyzerStorage } from './analyzers/storage.js';
 import { createReplicationService, ReplicationService } from './replication/index.js';
+import { createMetricsCollector, MetricsCollector } from './metrics/collector.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/geoip-city.mmdb';
@@ -45,6 +46,7 @@ async function main() {
     filters: fileConfig.filters, // Filters only from file
     client_validation: { ...fileConfig.client_validation, ...envConfig.client_validation },
     analyzers: fileConfig.analyzers, // Analyzers only from file
+    bouncer_metrics: fileConfig.bouncer_metrics, // Bouncer metrics polling settings
   };
 
   // Initialize logger (with custom `notice` level wired in for audit-friendly
@@ -216,6 +218,26 @@ async function main() {
     );
   }
 
+  // Initialize bouncer metrics collector (if enabled)
+  let metricsCollector: MetricsCollector | undefined;
+  if (config.bouncer_metrics.enabled) {
+    metricsCollector = createMetricsCollector({
+      config,
+      storage,
+      logger,
+      lapiServers: config.lapi_servers || [],
+    });
+    metricsCollector.start();
+    logger.info(
+      {
+        intervalSeconds: config.bouncer_metrics.interval_seconds,
+        retentionDays: config.bouncer_metrics.retention_days,
+        servers: (config.lapi_servers || []).map((s) => s.name),
+      },
+      'Bouncer metrics collector started'
+    );
+  }
+
   // Create and start proxy server
   const server = await createProxyServer({
     config,
@@ -238,6 +260,12 @@ async function main() {
     if (analyzerEngine) {
       analyzerEngine.stop();
       logger.info('Analyzer engine stopped');
+    }
+
+    // Stop bouncer metrics collector
+    if (metricsCollector) {
+      metricsCollector.stop();
+      logger.info('Bouncer metrics collector stopped');
     }
 
     closeGeoIP();
