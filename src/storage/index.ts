@@ -1289,10 +1289,22 @@ export function createStorage(): AlertStorage {
 
     async getBouncerNames() {
       const { db, schema, isPostgres } = getDatabaseContext();
-      // Distinct (lapiServerName, bouncerName, bouncerType) tuples. We pick the
-      // most recent bouncerType when the same bouncer reports multiple values
-      // by relying on `MAX(collected_at)` to break ties — bouncerType only
-      // changes if the user reconfigures their bouncer, which is rare.
+      // Pick the bouncerType from the latest row per (lapiServerName, bouncerName).
+      // A subquery finds MAX(collectedAt) per group; we then join back to pick
+      // the actual bouncerType from that exact timestamp.  When multiple rows
+      // share the same collectedAt (rare batch-insert scenario) we take MAX(id)
+      // — a deterministic tiebreaker — and collapse via GROUP BY on the outer
+      // query so each (lapiServerName, bouncerName) appears exactly once.
+      const latestSubquery = db
+        .select({
+          lapiServerName: schema.bouncerMetrics.lapiServerName,
+          bouncerName: schema.bouncerMetrics.bouncerName,
+          maxAt: sql<number>`max(${schema.bouncerMetrics.collectedAt})`.as('max_at'),
+        })
+        .from(schema.bouncerMetrics)
+        .groupBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName)
+        .as('latest');
+
       const query = db
         .select({
           lapiServerName: schema.bouncerMetrics.lapiServerName,
@@ -1300,6 +1312,14 @@ export function createStorage(): AlertStorage {
           bouncerType: sql<string | null>`max(${schema.bouncerMetrics.bouncerType})`,
         })
         .from(schema.bouncerMetrics)
+        .innerJoin(
+          latestSubquery,
+          and(
+            eq(schema.bouncerMetrics.lapiServerName, latestSubquery.lapiServerName),
+            eq(schema.bouncerMetrics.bouncerName, latestSubquery.bouncerName),
+            eq(schema.bouncerMetrics.collectedAt, latestSubquery.maxAt)
+          )
+        )
         .groupBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName)
         .orderBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName);
 

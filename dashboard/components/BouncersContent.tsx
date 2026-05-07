@@ -69,7 +69,7 @@ function MiniChart({ data, title, colorClass }: MiniChartProps) {
 export function BouncersContent({ initialBouncers, initialMetrics }: BouncersContentProps) {
   const [bouncers] = useState<BouncerName[]>(initialBouncers);
   const [metrics, setMetrics] = useState<BouncerMetric[]>(initialMetrics);
-  const [serverFilter, setServerFilter] = useState<string>('all');
+  const [serverFilter, setServerFilter] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   // Apply server filter on the metrics view; fetch fresh data when changed.
@@ -80,7 +80,7 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
       try {
         const params = new URLSearchParams();
         params.set('limit', '1000');
-        if (serverFilter !== 'all') {
+        if (serverFilter) {
           params.set('machine', serverFilter);
         }
         const res = await fetchWithAuth(`/api/bouncer-metrics?${params.toString()}`, {
@@ -122,7 +122,7 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
 
   const visibleBouncers = useMemo(() => {
     return bouncers
-      .filter((b) => serverFilter === 'all' || b.lapiServerName === serverFilter)
+      .filter((b) => !serverFilter || b.lapiServerName === serverFilter)
       .sort((a, b) => {
         const byServer = a.lapiServerName.localeCompare(b.lapiServerName);
         if (byServer !== 0) return byServer;
@@ -153,7 +153,7 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
             onChange={(e) => setServerFilter(e.target.value)}
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
           >
-            <option value="all">All servers</option>
+            <option value="">All servers</option>
             {servers.map((s) => (
               <option key={s} value={s}>
                 {s}

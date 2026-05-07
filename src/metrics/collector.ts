@@ -168,6 +168,7 @@ export function createMetricsCollector(opts: MetricsCollectorOptions): MetricsCo
   let pollHandle: NodeJS.Timeout | null = null;
   let cleanupHandle: NodeJS.Timeout | null = null;
   let stopped = false;
+  let running = false;
 
   async function runOnce(): Promise<void> {
     if (stopped) return;
@@ -202,13 +203,24 @@ export function createMetricsCollector(opts: MetricsCollectorOptions): MetricsCo
   return {
     start() {
       if (pollHandle || cleanupHandle) return;
+
+      /** Guard-wrapped invocation shared by the immediate kick and the interval. */
+      function scheduledRun() {
+        if (running) {
+          logger.warn('Bouncer metrics poll still in flight; skipping scheduled run');
+          return;
+        }
+        running = true;
+        runOnce().finally(() => {
+          running = false;
+        });
+      }
+
       // Kick off an immediate poll so the dashboard isn't empty for the first
       // interval after startup; do not await — startup must not block on LAPI.
-      void runOnce();
+      scheduledRun();
 
-      pollHandle = setInterval(() => {
-        void runOnce();
-      }, intervalMs);
+      pollHandle = setInterval(scheduledRun, intervalMs);
       if (pollHandle.unref) pollHandle.unref();
 
       // Daily retention sweep.

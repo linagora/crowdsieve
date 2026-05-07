@@ -55,9 +55,14 @@ export async function lapiFetch(
     }
   }
 
+  // Compose timeout with any caller-supplied signal so both can abort.
+  const signal = init.signal
+    ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
+
   return fetch(url, {
     ...init,
     headers,
-    signal: AbortSignal.timeout(timeoutMs),
+    signal,
   });
 }
