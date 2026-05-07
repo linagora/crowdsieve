@@ -421,26 +421,6 @@ describe('Bouncer metrics storage', () => {
     expect(keys).toEqual(['srv1::b1', 'srv1::b2', 'srv2::b1']);
   });
 
-  it('getStats activeBans sums activeDecisions from latest snapshot per bouncer', async () => {
-    const now = Date.now();
-    // Two snapshots for (srv1, fw-1): older=10, newer=25 → expect 25
-    await storage.saveBouncerMetrics([
-      makeRow({ lapiServerName: 'srv1', bouncerName: 'fw-1', activeDecisions: 10, collectedAt: now - 10000 }),
-      makeRow({ lapiServerName: 'srv1', bouncerName: 'fw-1', activeDecisions: 25, collectedAt: now - 1000 }),
-      // A different bouncer on srv2: single snapshot → 7
-      makeRow({ lapiServerName: 'srv2', bouncerName: 'fw-2', activeDecisions: 7, collectedAt: now - 2000 }),
-      // A log_processor row — must NOT be counted
-      makeRow({ lapiServerName: 'srv1', bouncerName: 'lp-1', componentKind: 'log_processor', activeDecisions: 99, collectedAt: now }),
-    ]);
-
-    const stats = await storage.getStats();
-    expect(stats.activeBans).toBe(32); // 25 + 7 (10 is older, 99 is log_processor)
-    // Sanity: other fields still exist
-    expect(typeof stats.total).toBe('number');
-    expect(typeof stats.filtered).toBe('number');
-    expect(typeof stats.forwarded).toBe('number');
-  });
-
   it('getStats blockedRequests sums droppedItems from latest snapshot per bouncer', async () => {
     const t1 = Date.now() - 10000;
     const t2 = Date.now() - 1000;

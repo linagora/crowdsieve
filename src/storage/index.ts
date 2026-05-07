@@ -60,12 +60,6 @@ export interface AlertStats {
   filtered: number;
   forwarded: number;
   /**
-   * Sum of `activeDecisions` from the latest bouncer_metrics snapshot per
-   * (lapiServerName, bouncerName) where componentKind='remediation'.
-   * Returns 0 when bouncer metrics are disabled or no data is available.
-   */
-  activeBans: number;
-  /**
    * Sum of `droppedItems` from the latest bouncer_metrics snapshot per
    * (lapiServerName, bouncerName) where componentKind='remediation'.
    * This is a cumulative counter since each bouncer last restarted.
@@ -788,41 +782,6 @@ export function createStorage(): AlertStorage {
         ).all();
       }
 
-      // Active bans: sum of activeDecisions from the latest bouncer_metrics
-      // snapshot per (lapiServerName, bouncerName) where componentKind='remediation'.
-      // The `since` parameter does NOT apply — this is a current-state snapshot.
-      const m1 = schema.bouncerMetrics;
-      const activeBansQuery = db
-        .select({
-          activeDecisions: sql<number>`coalesce(sum(${m1.activeDecisions}), 0)`,
-        })
-        .from(m1)
-        .where(
-          sql`${m1.componentKind} = 'remediation'
-            AND ${m1.collectedAt} = (
-              SELECT MAX(m2.collected_at)
-              FROM bouncer_metrics m2
-              WHERE m2.lapi_server_name = ${m1.lapiServerName}
-                AND m2.bouncer_name = ${m1.bouncerName}
-                AND m2.component_kind = 'remediation'
-            )`
-        );
-
-      let activeBans = 0;
-      try {
-        if (isPostgres) {
-          const rows = await activeBansQuery;
-          activeBans = Number(rows[0]?.activeDecisions) || 0;
-        } else {
-          const result = (
-            activeBansQuery as unknown as { get(): { activeDecisions: number } | undefined }
-          ).get();
-          activeBans = Number(result?.activeDecisions) || 0;
-        }
-      } catch {
-        // bouncerMetrics table may not exist yet (pre-migration envs); fall back to 0
-      }
-
       // Blocked requests: sum of droppedItems from the latest bouncer_metrics
       // snapshot per (lapiServerName, bouncerName) where componentKind='remediation'.
       // The `since` parameter does NOT apply — this is a cumulative counter.
@@ -863,7 +822,6 @@ export function createStorage(): AlertStorage {
         total: Number(totalResult?.total) || 0,
         filtered: Number(totalResult?.filtered) || 0,
         forwarded: Number(totalResult?.forwarded) || 0,
-        activeBans,
         blockedRequests,
         topScenarios: topScenarios.map((s) => ({
           scenario: s.scenario,

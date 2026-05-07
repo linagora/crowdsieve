@@ -65,12 +65,6 @@ export interface AlertStats {
   filtered: number;
   forwarded: number;
   /**
-   * Sum of activeDecisions from the latest bouncer_metrics snapshot per
-   * (lapiServerName, bouncerName) where componentKind='remediation'.
-   * 0 when bouncer metrics are disabled or no data is available.
-   */
-  activeBans: number;
-  /**
    * Sum of droppedItems from the latest bouncer_metrics snapshot per
    * (lapiServerName, bouncerName) where componentKind='remediation'.
    * This is a cumulative counter since each bouncer last restarted.

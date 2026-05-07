@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Globe, Filter, Send, ShieldOff, Ban } from 'lucide-react';
+import { Shield, Globe, Filter, Send, Ban } from 'lucide-react';
 import type { AlertStats } from '@/lib/types';
 import { fetchStats } from '@/lib/api';
 
@@ -56,13 +56,6 @@ export function StatsPanel({
       bgColor: 'bg-green-50',
     },
     {
-      title: 'Active Bans',
-      value: stats.activeBans.toLocaleString(),
-      icon: ShieldOff,
-      color: 'text-red-500',
-      bgColor: 'bg-red-50',
-    },
-    {
       title: 'Blocked Requests',
       value: stats.blockedRequests.toLocaleString(),
       icon: Ban,
@@ -80,7 +73,7 @@ export function StatsPanel({
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
       {cards.map((card) => (
         <div key={card.title} className="card p-4">
           <div className="flex items-start justify-between">
