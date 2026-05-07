@@ -128,7 +128,7 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
       const latest = rows[0]; // API returns newest-first
       scores.set(
         key,
-        (latest?.activeDecisions ?? 0) + (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0)
+        (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0)
       );
     }
     return scores;
@@ -245,12 +245,10 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
                   {b.bouncerType ? ` · ${b.bouncerType}` : ''}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MiniChart
-                  data={series.map((p) => p.active)}
-                  title="Active decisions"
-                  colorClass="bg-red-500"
-                />
+              {/* `active_decisions` is a LAPI-global gauge — same value on
+                  every bouncer — so we only show it in the summary card up
+                  top. Per-bouncer views focus on the per-bouncer counters. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <MiniChart
                   data={series.map((p) => p.processed)}
                   title="Processed"
