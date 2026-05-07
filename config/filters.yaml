@@ -33,12 +33,9 @@ filters:
 #     url: "http://192.168.1.10:8080"
 #     api_key: "another-api-key"
 
-# Bouncer metrics collection (optional)
-# Periodically polls /v1/usage-metrics on each configured LAPI server
-# (CrowdSec >= 1.6) to record per-bouncer rejection statistics.
-# Disabled by default. Reuses the api_key from each lapi_servers entry.
+# Bouncer metrics (always-on capture)
+# CrowdSieve intercepts the usage-metrics that CrowdSec LAPI relays to CAPI,
+# stores them locally, and forwards the payload upstream unchanged.
+# Only retention is configurable.
 # bouncer_metrics:
-#   enabled: true
-#   interval_seconds: 300       # Poll every 5 minutes
-#   retention_days: 30          # Snapshot retention
-#   request_timeout_ms: 10000   # Per-request timeout
+#   retention_days: 30

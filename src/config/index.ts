@@ -204,14 +204,12 @@ const ConfigSchema = z.object({
         .default({}),
     })
     .default({}),
-  // Periodic poll of CrowdSec LAPI's GET /v1/usage-metrics endpoint to record
-  // bouncer rejection statistics. Disabled by default; opt-in per deployment.
+  // Bouncer metrics intercepted off the LAPI -> CAPI usage-metrics relay.
+  // Always-on (the proxy hosts POST /v1/usage-metrics regardless); only the
+  // retention sweep is configurable.
   bouncer_metrics: z
     .object({
-      enabled: z.boolean().default(false),
-      interval_seconds: z.number().int().positive().default(300),
       retention_days: z.number().int().positive().default(30),
-      request_timeout_ms: z.number().int().positive().default(10000),
     })
     .default({}),
 });

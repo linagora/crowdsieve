@@ -56,10 +56,7 @@ function createMockConfig(lapiServers: Config['lapi_servers'] = []): Config {
       sources: {},
     },
     bouncer_metrics: {
-      enabled: false,
-      interval_seconds: 300,
       retention_days: 30,
-      request_timeout_ms: 10000,
     },
   };
 }

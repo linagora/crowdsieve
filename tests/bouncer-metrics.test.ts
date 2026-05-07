@@ -1,25 +1,32 @@
 /**
- * Tests for the bouncer usage-metrics collector and storage round-trip.
+ * Tests for the POST /v1/usage-metrics interception route and the bouncer
+ * metrics storage round-trip.
  *
  * Covers:
- * - collector parses a typical /v1/usage-metrics payload and produces rows
- * - servers without `api_key` are skipped
- * - per-server HTTP errors are logged and the loop continues
- * - storage round-trip (saveBouncerMetrics + getBouncerMetrics with filters)
- * - cleanupBouncerMetrics deletes only old rows
+ * - Route persists per-bouncer rows from a typical CrowdSec payload, then
+ *   forwards the same body to CAPI when forwarding is enabled.
+ * - Missing Authorization is rejected with 401.
+ * - With `forward_enabled=false` the row is still persisted but no fetch
+ *   to CAPI is made (test mode).
+ * - When CAPI returns a 5xx, the row is still persisted and the response
+ *   status reflects CAPI's status.
+ * - Storage round-trip (saveBouncerMetrics + getBouncerMetrics with filters,
+ *   getBouncerNames, cleanupBouncerMetrics, getStats.blockedRequests).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import * as schema from '../src/db/schema.js';
 import {
   createStorage,
   type AlertStorage,
   type NewBouncerMetric,
 } from '../src/storage/index.js';
-import { createMetricsCollector } from '../src/metrics/collector.js';
-import type { Config, LapiServer } from '../src/config/index.js';
-import type { BaseLogger } from 'pino';
+import type { Config } from '../src/config/index.js';
+import { createLogger } from '../src/logging.js';
+import { buildRowsFromPayload } from '../src/metrics/parse.js';
 
 let sqlite: Database.Database;
 
@@ -102,30 +109,17 @@ vi.mock('../src/db/index.js', () => ({
   },
 }));
 
-function createMockLogger(): BaseLogger {
-  return {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-    fatal: vi.fn(),
-    trace: vi.fn(),
-    silent: vi.fn(),
-    level: 'info',
-  } as unknown as BaseLogger;
-}
-
-function createMockConfig(): Config {
-  return {
+function createMockConfig(over: Partial<Config> = {}): Config {
+  const base: Config = {
     proxy: {
       listen_port: 8080,
-      capi_url: 'https://api.crowdsec.net',
+      capi_url: 'https://capi.example.test',
       timeout_ms: 5000,
       forward_enabled: true,
     },
     lapi_servers: [],
     storage: { type: 'sqlite', path: ':memory:', retention_days: 30 },
-    logging: { level: 'info', format: 'json' },
+    logging: { level: 'silent', format: 'json' },
     filters: { mode: 'block', rules: [] },
     client_validation: {
       enabled: false,
@@ -144,22 +138,10 @@ function createMockConfig(): Config {
       whitelist: [],
       sources: {},
     },
-    bouncer_metrics: {
-      enabled: true,
-      interval_seconds: 300,
-      retention_days: 30,
-      request_timeout_ms: 5000,
-    },
+    bouncer_metrics: { retention_days: 30 },
   };
-}
-
-function makeServer(name: string, apiKey?: string): LapiServer {
-  return {
-    name,
-    url: `http://${name}.test:8080`,
-    api_key: apiKey ?? 'bouncer-key',
-    replicate_decisions: false,
-  };
+  // Shallow merge per top-level key (sufficient for the few overrides we use).
+  return { ...base, ...over };
 }
 
 function makeUsageMetricsPayload() {
@@ -186,15 +168,59 @@ function makeUsageMetricsPayload() {
         type: 'crowdsec',
         os: { name: 'linux', version: '12' },
         version: '1.6.0',
-        metrics: [{ name: 'processed', value: 999, labels: {} }],
+        // Wrapped form: items[] inside the metrics[] block (current LP shape).
+        metrics: [{ items: [{ name: 'processed', value: 999, labels: {} }] }],
       },
     ],
   };
 }
 
-describe('Bouncer metrics collector', () => {
+/**
+ * Build a CrowdSec-style JWT (signature ignored — we only decode the payload).
+ * Header is fixed; payload is whatever the caller passes.
+ */
+function makeJwt(payload: Record<string, unknown>): string {
+  const b64u = (obj: unknown) =>
+    Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/=+$/, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+  return `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u(payload)}.signature`;
+}
+
+async function buildApp(config: Config, storage: AlertStorage): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false }).withTypeProvider<TypeBoxTypeProvider>();
+  app.setSchemaErrorFormatter((errors, dataVar) => {
+    const first = errors[0];
+    const path = first?.instancePath || '';
+    const message = first?.message || 'Invalid request';
+    const err = new Error(`${dataVar}${path} ${message}`.trim()) as Error & {
+      statusCode?: number;
+    };
+    err.statusCode = 400;
+    return err;
+  });
+  app.decorate('config', config);
+  app.decorate('storage', storage);
+  app.decorate('proxyLogger', createLogger({ level: 'silent' }));
+  app.decorate('clientValidator', undefined);
+  app.decorate('replicationService', undefined);
+  // filterEngine is required by the FastifyInstance type but not used by this route.
+  app.decorate('filterEngine', {} as unknown);
+  await app.register(import('../src/proxy/routes/usage-metrics.js'));
+  await app.ready();
+  return app;
+}
+
+describe('POST /v1/usage-metrics route', () => {
   let storage: AlertStorage;
+  let app: FastifyInstance;
   let originalFetch: typeof fetch;
+
+  beforeAll(() => {
+    process.env.DASHBOARD_API_KEY = 'test-key-usage-metrics';
+  });
 
   beforeEach(() => {
     setupTestDatabase();
@@ -202,148 +228,168 @@ describe('Bouncer metrics collector', () => {
     originalFetch = global.fetch;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     global.fetch = originalFetch;
+    await app?.close();
     sqlite.close();
     vi.restoreAllMocks();
   });
 
-  it('parses a typical /v1/usage-metrics payload into rows', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => makeUsageMetricsPayload(),
-      text: async () => '',
+  it('persists rows and forwards to CAPI on successful relay', async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      expect(u).toBe('https://capi.example.test/v1/usage-metrics');
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const config = createMockConfig();
-    const collector = createMetricsCollector({
-      config,
-      storage,
-      logger: createMockLogger(),
-      lapiServers: [makeServer('lapi-a')],
+    app = await buildApp(createMockConfig(), storage);
+    const token = makeJwt({ id: 'lapi-machine-A', exp: 9_999_999_999 });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/usage-metrics',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      payload: makeUsageMetricsPayload(),
     });
 
-    await collector.runOnce();
-
+    expect(res.statusCode).toBe(200);
     expect(fetchMock).toHaveBeenCalledOnce();
-    const callArgs = fetchMock.mock.calls[0];
-    expect(callArgs[0]).toBe('http://lapi-a.test:8080/v1/usage-metrics');
-    const init = callArgs[1] as RequestInit;
-    expect((init.headers as Record<string, string>)['X-Api-Key']).toBe('bouncer-key');
-    expect((init.headers as Record<string, string>)['User-Agent']).toMatch(/^crowdsieve\//);
 
     const rows = await storage.getBouncerMetrics({});
     expect(rows).toHaveLength(2);
 
     const remediation = rows.find((r) => r.componentKind === 'remediation');
     const logProc = rows.find((r) => r.componentKind === 'log_processor');
-    expect(remediation).toBeDefined();
-    expect(logProc).toBeDefined();
 
+    // Hot counters from a real-shaped payload
     expect(remediation?.bouncerName).toBe('firewall-bouncer-1');
-    expect(remediation?.bouncerType).toBe('firewall-bouncer');
-    expect(remediation?.activeDecisions).toBe(50); // 42 + 8 summed
+    expect(remediation?.lapiServerName).toBe('lapi-machine-A');
+    expect(remediation?.activeDecisions).toBe(50); // 42 + 8 summed across labels
     expect(remediation?.processedItems).toBe(500);
     expect(remediation?.droppedItems).toBe(100);
     expect(remediation?.bytesProcessed).toBe(1024);
-    // metricsJson keeps the verbatim items array, including the unknown metric
-    const parsed = JSON.parse(remediation!.metricsJson) as Array<{ name: string }>;
-    expect(parsed.some((m) => m.name === 'unknown_metric')).toBe(true);
 
+    // Wrapped form (`metrics[].items[]`) is also unwrapped correctly.
     expect(logProc?.bouncerName).toBe('lp-1');
     expect(logProc?.processedItems).toBe(999);
-    expect(logProc?.activeDecisions).toBe(0);
   });
 
-  it('skips a server with no api_key', async () => {
+  it('rejects requests without Authorization with 401', async () => {
     const fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const config = createMockConfig();
-    const noKeyServer: LapiServer = {
-      name: 'no-key',
-      url: 'http://no-key.test:8080',
-      api_key: '', // empty triggers the skip path
-      replicate_decisions: false,
-    };
+    app = await buildApp(createMockConfig(), storage);
 
-    const collector = createMetricsCollector({
-      config,
-      storage,
-      logger: createMockLogger(),
-      lapiServers: [noKeyServer],
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/usage-metrics',
+      headers: { 'Content-Type': 'application/json' },
+      payload: makeUsageMetricsPayload(),
     });
 
-    await collector.runOnce();
-
+    expect(res.statusCode).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
     const rows = await storage.getBouncerMetrics({});
     expect(rows).toHaveLength(0);
   });
 
-  it('logs HTTP errors and continues', async () => {
-    const logger = createMockLogger();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: async () => ({}),
-        text: async () => 'boom',
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => makeUsageMetricsPayload(),
-        text: async () => '',
-      });
+  it('persists rows but does not forward when forward_enabled=false', async () => {
+    const fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const collector = createMetricsCollector({
-      config: createMockConfig(),
-      storage,
-      logger,
-      lapiServers: [makeServer('broken'), makeServer('ok')],
+    const cfg = createMockConfig();
+    cfg.proxy.forward_enabled = false;
+    app = await buildApp(cfg, storage);
+
+    const token = makeJwt({ id: 'lapi-test-mode' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/usage-metrics',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      payload: makeUsageMetricsPayload(),
     });
 
-    await collector.runOnce();
+    expect(res.statusCode).toBe(201);
+    expect(fetchMock).not.toHaveBeenCalled();
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(logger.warn).toHaveBeenCalled();
-
-    // Only the second server produced rows.
     const rows = await storage.getBouncerMetrics({});
-    expect(rows.every((r) => r.lapiServerName === 'ok')).toBe(true);
     expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.lapiServerName === 'lapi-test-mode')).toBe(true);
   });
 
-  it('handles network errors per-server without throwing', async () => {
-    const logger = createMockLogger();
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('connection refused'))
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => makeUsageMetricsPayload(),
-        text: async () => '',
-      });
+  it('persists rows and surfaces upstream status when CAPI returns 502', async () => {
+    const fetchMock = vi.fn(async () => new Response('upstream down', { status: 502 }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const collector = createMetricsCollector({
-      config: createMockConfig(),
-      storage,
-      logger,
-      lapiServers: [makeServer('down'), makeServer('up')],
+    app = await buildApp(createMockConfig(), storage);
+    const token = makeJwt({ id: 'lapi-with-bad-capi' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/usage-metrics',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      payload: makeUsageMetricsPayload(),
     });
 
-    await expect(collector.runOnce()).resolves.toBeUndefined();
-    expect(logger.error).toHaveBeenCalled();
+    expect(res.statusCode).toBe(502);
+    expect(fetchMock).toHaveBeenCalledOnce();
 
+    // Persistence happens BEFORE forwarding — so a CAPI outage cannot drop
+    // metrics. This is the documented ordering in usage-metrics.ts.
     const rows = await storage.getBouncerMetrics({});
-    expect(rows.every((r) => r.lapiServerName === 'up')).toBe(true);
+    expect(rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe('buildRowsFromPayload (parser)', () => {
+  it('handles flat metrics[] form', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [{ name: 'dropped', value: 5 }, { name: 'processed', value: 10 }],
+          },
+        ],
+      },
+      1000
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(5);
+    expect(rows[0].processedItems).toBe(10);
+  });
+
+  it('handles wrapped metrics[].items[] form', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        log_processors: [
+          {
+            name: 'lp',
+            metrics: [{ items: [{ name: 'processed', value: 7 }] }],
+          },
+        ],
+      },
+      1000
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].processedItems).toBe(7);
+  });
+
+  it('skips components without a name', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      { remediation_components: [{ metrics: [{ name: 'dropped', value: 1 }] }] },
+      1000
+    );
+    expect(rows).toHaveLength(0);
   });
 });
 

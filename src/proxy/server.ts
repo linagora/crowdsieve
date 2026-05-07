@@ -283,6 +283,7 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   // Register routes
   await app.register(import('./routes/api.js'));
   await app.register(import('./routes/signals.js'));
+  await app.register(import('./routes/usage-metrics.js'));
 
   return app;
 }

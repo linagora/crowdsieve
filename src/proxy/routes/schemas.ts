@@ -340,6 +340,17 @@ export const SignalsResponse = Type.Object({
   message: Type.String(),
 });
 
+// --- Usage metrics relay (LAPI -> CAPI) --------------------------------------
+
+/**
+ * Permissive body schema for POST /v1/usage-metrics. CrowdSec's payload nests
+ * `remediation_components[]` and `log_processors[]`, each with a `metrics`
+ * field whose shape varies between releases (sometimes a flat item array,
+ * sometimes wrapped in `{ items: [...] }`). We don't constrain it here — the
+ * route's parser handles both shapes — but we do require a JSON object.
+ */
+export const UsageMetricsBody = Type.Object({}, { additionalProperties: true });
+
 // --- Bouncer metrics ---------------------------------------------------------
 
 /**

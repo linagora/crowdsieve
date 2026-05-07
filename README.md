@@ -11,7 +11,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Configurable detection rules (YAML) with grouping, distinct counting, and thresholds
   - Global whitelist for IPs and CIDR ranges
   - Push decisions to all your CrowdSec LAPI servers
-- **Bouncer Metrics**: Optional periodic collection of CrowdSec `usage-metrics` from each LAPI server (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard
+- **Bouncer Metrics**: Transparent capture of CrowdSec `usage-metrics` as LAPI relays them to CAPI (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard with no extra LAPI configuration
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
 - **Dashboard Authentication**: Two modes, both documented in [doc/oidc-authentication.md](./doc/oidc-authentication.md)
@@ -474,31 +474,25 @@ See the [full REST API reference](https://linagora.github.io/crowdsieve/api/) fo
 
 ## Bouncer Metrics
 
-CrowdSieve can periodically poll each configured LAPI server's `GET /v1/usage-metrics` endpoint (CrowdSec ≥ 1.6) and store per-bouncer snapshots. This surfaces in the dashboard as:
+CrowdSieve transparently captures the `usage-metrics` payloads that CrowdSec LAPI relays to CAPI (CrowdSec ≥ 1.6). Because CrowdSieve sits between LAPI and CAPI as the configured `api_url`, these `POST /v1/usage-metrics` requests already pass through us — we persist a per-bouncer snapshot row per relay and forward the body upstream unchanged. No extra polling, no extra credentials, no LAPI-side configuration.
+
+This surfaces in the dashboard as:
 
 - A **"Blocked Requests"** stat on the homepage — total requests dropped by all bouncers (cumulative since each bouncer started).
 - A **Bouncers** page with per-bouncer time-series charts of active decisions, processed items, dropped items, and bytes processed.
 
-The feature is disabled by default. It uses the existing `api_key` from each `lapi_servers[]` entry — no extra credentials.
-
 ### Configuration
 
-Enable in `config/filters.yaml`:
+The feature is always-on once CrowdSieve is the upstream of your LAPI(s). Only the retention sweep is configurable in `config/filters.yaml`:
 
 ```yaml
 bouncer_metrics:
-  enabled: true
-  interval_seconds: 300 # Poll every 5 minutes
   retention_days: 30 # Keep snapshots for 30 days
-  request_timeout_ms: 10000 # Per-request timeout
 ```
 
-| Field                | Default | Description                                              |
-| -------------------- | ------- | -------------------------------------------------------- |
-| `enabled`            | `false` | Set to `true` to start polling on boot                   |
-| `interval_seconds`   | `300`   | Seconds between polls per LAPI server                    |
-| `retention_days`     | `30`    | Snapshots older than this are deleted by a daily cleanup |
-| `request_timeout_ms` | `10000` | Timeout for each `/v1/usage-metrics` HTTP call           |
+| Field            | Default | Description                                              |
+| ---------------- | ------- | -------------------------------------------------------- |
+| `retention_days` | `30`    | Snapshots older than this are deleted by a daily cleanup |
 
 ### Bouncer Metrics API Endpoints
 
