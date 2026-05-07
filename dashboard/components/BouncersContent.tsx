@@ -126,10 +126,7 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
     const scores = new Map<string, number>();
     for (const [key, rows] of byBouncer) {
       const latest = rows[0]; // API returns newest-first
-      scores.set(
-        key,
-        (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0)
-      );
+      scores.set(key, (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0));
     }
     return scores;
   }, [byBouncer]);
