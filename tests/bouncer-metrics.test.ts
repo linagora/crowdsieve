@@ -458,10 +458,8 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows).toHaveLength(0);
   });
 
-  it('block form sums per-window counters across all blocks (dropped/processed/bytes)', () => {
-    // Two blocks: older has dropped=100, newer has dropped=250.
-    // `dropped` is a per-window counter — sum across blocks → 350.
-    // `collectedAt` still tracks the latest block's timestamp (used for ordering).
+  it('block form emits one row per block', () => {
+    // Two blocks: each block becomes its own row keyed by its timestamp.
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -483,9 +481,11 @@ describe('buildRowsFromPayload (parser)', () => {
       },
       0
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].droppedItems).toBe(350);
-    expect(rows[0].collectedAt).toBe(1730125256 * 1000);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].droppedItems).toBe(100);
+    expect(rows[0].collectedAt).toBe(1730123456 * 1000);
+    expect(rows[1].droppedItems).toBe(250);
+    expect(rows[1].collectedAt).toBe(1730125256 * 1000);
   });
 
   it('block form sums per-label items within a block (single block)', () => {
@@ -515,9 +515,9 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows[0].droppedItems).toBe(250);
   });
 
-  it('block form with missing meta sums dropped across all blocks', () => {
-    // Two blocks without meta. Per-window counters sum across blocks → 400.
-    // No timestamp anywhere → collectedAt falls back to the parameter (5000).
+  it('blocks without meta get unique synthetic timestamps', () => {
+    // Two blocks without meta. Each becomes its own row with a synthetic
+    // collectedAt derived from the fallback + block index.
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -526,24 +526,50 @@ describe('buildRowsFromPayload (parser)', () => {
             name: 'fw',
             metrics: [
               { items: [{ name: 'dropped', value: 100, labels: {} }] },
-              { items: [{ name: 'dropped', value: 300, labels: {} }] },
+              { items: [{ name: 'dropped', value: 200, labels: {} }] },
             ],
           },
         ],
       },
       5000
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].droppedItems).toBe(400);
-    // No timestamp in meta → falls back to collectedAt parameter.
-    expect(rows[0].collectedAt).toBe(5000);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].droppedItems).toBe(100);
+    expect(rows[0].collectedAt).toBe(5000); // fallback + index 0
+    expect(rows[1].droppedItems).toBe(200);
+    expect(rows[1].collectedAt).toBe(5001); // fallback + index 1
   });
 
-  it('mixed semantics: counters sum across blocks, gauge picks latest block', () => {
+  it('per-label items within a block are summed into one row', () => {
+    // One block with two dropped items for different labels → total 250 in one row.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456 },
+                items: [
+                  { name: 'dropped', value: 200, labels: { ip_type: 'ipv4' } },
+                  { name: 'dropped', value: 50, labels: { ip_type: 'ipv6' } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(250);
+  });
+
+  it('each block carries its own counters independently (two blocks → two rows)', () => {
     // Block 1: dropped=100, active_decisions=10
     // Block 2: dropped=200, active_decisions=15
-    // Counter (dropped): 100 + 200 = 300 (summed across windows)
-    // Gauge (active_decisions): 15 (latest block only — current state)
+    // Each block is stored as its own row — counters are NOT summed or shared.
     const rows = buildRowsFromPayload(
       'srv1',
       {
@@ -571,9 +597,11 @@ describe('buildRowsFromPayload (parser)', () => {
       },
       0
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].droppedItems).toBe(300);
-    expect(rows[0].activeDecisions).toBe(15);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].droppedItems).toBe(100);
+    expect(rows[0].activeDecisions).toBe(10);
+    expect(rows[1].droppedItems).toBe(200);
+    expect(rows[1].activeDecisions).toBe(15);
   });
 
   it('canonicalizes bouncer name by stripping trailing @<ipv4>', () => {
@@ -619,6 +647,29 @@ describe('buildRowsFromPayload (parser)', () => {
       0
     );
     expect(rows.map((r) => r.bouncerName)).toEqual(['plain-bouncer', 'svc@hostname']);
+  });
+
+  it('empty blocks are skipped', () => {
+    // A block with items:[] is a fresh-registration placeholder — do not emit a row.
+    // Only the block that has actual items should produce a row.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              { meta: { utc_now_timestamp: 1730123456 }, items: [] },
+              { meta: { utc_now_timestamp: 1730125256 }, items: [{ name: 'dropped', value: 7 }] },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(7);
+    expect(rows[0].collectedAt).toBe(1730125256 * 1000);
   });
 
   it('skips components with no items (no phantom 0 rows for freshly registered bouncers)', () => {

@@ -5,6 +5,10 @@
  * The route in `src/proxy/routes/usage-metrics.ts` calls this synchronously
  * after authenticating the request — keeping the logic side-effect free so it
  * can be unit-tested without a Fastify instance.
+ *
+ * Each DetailedMetrics block in `component.metrics[]` produces ONE row keyed
+ * by (lapi_server_name, bouncer_name, component_kind, collectedAt). The unique
+ * index makes retransmitted blocks no-ops via ON CONFLICT DO NOTHING.
  */
 
 import type { NewBouncerMetric } from '../storage/index.js';
@@ -86,48 +90,6 @@ function isBlockForm(metrics: MetricsComponent['metrics']): boolean {
 }
 
 /**
- * Pick the most recent block from a block-form metrics array.
- *
- * "Most recent" is determined by `block.meta.utc_now_timestamp` (largest
- * value wins). When no block carries a timestamp, we fall back to the last
- * entry in array order (CrowdSec appends blocks chronologically).
- */
-function pickLatestBlock(metrics: MetricsComponent['metrics']): MetricsBlock | null {
-  if (!Array.isArray(metrics) || metrics.length === 0) return null;
-
-  let bestBlock: MetricsBlock | null = null;
-  let bestTs: number | null = null;
-  let anyTimestamp = false;
-
-  for (const entry of metrics) {
-    if (!entry || typeof entry !== 'object') continue;
-    const block = entry as MetricsBlock;
-    const ts =
-      typeof block.meta?.utc_now_timestamp === 'number' ? block.meta.utc_now_timestamp : null;
-    if (ts !== null) {
-      anyTimestamp = true;
-      if (bestTs === null || ts > bestTs) {
-        bestTs = ts;
-        bestBlock = block;
-      }
-    } else {
-      // No timestamp on this block — track it as the "last seen" fallback.
-      if (!anyTimestamp) {
-        bestBlock = block;
-      }
-    }
-  }
-
-  // If we found at least one timestamped block, bestBlock already points to
-  // the best one.  If no block had a timestamp, bestBlock is the last entry
-  // because we kept overwriting it with each timestamp-less entry (and the
-  // `!anyTimestamp` guard means we stop updating once a timestamped entry is
-  // seen — but in the pure no-timestamp case we always keep the latest seen,
-  // which is the last array element).
-  return bestBlock;
-}
-
-/**
  * Sum same-name metric items within a single block.
  *
  * CrowdSec emits one item per label combination (e.g. dropped{ipv4} + dropped{ipv6}).
@@ -153,94 +115,6 @@ function sumItemsByName(items: MetricsItem[]): Record<HotCounterKey, number> {
 }
 
 /**
- * Sum the per-window counters (`dropped`, `processed`, `bytes`) across **all**
- * blocks in a component's `metrics` array.
- *
- * CrowdSec emits one block per `WindowSizeSeconds` window with **per-window**
- * counter values (NOT cumulative): each block's `dropped`/`processed`/`bytes`
- * count only what happened during that window. Producing a meaningful total
- * therefore requires summing every block we receive in the relay.
- *
- * The active-decisions gauge is handled separately (see {@link pickLatestSnapshot})
- * — gauges represent a current state, so we take the latest block's value
- * rather than summing.
- *
- * Both block-form (`Array<{ items?, meta? }>`) and flat-form
- * (`Array<MetricsItem>`) inputs are accepted, mirroring {@link pickLatestSnapshot}.
- * For the flat form, summing across "all blocks" reduces to summing across
- * all top-level items, since the whole array is a single implicit block.
- *
- * Returns an object holding totals only for the per-window counters; the
- * `activeDecisions` field is intentionally NOT touched here (always 0).
- */
-function aggregateAllBlocks(metrics: MetricsComponent['metrics']): Record<HotCounterKey, number> {
-  const counters: Record<HotCounterKey, number> = {
-    activeDecisions: 0,
-    processedItems: 0,
-    droppedItems: 0,
-    bytesProcessed: 0,
-  };
-  if (!Array.isArray(metrics) || metrics.length === 0) return counters;
-
-  const accumulate = (items: MetricsItem[]) => {
-    for (const item of items) {
-      if (!item || typeof item.name !== 'string') continue;
-      // Skip the gauge — its value comes from the latest block only.
-      if (item.name === 'active_decisions') continue;
-      const target = HOT_COUNTER_NAMES[item.name as keyof typeof HOT_COUNTER_NAMES];
-      if (!target) continue;
-      const value = typeof item.value === 'number' ? item.value : Number(item.value);
-      if (Number.isFinite(value)) {
-        counters[target] += value;
-      }
-    }
-  };
-
-  if (isBlockForm(metrics)) {
-    for (const entry of metrics) {
-      if (!entry || typeof entry !== 'object') continue;
-      const block = entry as MetricsBlock;
-      const items: MetricsItem[] = Array.isArray(block.items) ? (block.items as MetricsItem[]) : [];
-      accumulate(items);
-    }
-  } else {
-    accumulate(metrics as MetricsItem[]);
-  }
-
-  return counters;
-}
-
-/**
- * Select the items to sum and the block's timestamp (ms) from the component's
- * `metrics` field.
- *
- * Block form (modern): picks the latest block's `items[]`.
- * Flat form (legacy):  treats the whole array as `MetricsItem[]`.
- */
-function pickLatestSnapshot(
-  metrics: MetricsComponent['metrics'],
-  _collectedAtFallback: number
-): { items: MetricsItem[]; blockTimestampMs: number | null } {
-  if (!Array.isArray(metrics) || metrics.length === 0) {
-    return { items: [], blockTimestampMs: null };
-  }
-
-  if (isBlockForm(metrics)) {
-    const block = pickLatestBlock(metrics);
-    if (!block) return { items: [], blockTimestampMs: null };
-    const items: MetricsItem[] = Array.isArray(block.items) ? (block.items as MetricsItem[]) : [];
-    const ts =
-      typeof block.meta?.utc_now_timestamp === 'number'
-        ? block.meta.utc_now_timestamp * 1000
-        : null;
-    return { items, blockTimestampMs: ts };
-  }
-
-  // Flat / legacy form: treat every entry directly as a MetricsItem.
-  return { items: metrics as MetricsItem[], blockTimestampMs: null };
-}
-
-/**
  * CrowdSec appends `@<source-ip>` to bouncer names registered without an
  * explicit name. The IP changes whenever the bouncer container restarts with
  * a fresh Docker IP, so the SAME logical bouncer ends up split across multiple
@@ -251,69 +125,111 @@ function canonicalizeBouncerName(name: string): string {
   return name.replace(/@(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]|[0-9a-f:]+)$/i, '');
 }
 
-/** Build a single bouncer metric row from a component descriptor. */
-function buildRow(
+/**
+ * Build one row per DetailedMetrics block inside a component descriptor.
+ *
+ * Block form (modern): one row per `{ items, meta }` entry — each block is one
+ *   snapshot in time. `collectedAt` comes from `meta.utc_now_timestamp` (ms).
+ *   When the timestamp is absent, we synthesize a unique stamp by offsetting
+ *   the fallback by the block's array index so all rows remain insertable.
+ *
+ * Flat form (legacy): treats the entire array as one implicit block → one row.
+ *
+ * Empty blocks (items.length === 0) are skipped — they represent freshly
+ * registered bouncers that haven't pushed counters yet.
+ */
+function buildRowsForComponent(
   lapiServerName: string,
   component: MetricsComponent,
   kind: ComponentKind,
-  collectedAt: number
-): NewBouncerMetric | null {
+  fallbackCollectedAt: number
+): NewBouncerMetric[] {
   const rawName = component.name?.trim();
-  if (!rawName) return null;
+  if (!rawName) return [];
   const bouncerName = canonicalizeBouncerName(rawName);
 
-  // Different metric kinds have different semantics:
-  // - Counters (`dropped`, `processed`, `bytes`) are **per-window** values:
-  //   each block reports only what happened during its window. We sum them
-  //   across every block the relay carries.
-  // - The gauge (`active_decisions`) reports a **current state**: we take the
-  //   latest block's value (and sum within that block across labels).
-  //
-  // We compute both halves independently and merge into one row.
-  const counters = aggregateAllBlocks(component.metrics);
-  const { items: latestItems, blockTimestampMs } = pickLatestSnapshot(
-    component.metrics,
-    collectedAt
-  );
-  const gauge = sumItemsByName(latestItems);
+  // Block form: one row per block.
+  if (Array.isArray(component.metrics) && isBlockForm(component.metrics)) {
+    const rows: NewBouncerMetric[] = [];
+    let blockIndex = 0;
+    for (const entry of component.metrics) {
+      if (!entry || typeof entry !== 'object') continue;
+      const block = entry as MetricsBlock;
+      const items: MetricsItem[] = Array.isArray(block.items) ? (block.items as MetricsItem[]) : [];
+      // Skip empty blocks (fresh registrations / placeholder entries).
+      if (items.length === 0) {
+        blockIndex++;
+        continue;
+      }
 
-  // Skip components that have no metrics at all — typically a freshly
-  // registered bouncer that the LAPI relays before it has pushed any
-  // counters. We still emit a row whenever any per-window counter
-  // contributed any value, even if the gauge happens to be empty (e.g. an
-  // empty latest block following an active window).
-  const hasGaugeData = latestItems.length > 0;
-  const hasCounterData =
-    counters.processedItems !== 0 || counters.droppedItems !== 0 || counters.bytesProcessed !== 0;
-  if (!hasGaugeData && !hasCounterData) return null;
+      const counters = sumItemsByName(items);
 
-  return {
-    lapiServerName,
-    componentKind: kind,
-    bouncerName,
-    bouncerType: component.type ?? null,
-    osName: component.os?.name ?? null,
-    osVersion: component.os?.version ?? null,
-    version: component.version ?? null,
-    activeDecisions: gauge.activeDecisions,
-    processedItems: counters.processedItems,
-    droppedItems: counters.droppedItems,
-    bytesProcessed: counters.bytesProcessed,
-    collectedAt: blockTimestampMs ?? collectedAt,
-    metricsJson: JSON.stringify(latestItems),
-  };
+      // Each block needs a UNIQUE collectedAt (the unique index requires it).
+      // Prefer meta.utc_now_timestamp; otherwise synthesize a unique stamp by
+      // offsetting the fallback by the block index to keep all rows insertable.
+      const ts =
+        typeof block.meta?.utc_now_timestamp === 'number'
+          ? block.meta.utc_now_timestamp * 1000
+          : fallbackCollectedAt + blockIndex;
+
+      rows.push({
+        lapiServerName,
+        componentKind: kind,
+        bouncerName,
+        bouncerType: component.type ?? null,
+        osName: component.os?.name ?? null,
+        osVersion: component.os?.version ?? null,
+        version: component.version ?? null,
+        activeDecisions: counters.activeDecisions,
+        processedItems: counters.processedItems,
+        droppedItems: counters.droppedItems,
+        bytesProcessed: counters.bytesProcessed,
+        collectedAt: ts,
+        metricsJson: JSON.stringify(items),
+      });
+      blockIndex++;
+    }
+    return rows;
+  }
+
+  // Flat form (legacy/test): treat the whole array as one block → one row.
+  const flatItems = Array.isArray(component.metrics) ? (component.metrics as MetricsItem[]) : [];
+  if (flatItems.length === 0) return [];
+  const counters = sumItemsByName(flatItems);
+  return [
+    {
+      lapiServerName,
+      componentKind: kind,
+      bouncerName,
+      bouncerType: component.type ?? null,
+      osName: component.os?.name ?? null,
+      osVersion: component.os?.version ?? null,
+      version: component.version ?? null,
+      activeDecisions: counters.activeDecisions,
+      processedItems: counters.processedItems,
+      droppedItems: counters.droppedItems,
+      bytesProcessed: counters.bytesProcessed,
+      collectedAt: fallbackCollectedAt,
+      metricsJson: JSON.stringify(flatItems),
+    },
+  ];
 }
 
 /**
  * Convert a CrowdSec usage-metrics payload into the per-bouncer rows expected
  * by {@link AlertStorage.saveBouncerMetrics}.
  *
+ * Each DetailedMetrics block produces ONE row keyed by
+ * (lapi_server_name, bouncer_name, component_kind, collectedAt). The unique
+ * index makes retransmitted blocks no-ops via ON CONFLICT DO NOTHING.
+ *
  * @param lapiServerName Identifier for the LAPI that relayed this payload.
  *   We use the JWT's `id` (machine_id) so the row carries the LAPI's identity
  *   even when no entry in `lapi_servers[]` matches.
  * @param payload Decoded JSON body; permissive shape — extra fields are kept
  *   verbatim in `metricsJson`.
- * @param collectedAt Unix ms timestamp recorded against every produced row.
+ * @param collectedAt Unix ms timestamp used as fallback when a block carries
+ *   no `meta.utc_now_timestamp`.
  */
 export function buildRowsFromPayload(
   lapiServerName: string,
@@ -322,12 +238,10 @@ export function buildRowsFromPayload(
 ): NewBouncerMetric[] {
   const rows: NewBouncerMetric[] = [];
   for (const component of payload.remediation_components ?? []) {
-    const row = buildRow(lapiServerName, component, 'remediation', collectedAt);
-    if (row) rows.push(row);
+    rows.push(...buildRowsForComponent(lapiServerName, component, 'remediation', collectedAt));
   }
   for (const component of payload.log_processors ?? []) {
-    const row = buildRow(lapiServerName, component, 'log_processor', collectedAt);
-    if (row) rows.push(row);
+    rows.push(...buildRowsForComponent(lapiServerName, component, 'log_processor', collectedAt));
   }
   return rows;
 }
