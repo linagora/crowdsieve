@@ -120,15 +120,32 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
     return Array.from(set).sort();
   }, [bouncers, metrics]);
 
+  // Pre-compute an activity score per bouncer key so we don't re-derive it
+  // inside the sort comparator (O(n) build, O(1) lookup during sort).
+  const activityScores = useMemo(() => {
+    const scores = new Map<string, number>();
+    for (const [key, rows] of byBouncer) {
+      const latest = rows[0]; // API returns newest-first
+      scores.set(
+        key,
+        (latest?.activeDecisions ?? 0) + (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0)
+      );
+    }
+    return scores;
+  }, [byBouncer]);
+
   const visibleBouncers = useMemo(() => {
     return bouncers
       .filter((b) => !serverFilter || b.lapiServerName === serverFilter)
       .sort((a, b) => {
-        const byServer = a.lapiServerName.localeCompare(b.lapiServerName);
-        if (byServer !== 0) return byServer;
-        return a.bouncerName.localeCompare(b.bouncerName);
+        const keyA = `${a.lapiServerName}::${a.bouncerName}`;
+        const keyB = `${b.lapiServerName}::${b.bouncerName}`;
+        const scoreA = activityScores.get(keyA) ?? 0;
+        const scoreB = activityScores.get(keyB) ?? 0;
+        if (scoreB !== scoreA) return scoreB - scoreA; // higher score first
+        return a.bouncerName.localeCompare(b.bouncerName); // alpha tiebreaker
       });
-  }, [bouncers, serverFilter]);
+  }, [bouncers, serverFilter, activityScores]);
 
   const totalActive = useMemo(
     () =>

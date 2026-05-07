@@ -222,7 +222,7 @@ lapi_servers:
 
 CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
 
-1. **Source server exclusion**: Decisions are not replicated back to the server they originated from. Configure `source_machine_ids` with all machine IDs of agents connected to each LAPI server.
+1. **Source server exclusion**: Decisions are not replicated back to the server they originated from. Configure `source_machine_ids` with all machine IDs of agents connected to each LAPI server. The same `source_machine_ids` are also used to resolve the friendly server name when capturing `usage-metrics` from the LAPI's CAPI relay — if the LAPI's online API machine_id matches one of these entries, the row is tagged with this server's `name` instead of the raw machine_id.
 2. **Origin tagging**: Replicated decisions are marked with `origin: crowdsieve-replication`
 3. **Origin filtering**: Decisions with `crowdsieve` or `crowdsieve-replication` origins are never replicated
 4. **CAPI filtering**: Crowdsieve-originated alerts are not forwarded to CAPI

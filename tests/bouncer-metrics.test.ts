@@ -300,6 +300,70 @@ describe('POST /v1/usage-metrics route', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('maps JWT machine_id to friendly LAPI server name via source_machine_ids', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const cfg = createMockConfig({
+      lapi_servers: [
+        {
+          name: 'sso',
+          url: 'http://lapi-sso.example.test',
+          api_key: 'key1',
+          source_machine_ids: ['hex-machine-id-here'],
+          replicate_decisions: false,
+        },
+      ],
+    });
+    app = await buildApp(cfg, storage);
+
+    const token = makeJwt({ id: 'hex-machine-id-here', exp: 9_999_999_999 });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/usage-metrics',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      payload: makeUsageMetricsPayload(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const rows = await storage.getBouncerMetrics({});
+    expect(rows.length).toBeGreaterThan(0);
+    // All rows must be tagged with the friendly name, not the raw machine_id.
+    expect(rows.every((r) => r.lapiServerName === 'sso')).toBe(true);
+  });
+
+  it('falls back to raw machine_id when no source_machine_ids match', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const cfg = createMockConfig({
+      lapi_servers: [
+        {
+          name: 'other-server',
+          url: 'http://lapi-other.example.test',
+          api_key: 'key2',
+          source_machine_ids: ['different-machine-id'],
+          replicate_decisions: false,
+        },
+      ],
+    });
+    app = await buildApp(cfg, storage);
+
+    const token = makeJwt({ id: 'unmatched-machine-id', exp: 9_999_999_999 });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/usage-metrics',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      payload: makeUsageMetricsPayload(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const rows = await storage.getBouncerMetrics({});
+    expect(rows.length).toBeGreaterThan(0);
+    // Falls back to the raw JWT id when no mapping exists.
+    expect(rows.every((r) => r.lapiServerName === 'unmatched-machine-id')).toBe(true);
+  });
+
   it('persists rows but does not forward when forward_enabled=false', async () => {
     const fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;

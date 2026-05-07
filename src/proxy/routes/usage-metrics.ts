@@ -68,6 +68,16 @@ function extractMachineIdFromAuth(authHeader: string | undefined): string {
 const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
   const { config, storage, proxyLogger: logger, clientValidator } = fastify;
 
+  // Build a reverse-lookup map from JWT machine_id → friendly LAPI server name.
+  // Populated from `lapi_servers[].source_machine_ids` — the same field used for
+  // loop-prevention so the configuration is self-consistent.
+  const machineIdToServerName = new Map<string, string>();
+  for (const server of config.lapi_servers ?? []) {
+    for (const mid of server.source_machine_ids ?? []) {
+      machineIdToServerName.set(mid, server.name);
+    }
+  }
+
   const handle = async (
     request: FastifyRequest<{ Body: UsageMetricsPayload }>,
     reply: FastifyReply
@@ -102,8 +112,9 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     }
 
     const body = request.body ?? {};
-    const machineId = extractMachineIdFromAuth(request.headers.authorization);
-    const rows = buildRowsFromPayload(machineId, body, Date.now());
+    const rawMachineId = extractMachineIdFromAuth(request.headers.authorization);
+    const lapiServerName = machineIdToServerName.get(rawMachineId) ?? rawMachineId;
+    const rows = buildRowsFromPayload(lapiServerName, body, Date.now());
 
     // Persist before forwarding so a CAPI outage cannot drop metrics. A DB
     // failure must NOT 500 the request — CrowdSec retries the relay on its
@@ -112,11 +123,14 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       try {
         await storage.saveBouncerMetrics(rows);
         logger.debug(
-          { rows: rows.length, machineId },
+          { rows: rows.length, machineId: rawMachineId, lapiServerName },
           'Persisted bouncer metrics from intercepted usage-metrics POST'
         );
       } catch (err) {
-        logger.error({ err, rows: rows.length, machineId }, 'Failed to persist bouncer metrics');
+        logger.error(
+          { err, rows: rows.length, machineId: rawMachineId, lapiServerName },
+          'Failed to persist bouncer metrics'
+        );
       }
     }
 
@@ -163,7 +177,7 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
 
       const responseBody = await response.text();
       logger.info(
-        { rows: rows.length, status: response.status, machineId },
+        { rows: rows.length, status: response.status, machineId: rawMachineId, lapiServerName },
         'Forwarded usage-metrics to CAPI'
       );
 
