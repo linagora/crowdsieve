@@ -1262,11 +1262,17 @@ export function createStorage(): AlertStorage {
       // Drizzle's `onConflictDoNothing()` translates to:
       //   - SQLite:   INSERT OR IGNORE
       //   - Postgres: INSERT ... ON CONFLICT (...) DO NOTHING
-      const insertQuery = db.insert(schema.bouncerMetrics).values(rows).onConflictDoNothing();
-      if (isPostgres) {
-        await insertQuery;
-      } else {
-        (insertQuery as unknown as { run(): void }).run();
+      // Chunk inserts: SQLite caps bind variables at 32766 and Postgres at
+      // 65535. With 13 columns per row a 500-row batch stays well below both.
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const slice = rows.slice(i, i + CHUNK_SIZE);
+        const insertQuery = db.insert(schema.bouncerMetrics).values(slice).onConflictDoNothing();
+        if (isPostgres) {
+          await insertQuery;
+        } else {
+          (insertQuery as unknown as { run(): void }).run();
+        }
       }
     },
 

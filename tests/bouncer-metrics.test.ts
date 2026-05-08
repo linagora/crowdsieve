@@ -781,6 +781,16 @@ describe('Bouncer metrics storage', () => {
     expect(limited).toHaveLength(1);
   });
 
+  it('saveBouncerMetrics handles large batches (>500 rows) without exceeding SQLite variable limit', async () => {
+    const now = Date.now();
+    const rows = Array.from({ length: 1500 }, (_, i) =>
+      makeRow({ bouncerName: `b${i}`, collectedAt: now - i })
+    );
+    await expect(storage.saveBouncerMetrics(rows)).resolves.toBeUndefined();
+    const all = await storage.getBouncerMetrics({ limit: 2000 });
+    expect(all).toHaveLength(1500);
+  });
+
   it('getBouncerNames returns distinct (server, bouncer) tuples', async () => {
     const now = Date.now();
     await storage.saveBouncerMetrics([
