@@ -26,7 +26,11 @@
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
+import { promisify } from 'node:util';
+import { gzip } from 'node:zlib';
 import { buildRowsFromPayload, type UsageMetricsPayload } from '../../metrics/parse.js';
+
+const gzipAsync = promisify(gzip);
 import {
   ErrorResponse,
   ErrorWithMessageResponse,
@@ -145,14 +149,18 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     // consumed the underlying stream by now.
     try {
       const capiUrl = config.proxy.capi_url;
-      const outgoing = JSON.stringify(body);
+      // Gzip the outgoing body. CrowdSec LAPI normally sends usage-metrics
+      // gzipped (highly repetitive JSON compresses 5-10×); Fastify gunzipped
+      // it on the way in. CAPI enforces a 10 MiB wire-size limit, so we MUST
+      // re-compress on the way out — otherwise a payload that arrived 2 MiB
+      // gzipped becomes 15-20 MiB plain and gets rejected with 413.
+      const outgoingJson = JSON.stringify(body);
+      const outgoing = await gzipAsync(outgoingJson);
 
       // Mirror signals.ts: forward all headers except hop-by-hop ones.
-      // Also drop `content-encoding`: Fastify already gunzipped the request
-      // for us and we re-serialize the body as plain JSON below — keeping
-      // an inbound `Content-Encoding: gzip` header would make CAPI try to
-      // gunzip a plain JSON payload and reject it (415 Unsupported Media
-      // Type). Same idea for `accept-encoding` — let fetch negotiate.
+      // We set `Content-Encoding: gzip` ourselves below, so we drop the
+      // inbound one (we just re-encoded the body). Same idea for
+      // `accept-encoding` — let fetch negotiate.
       const headersToSkip = new Set([
         'host',
         'connection',
@@ -167,6 +175,7 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       ]);
       const forwardHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
+        'Content-Encoding': 'gzip',
       };
       for (const [key, value] of Object.entries(request.headers)) {
         const lowerKey = key.toLowerCase();

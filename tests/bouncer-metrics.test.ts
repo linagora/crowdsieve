@@ -814,6 +814,23 @@ describe('Bouncer metrics storage', () => {
     expect(keys).toEqual(['srv1::b1', 'srv1::b2', 'srv2::b1']);
   });
 
+  it('getBouncerNames dedupes a bouncer that appears under both componentKinds', async () => {
+    const now = Date.now();
+    // Same (lapi, bouncer) under remediation AND log_processor — common for
+    // hybrid crowdsec agents. The registry stores both rows; getBouncerNames
+    // must collapse them to a single entry for the dashboard.
+    await storage.saveBouncerMetrics([
+      makeRow({ lapiServerName: 'srv1', bouncerName: 'hybrid', componentKind: 'remediation', bouncerType: 'fw', collectedAt: now }),
+      makeRow({ lapiServerName: 'srv1', bouncerName: 'hybrid', componentKind: 'log_processor', bouncerType: null, collectedAt: now }),
+    ]);
+
+    const names = await storage.getBouncerNames();
+    expect(names).toHaveLength(1);
+    expect(names[0].bouncerName).toBe('hybrid');
+    // MAX(bouncerType) keeps the non-null one.
+    expect(names[0].bouncerType).toBe('fw');
+  });
+
   it('getStats blockedRequests sums per-window dropped counters across the retention window', async () => {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;

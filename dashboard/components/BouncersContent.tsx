@@ -122,10 +122,16 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
 
   // Pre-compute an activity score per bouncer key so we don't re-derive it
   // inside the sort comparator (O(n) build, O(1) lookup during sort).
+  // Skip registration-only rows (metricsJson === '[]') — they carry all-zero
+  // counters with a fresh `now` timestamp, which would otherwise mask the
+  // real activity of bouncers that mix remediation + log_processor kinds
+  // (the registration log_processor row is always newer than the real
+  // remediation snapshot and would win `rows[0]`).
   const activityScores = useMemo(() => {
     const scores = new Map<string, number>();
     for (const [key, rows] of byBouncer) {
-      const latest = rows[0]; // API returns newest-first
+      const realRows = rows.filter((r) => r.metricsJson !== '[]');
+      const latest = realRows[0] ?? rows[0]; // API returns newest-first
       scores.set(key, (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0));
     }
     return scores;

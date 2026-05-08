@@ -1438,15 +1438,20 @@ export function createStorage(): AlertStorage {
 
     async getBouncerNames() {
       const { db, schema, isPostgres } = getDatabaseContext();
-      // Read directly from the registry — one row per bouncer, no aggregation
-      // needed. Replaces the previous self-join hack on bouncer_metrics.
+      // Read from the registry, deduped on (lapiServerName, bouncerName).
+      // The registry's PK includes componentKind, so a bouncer that emits
+      // both `remediation` and `log_processor` rows (common for hybrid
+      // crowdsec agents) appears twice in the table. The dashboard expects
+      // one row per bouncer, so we GROUP BY and pick MAX(bouncerType) — a
+      // deterministic non-null pick when available.
       const query = db
         .select({
           lapiServerName: schema.bouncers.lapiServerName,
           bouncerName: schema.bouncers.bouncerName,
-          bouncerType: schema.bouncers.bouncerType,
+          bouncerType: sql<string | null>`max(${schema.bouncers.bouncerType})`,
         })
         .from(schema.bouncers)
+        .groupBy(schema.bouncers.lapiServerName, schema.bouncers.bouncerName)
         .orderBy(schema.bouncers.lapiServerName, schema.bouncers.bouncerName);
 
       if (isPostgres) {
