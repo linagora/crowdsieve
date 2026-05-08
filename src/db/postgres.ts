@@ -138,17 +138,29 @@ const POSTGRES_MIGRATIONS = `
 
   CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
 
+  -- Bouncer registry — quasi-static metadata per (lapi, bouncer, kind).
+  CREATE TABLE IF NOT EXISTS bouncers (
+    lapi_server_name TEXT NOT NULL,
+    bouncer_name TEXT NOT NULL,
+    component_kind TEXT NOT NULL,
+    bouncer_type TEXT,
+    os_name TEXT,
+    os_version TEXT,
+    version TEXT,
+    first_seen_at BIGINT NOT NULL,
+    last_seen_at BIGINT NOT NULL,
+    PRIMARY KEY (lapi_server_name, bouncer_name, component_kind)
+  );
+
   -- Bouncer usage-metrics snapshots (GET /v1/usage-metrics). Hot counters in
   -- typed columns for fast time-series queries; raw items in metrics_json.
+  -- Bouncer metadata (OS, version, type) is stored in the bouncers table
+  -- and joined back at read time.
   CREATE TABLE IF NOT EXISTS bouncer_metrics (
     id SERIAL PRIMARY KEY,
     lapi_server_name TEXT NOT NULL,
     component_kind TEXT NOT NULL,
     bouncer_name TEXT NOT NULL,
-    bouncer_type TEXT,
-    os_name TEXT,
-    os_version TEXT,
-    version TEXT,
     active_decisions INTEGER,
     processed_items INTEGER,
     dropped_items INTEGER,
@@ -294,6 +306,40 @@ export async function initializePostgres(
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bouncer_metrics_unique
       ON bouncer_metrics(lapi_server_name, bouncer_name, component_kind, collected_at);
+    `);
+
+    // Migration: bouncer_metrics used to carry per-row bouncer metadata
+    // (bouncer_type, os_name, os_version, version). These now live in the
+    // `bouncers` table. If we detect the legacy schema, wipe the metrics
+    // table — short-lived data, repopulated on the next LAPI push.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'bouncer_metrics' AND column_name = 'os_name'
+        ) THEN
+          DROP TABLE bouncer_metrics;
+          CREATE TABLE bouncer_metrics (
+            id SERIAL PRIMARY KEY,
+            lapi_server_name TEXT NOT NULL,
+            component_kind TEXT NOT NULL,
+            bouncer_name TEXT NOT NULL,
+            active_decisions INTEGER,
+            processed_items INTEGER,
+            dropped_items INTEGER,
+            bytes_processed INTEGER,
+            collected_at BIGINT NOT NULL,
+            metrics_json TEXT NOT NULL
+          );
+          CREATE INDEX idx_bouncer_metrics_server_collected
+            ON bouncer_metrics(lapi_server_name, collected_at);
+          CREATE INDEX idx_bouncer_metrics_bouncer_collected
+            ON bouncer_metrics(bouncer_name, collected_at);
+          CREATE UNIQUE INDEX bouncer_metrics_unique
+            ON bouncer_metrics(lapi_server_name, bouncer_name, component_kind, collected_at);
+        END IF;
+      END $$;
     `);
   } catch (err) {
     if (isPermissionError(err)) {

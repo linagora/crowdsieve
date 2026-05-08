@@ -8,6 +8,7 @@ import {
   serial,
   index,
   uniqueIndex,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 export const alerts = pgTable(
@@ -188,10 +189,33 @@ export const analyzerResults = pgTable(
   })
 );
 
+// Bouncer registry — quasi-static metadata per (lapi, bouncer, kind).
+// Mirrors the SQLite `bouncers` table.
+export const bouncers = pgTable(
+  'bouncers',
+  {
+    lapiServerName: text('lapi_server_name').notNull(),
+    bouncerName: text('bouncer_name').notNull(),
+    componentKind: text('component_kind').notNull(),
+    bouncerType: text('bouncer_type'),
+    osName: text('os_name'),
+    osVersion: text('os_version'),
+    version: text('version'),
+    firstSeenAt: bigint('first_seen_at', { mode: 'number' }).notNull(),
+    lastSeenAt: bigint('last_seen_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.lapiServerName, table.bouncerName, table.componentKind],
+    }),
+  })
+);
+
 // Bouncer usage-metrics snapshots polled from LAPI /v1/usage-metrics.
 // Mirrors the SQLite schema in src/db/schema.ts; collectedAt is a unix-ms bigint
 // stored as PostgreSQL bigint (drizzle's `integer` maps to int4, so we use
-// bigint here via the `bigint` column with `mode: 'number'`).
+// bigint here via the `bigint` column with `mode: 'number'`). Bouncer metadata
+// (OS, version, type) lives in the `bouncers` table — joined back at read time.
 export const bouncerMetrics = pgTable(
   'bouncer_metrics',
   {
@@ -199,10 +223,6 @@ export const bouncerMetrics = pgTable(
     lapiServerName: text('lapi_server_name').notNull(),
     componentKind: text('component_kind').notNull(), // 'remediation' | 'log_processor'
     bouncerName: text('bouncer_name').notNull(),
-    bouncerType: text('bouncer_type'),
-    osName: text('os_name'),
-    osVersion: text('os_version'),
-    version: text('version'),
     activeDecisions: integer('active_decisions'),
     processedItems: integer('processed_items'),
     droppedItems: integer('dropped_items'),
@@ -245,3 +265,5 @@ export type InsertAnalyzerResult = typeof analyzerResults.$inferInsert;
 export type SelectAnalyzerResult = typeof analyzerResults.$inferSelect;
 export type InsertBouncerMetric = typeof bouncerMetrics.$inferInsert;
 export type SelectBouncerMetric = typeof bouncerMetrics.$inferSelect;
+export type InsertBouncer = typeof bouncers.$inferInsert;
+export type SelectBouncer = typeof bouncers.$inferSelect;

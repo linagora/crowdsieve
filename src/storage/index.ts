@@ -108,8 +108,24 @@ export interface DecisionStats {
 // Import schema types - use SQLite schema types as canonical (they're compatible)
 import type { SelectAlert, SelectBouncerMetric, InsertBouncerMetric } from '../db/schema.js';
 
-export type BouncerMetric = SelectBouncerMetric;
-export type NewBouncerMetric = InsertBouncerMetric;
+// Public bouncer-metric shape: counters + collectedAt + the bouncer metadata
+// joined back from the `bouncers` table. Storage hides the normalization from
+// callers so route handlers and the dashboard see the same flat row as before.
+export type BouncerMetric = SelectBouncerMetric & {
+  bouncerType: string | null;
+  osName: string | null;
+  osVersion: string | null;
+  version: string | null;
+};
+
+// Insert shape mirrors what parsers produce (flat row with metadata). The
+// storage layer splits metadata into the `bouncers` upsert internally.
+export type NewBouncerMetric = InsertBouncerMetric & {
+  bouncerType?: string | null;
+  osName?: string | null;
+  osVersion?: string | null;
+  version?: string | null;
+};
 
 export interface BouncerMetricsQuery {
   lapiServerName?: string;
@@ -1255,18 +1271,103 @@ export function createStorage(): AlertStorage {
     async saveBouncerMetrics(rows) {
       if (rows.length === 0) return;
       const { db, schema, isPostgres } = getDatabaseContext();
+
+      // Step 1: upsert the `bouncers` registry. We collapse the input to the
+      // latest (by collectedAt) row per (lapi, bouncer, kind) so each bouncer
+      // is represented once. firstSeenAt uses the minimum collectedAt of the
+      // batch — `onConflictDoUpdate` only updates when newer data arrives,
+      // and `firstSeenAt` is preserved across conflicts via COALESCE.
+      const bouncerByKey = new Map<
+        string,
+        {
+          lapiServerName: string;
+          bouncerName: string;
+          componentKind: string;
+          bouncerType: string | null;
+          osName: string | null;
+          osVersion: string | null;
+          version: string | null;
+          firstSeenAt: number;
+          lastSeenAt: number;
+        }
+      >();
+      for (const row of rows) {
+        const key = `${row.lapiServerName}\x00${row.bouncerName}\x00${row.componentKind}`;
+        const existing = bouncerByKey.get(key);
+        const collectedAt = row.collectedAt;
+        if (!existing) {
+          bouncerByKey.set(key, {
+            lapiServerName: row.lapiServerName,
+            bouncerName: row.bouncerName,
+            componentKind: row.componentKind,
+            bouncerType: row.bouncerType ?? null,
+            osName: row.osName ?? null,
+            osVersion: row.osVersion ?? null,
+            version: row.version ?? null,
+            firstSeenAt: collectedAt,
+            lastSeenAt: collectedAt,
+          });
+        } else {
+          if (collectedAt < existing.firstSeenAt) existing.firstSeenAt = collectedAt;
+          if (collectedAt >= existing.lastSeenAt) {
+            existing.lastSeenAt = collectedAt;
+            // Keep metadata from the latest snapshot in the batch.
+            existing.bouncerType = row.bouncerType ?? existing.bouncerType;
+            existing.osName = row.osName ?? existing.osName;
+            existing.osVersion = row.osVersion ?? existing.osVersion;
+            existing.version = row.version ?? existing.version;
+          }
+        }
+      }
+      const bouncerRows = Array.from(bouncerByKey.values());
+      const BOUNCER_CHUNK = 500;
+      for (let i = 0; i < bouncerRows.length; i += BOUNCER_CHUNK) {
+        const slice = bouncerRows.slice(i, i + BOUNCER_CHUNK);
+        const upsert = db
+          .insert(schema.bouncers)
+          .values(slice)
+          .onConflictDoUpdate({
+            target: [
+              schema.bouncers.lapiServerName,
+              schema.bouncers.bouncerName,
+              schema.bouncers.componentKind,
+            ],
+            set: {
+              // Preserve the existing firstSeenAt; only widen the lastSeenAt.
+              bouncerType: sql`excluded.bouncer_type`,
+              osName: sql`excluded.os_name`,
+              osVersion: sql`excluded.os_version`,
+              version: sql`excluded.version`,
+              lastSeenAt: sql`MAX(excluded.last_seen_at, ${schema.bouncers.lastSeenAt})`,
+            },
+          });
+        if (isPostgres) {
+          await upsert;
+        } else {
+          (upsert as unknown as { run(): void }).run();
+        }
+      }
+
+      // Step 2: insert the metrics rows themselves (without metadata fields).
       // Same (lapiServerName, bouncerName, componentKind, collectedAt) tuple
       // can be re-relayed by the LAPI when CrowdSec retries POST /v1/usage-metrics.
       // The unique index `bouncer_metrics_unique` enforces this; we ignore
       // conflicts on insert so retries don't double-count per-window counters.
-      // Drizzle's `onConflictDoNothing()` translates to:
-      //   - SQLite:   INSERT OR IGNORE
-      //   - Postgres: INSERT ... ON CONFLICT (...) DO NOTHING
       // Chunk inserts: SQLite caps bind variables at 32766 and Postgres at
-      // 65535. With 13 columns per row a 500-row batch stays well below both.
-      const CHUNK_SIZE = 500;
-      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-        const slice = rows.slice(i, i + CHUNK_SIZE);
+      // 65535. With 9 columns per row a 500-row batch stays well below both.
+      const METRICS_CHUNK = 500;
+      for (let i = 0; i < rows.length; i += METRICS_CHUNK) {
+        const slice = rows.slice(i, i + METRICS_CHUNK).map((r) => ({
+          lapiServerName: r.lapiServerName,
+          componentKind: r.componentKind,
+          bouncerName: r.bouncerName,
+          activeDecisions: r.activeDecisions ?? null,
+          processedItems: r.processedItems ?? null,
+          droppedItems: r.droppedItems ?? null,
+          bytesProcessed: r.bytesProcessed ?? null,
+          collectedAt: r.collectedAt,
+          metricsJson: r.metricsJson,
+        }));
         const insertQuery = db.insert(schema.bouncerMetrics).values(slice).onConflictDoNothing();
         if (isPostgres) {
           await insertQuery;
@@ -1293,7 +1394,35 @@ export function createStorage(): AlertStorage {
         conditions.push(lte(schema.bouncerMetrics.collectedAt, filters.until));
       }
 
-      const baseQuery = db.select().from(schema.bouncerMetrics);
+      // Join `bouncers` to flatten metadata back into each row, preserving
+      // the public BouncerMetric shape that callers (route handler, dashboard)
+      // expect.
+      const baseQuery = db
+        .select({
+          id: schema.bouncerMetrics.id,
+          lapiServerName: schema.bouncerMetrics.lapiServerName,
+          componentKind: schema.bouncerMetrics.componentKind,
+          bouncerName: schema.bouncerMetrics.bouncerName,
+          activeDecisions: schema.bouncerMetrics.activeDecisions,
+          processedItems: schema.bouncerMetrics.processedItems,
+          droppedItems: schema.bouncerMetrics.droppedItems,
+          bytesProcessed: schema.bouncerMetrics.bytesProcessed,
+          collectedAt: schema.bouncerMetrics.collectedAt,
+          metricsJson: schema.bouncerMetrics.metricsJson,
+          bouncerType: schema.bouncers.bouncerType,
+          osName: schema.bouncers.osName,
+          osVersion: schema.bouncers.osVersion,
+          version: schema.bouncers.version,
+        })
+        .from(schema.bouncerMetrics)
+        .leftJoin(
+          schema.bouncers,
+          and(
+            eq(schema.bouncerMetrics.lapiServerName, schema.bouncers.lapiServerName),
+            eq(schema.bouncerMetrics.bouncerName, schema.bouncers.bouncerName),
+            eq(schema.bouncerMetrics.componentKind, schema.bouncers.componentKind)
+          )
+        );
       const withConditions =
         conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
       const finalQuery = withConditions
@@ -1309,50 +1438,25 @@ export function createStorage(): AlertStorage {
 
     async getBouncerNames() {
       const { db, schema, isPostgres } = getDatabaseContext();
-      // Pick the bouncerType from the latest row per (lapiServerName, bouncerName).
-      // A subquery finds MAX(collectedAt) per group; we then join back to pick
-      // the actual bouncerType from that exact timestamp.  When multiple rows
-      // share the same collectedAt (rare batch-insert scenario) we take MAX(id)
-      // — a deterministic tiebreaker — and collapse via GROUP BY on the outer
-      // query so each (lapiServerName, bouncerName) appears exactly once.
-      const latestSubquery = db
-        .select({
-          lapiServerName: schema.bouncerMetrics.lapiServerName,
-          bouncerName: schema.bouncerMetrics.bouncerName,
-          maxAt: sql<number>`max(${schema.bouncerMetrics.collectedAt})`.as('max_at'),
-        })
-        .from(schema.bouncerMetrics)
-        .groupBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName)
-        .as('latest');
-
+      // Read directly from the registry — one row per bouncer, no aggregation
+      // needed. Replaces the previous self-join hack on bouncer_metrics.
       const query = db
         .select({
-          lapiServerName: schema.bouncerMetrics.lapiServerName,
-          bouncerName: schema.bouncerMetrics.bouncerName,
-          bouncerType: sql<string | null>`max(${schema.bouncerMetrics.bouncerType})`,
+          lapiServerName: schema.bouncers.lapiServerName,
+          bouncerName: schema.bouncers.bouncerName,
+          bouncerType: schema.bouncers.bouncerType,
         })
-        .from(schema.bouncerMetrics)
-        .innerJoin(
-          latestSubquery,
-          and(
-            eq(schema.bouncerMetrics.lapiServerName, latestSubquery.lapiServerName),
-            eq(schema.bouncerMetrics.bouncerName, latestSubquery.bouncerName),
-            eq(schema.bouncerMetrics.collectedAt, latestSubquery.maxAt)
-          )
-        )
-        .groupBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName)
-        .orderBy(schema.bouncerMetrics.lapiServerName, schema.bouncerMetrics.bouncerName);
-
-      let rows: Array<{
-        lapiServerName: string;
-        bouncerName: string;
-        bouncerType: string | null;
-      }>;
+        .from(schema.bouncers)
+        .orderBy(schema.bouncers.lapiServerName, schema.bouncers.bouncerName);
 
       if (isPostgres) {
-        rows = await query;
+        return (await query) as Array<{
+          lapiServerName: string;
+          bouncerName: string;
+          bouncerType: string | null;
+        }>;
       } else {
-        rows = (
+        return (
           query as unknown as {
             all(): Array<{
               lapiServerName: string;
@@ -1362,7 +1466,6 @@ export function createStorage(): AlertStorage {
           }
         ).all();
       }
-      return rows;
     },
 
     async cleanupBouncerMetrics(retentionDays) {

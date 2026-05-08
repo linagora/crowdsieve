@@ -79,15 +79,23 @@ function setupTestDatabase() {
       actor TEXT,
       raw_json TEXT
     );
+    CREATE TABLE IF NOT EXISTS bouncers (
+      lapi_server_name TEXT NOT NULL,
+      bouncer_name TEXT NOT NULL,
+      component_kind TEXT NOT NULL,
+      bouncer_type TEXT,
+      os_name TEXT,
+      os_version TEXT,
+      version TEXT,
+      first_seen_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      PRIMARY KEY (lapi_server_name, bouncer_name, component_kind)
+    );
     CREATE TABLE IF NOT EXISTS bouncer_metrics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lapi_server_name TEXT NOT NULL,
       component_kind TEXT NOT NULL,
       bouncer_name TEXT NOT NULL,
-      bouncer_type TEXT,
-      os_name TEXT,
-      os_version TEXT,
-      version TEXT,
       active_decisions INTEGER,
       processed_items INTEGER,
       dropped_items INTEGER,

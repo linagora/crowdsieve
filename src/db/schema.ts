@@ -1,4 +1,12 @@
-import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  sqliteTable,
+  text,
+  integer,
+  real,
+  index,
+  uniqueIndex,
+  primaryKey,
+} from 'drizzle-orm/sqlite-core';
 
 export const alerts = sqliteTable(
   'alerts',
@@ -178,10 +186,36 @@ export const analyzerResults = sqliteTable(
   })
 );
 
+// Bouncer registry — quasi-static metadata per (lapi, bouncer, kind).
+// Updated via upsert on every usage-metrics push so we always know the
+// current OS, version and bouncerType without duplicating those strings on
+// every snapshot row.
+export const bouncers = sqliteTable(
+  'bouncers',
+  {
+    lapiServerName: text('lapi_server_name').notNull(),
+    bouncerName: text('bouncer_name').notNull(),
+    componentKind: text('component_kind').notNull(), // 'remediation' | 'log_processor'
+    bouncerType: text('bouncer_type'),
+    osName: text('os_name'),
+    osVersion: text('os_version'),
+    version: text('version'),
+    firstSeenAt: integer('first_seen_at').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.lapiServerName, table.bouncerName, table.componentKind],
+    }),
+  })
+);
+
 // Bouncer usage-metrics snapshots polled from LAPI /v1/usage-metrics.
 // Hot counters are flattened into typed columns for fast time-series queries;
 // the rest of the metric items are kept verbatim in `metricsJson` so we don't
-// lose any fields the upstream LAPI may add later.
+// lose any fields the upstream LAPI may add later. Quasi-static bouncer
+// metadata (OS, version, type) lives in the `bouncers` table — joined back in
+// at read time when needed.
 export const bouncerMetrics = sqliteTable(
   'bouncer_metrics',
   {
@@ -189,10 +223,6 @@ export const bouncerMetrics = sqliteTable(
     lapiServerName: text('lapi_server_name').notNull(),
     componentKind: text('component_kind').notNull(), // 'remediation' | 'log_processor'
     bouncerName: text('bouncer_name').notNull(),
-    bouncerType: text('bouncer_type'),
-    osName: text('os_name'),
-    osVersion: text('os_version'),
-    version: text('version'),
     activeDecisions: integer('active_decisions'),
     processedItems: integer('processed_items'),
     droppedItems: integer('dropped_items'),
@@ -235,3 +265,5 @@ export type InsertAnalyzerResult = typeof analyzerResults.$inferInsert;
 export type SelectAnalyzerResult = typeof analyzerResults.$inferSelect;
 export type InsertBouncerMetric = typeof bouncerMetrics.$inferInsert;
 export type SelectBouncerMetric = typeof bouncerMetrics.$inferSelect;
+export type InsertBouncer = typeof bouncers.$inferInsert;
+export type SelectBouncer = typeof bouncers.$inferSelect;
