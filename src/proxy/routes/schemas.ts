@@ -14,7 +14,7 @@
  *   used for upstream LAPI/CAPI passthrough payloads we do not fully control.
  */
 
-import { Type, type TSchema } from '@sinclair/typebox';
+import { Type, type TSchema } from 'typebox';
 
 /**
  * Helper that turns a TypeBox schema into a nullable variant.

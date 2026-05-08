@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { Type } from '@sinclair/typebox';
+import { Type } from 'typebox';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { timingSafeEqual, createHash } from 'crypto';
 import net from 'net';
