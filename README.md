@@ -1,4 +1,4 @@
-<a href="https://www.linagora.com"><img src="./docs/assets/linagora.png" alt="Linagora" height="48" align="right"></a>
+<a href="https://www.linagora.com"><img src="./docs/assets/linagora.png" alt="Linagora" height="48" align="right" vspace="36"></a>
 <img src="./docs/assets/crowdsieve-lockup-horizontal.svg" alt="CrowdSieve" width="360" align="left">
 
 <br clear="all">
