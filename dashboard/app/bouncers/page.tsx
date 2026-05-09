@@ -3,6 +3,10 @@ import { BouncersContent } from '@/components/BouncersContent';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 import type { BouncerMetric, BouncerName } from '@/lib/types';
 
+interface StatsBlocked {
+  blockedRequests: number;
+}
+
 // Force dynamic rendering to read env vars at runtime
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +39,22 @@ async function getBouncerNames(): Promise<ApiResult<{ bouncers: BouncerName[] }>
   }
 }
 
+async function getBlockedRequests(): Promise<number> {
+  const { apiBase, apiKey } = getApiConfig();
+  if (!apiKey) return 0;
+  try {
+    const res = await fetch(`${apiBase}/api/stats`, {
+      cache: 'no-store',
+      headers: getApiHeaders(),
+    });
+    if (!res.ok) return 0;
+    const data = (await res.json()) as Partial<StatsBlocked>;
+    return data.blockedRequests ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function getInitialMetrics(): Promise<ApiResult<BouncerMetric[]>> {
   const { apiBase, apiKey } = getApiConfig();
   if (!apiKey) return { success: false, error: 'no_api_key' };
@@ -61,7 +81,11 @@ async function getInitialMetrics(): Promise<ApiResult<BouncerMetric[]>> {
 }
 
 export default async function BouncersPage() {
-  const [namesResult, metricsResult] = await Promise.all([getBouncerNames(), getInitialMetrics()]);
+  const [namesResult, metricsResult, blockedRequests] = await Promise.all([
+    getBouncerNames(),
+    getInitialMetrics(),
+    getBlockedRequests(),
+  ]);
 
   if (!namesResult.success) {
     return <ApiError type={namesResult.error} details={namesResult.details} />;
@@ -70,6 +94,10 @@ export default async function BouncersPage() {
   const initialMetrics = metricsResult.success ? metricsResult.data : [];
 
   return (
-    <BouncersContent initialBouncers={namesResult.data.bouncers} initialMetrics={initialMetrics} />
+    <BouncersContent
+      initialBouncers={namesResult.data.bouncers}
+      initialMetrics={initialMetrics}
+      initialBlockedRequests={blockedRequests}
+    />
   );
 }

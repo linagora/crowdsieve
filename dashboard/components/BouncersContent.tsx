@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Shield, Activity, Server } from 'lucide-react';
+import { Shield, Activity, Server, Ban } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
 import type { BouncerMetric, BouncerName } from '@/lib/types';
 
 interface BouncersContentProps {
   initialBouncers: BouncerName[];
   initialMetrics: BouncerMetric[];
+  initialBlockedRequests?: number;
 }
 
 interface SeriesPoint {
@@ -107,7 +108,11 @@ function DualChart({ series }: DualChartProps) {
   );
 }
 
-export function BouncersContent({ initialBouncers, initialMetrics }: BouncersContentProps) {
+export function BouncersContent({
+  initialBouncers,
+  initialMetrics,
+  initialBlockedRequests = 0,
+}: BouncersContentProps) {
   const [bouncers] = useState<BouncerName[]>(initialBouncers);
   const [metrics, setMetrics] = useState<BouncerMetric[]>(initialMetrics);
   const [serverFilter, setServerFilter] = useState<string>('');
@@ -232,7 +237,7 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card p-4">
           <div className="flex items-start justify-between">
             <div>
@@ -266,6 +271,20 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
             </div>
             <div className="p-2 rounded-lg bg-red-50">
               <Activity className="w-5 h-5 text-red-500" />
+            </div>
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Blocked Requests</p>
+              <p className="text-2xl font-bold mt-1">
+                {initialBlockedRequests.toLocaleString()}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">retention window</p>
+            </div>
+            <div className="p-2 rounded-lg bg-red-50">
+              <Ban className="w-5 h-5 text-red-500" />
             </div>
           </div>
         </div>
