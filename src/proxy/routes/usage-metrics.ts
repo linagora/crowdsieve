@@ -39,17 +39,21 @@ import {
 
 const gzipAsync = promisify(gzip);
 
-// CAPI rejects requests > 10 MiB. We aim a bit lower to leave headroom for
-// gzip nondeterminism and HTTP overhead.
-const MAX_GZIPPED_BYTES = 9 * 1024 * 1024;
+// CAPI rejects requests whose **decompressed** body exceeds ~10 MiB (observed
+// `413 Request Too Long` even with an 870 KiB gzipped body that would
+// decompress to ~46 MiB). We bisect based on the uncompressed JSON size and
+// leave 1 MiB of headroom.
+const MAX_UNCOMPRESSED_BYTES = 9 * 1024 * 1024;
 
 // Delay between background chunk forwards. Spreads load on CAPI and avoids
 // rate limiting if many chunks pile up.
 const BACKGROUND_CHUNK_INTERVAL_MS = 60_000;
 
 /**
- * Bisect a usage-metrics payload until each chunk's gzipped wire size fits
- * under {@link MAX_GZIPPED_BYTES}.
+ * Bisect a usage-metrics payload until each chunk's **uncompressed** JSON size
+ * fits under {@link MAX_UNCOMPRESSED_BYTES}. CAPI's body limit applies
+ * post-gunzip, not on the wire — small gzipped payloads can still be rejected
+ * if they expand to a large decompressed body.
  *
  * Splits across `remediation_components[]` and `log_processors[]` only —
  * never across the `metrics[]` blocks of a single component (each block is a
@@ -58,12 +62,12 @@ const BACKGROUND_CHUNK_INTERVAL_MS = 60_000;
  * require thousands of buffered metric blocks), we give up and return it
  * as-is; CAPI will 413 and the LAPI will retry. This degrades gracefully.
  */
-async function chunkPayload(
+function chunkPayload(
   payload: UsageMetricsPayload,
   maxBytes: number
-): Promise<UsageMetricsPayload[]> {
-  const gz = await gzipAsync(JSON.stringify(payload));
-  if (gz.length <= maxBytes) return [payload];
+): UsageMetricsPayload[] {
+  const json = JSON.stringify(payload);
+  if (Buffer.byteLength(json, 'utf8') <= maxBytes) return [payload];
 
   const recs = payload.remediation_components ?? [];
   const lps = payload.log_processors ?? [];
@@ -93,10 +97,7 @@ async function chunkPayload(
     log_processors: half2Lps,
   };
 
-  return [
-    ...(await chunkPayload(half1, maxBytes)),
-    ...(await chunkPayload(half2, maxBytes)),
-  ];
+  return [...chunkPayload(half1, maxBytes), ...chunkPayload(half2, maxBytes)];
 }
 
 /**
@@ -301,7 +302,7 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       // its buffer and prevents the runaway accumulation cycle. Background
       // chunks may fail (logged) and the lost stats are accepted as the
       // cost of keeping the pipeline unblocked.
-      const chunks = await chunkPayload(body, MAX_GZIPPED_BYTES);
+      const chunks = chunkPayload(body, MAX_UNCOMPRESSED_BYTES);
       const firstChunk = chunks[0];
       const outgoing = await gzipAsync(JSON.stringify(firstChunk));
 
