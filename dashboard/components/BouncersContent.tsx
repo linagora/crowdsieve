@@ -169,26 +169,32 @@ export function BouncersContent({
     return Array.from(set).sort();
   }, [bouncers, metrics]);
 
-  // Pre-compute an activity score per bouncer key so we don't re-derive it
+  // Pre-compute activity scores per bouncer key so we don't re-derive them
   // inside the sort comparator (O(n) build, O(1) lookup during sort).
   // Skip registration-only rows (metricsJson === '[]') — they carry all-zero
-  // counters and would dilute the score.
-  // Score = SUM of droppedItems over the visible window. Using LATEST instead
-  // of SUM made bouncers like `llng` (sparse drops: occasional spikes of
-  // 24-34 then quiet for hours) drop to 0 because their most recent snapshot
-  // was a quiet one, even though the chart visibly showed real activity.
-  // SUM matches what the bars convey and ranks bouncers by total impact
-  // over the period.
-  const activityScores = useMemo(() => {
-    const scores = new Map<string, number>();
+  // counters and would dilute the scores.
+  // Primary score = SUM of droppedItems over the visible window. Using LATEST
+  // instead of SUM made bouncers like `llng` (sparse drops: spikes of 24-34
+  // then quiet for hours) rank at 0 because their most recent snapshot was
+  // quiet, even though the chart visibly showed real activity earlier.
+  // Secondary score = SUM of processedItems, used as tiebreaker so two
+  // bouncers with the same dropped count (commonly: 0/0) still order by
+  // who saw more traffic.
+  const { droppedScores, processedScores } = useMemo(() => {
+    const dropped = new Map<string, number>();
+    const processed = new Map<string, number>();
     for (const [key, rows] of byBouncer) {
-      const sumDropped = rows.reduce(
-        (s, r) => s + (r.metricsJson === '[]' ? 0 : r.droppedItems ?? 0),
-        0
-      );
-      scores.set(key, sumDropped);
+      let sumD = 0;
+      let sumP = 0;
+      for (const r of rows) {
+        if (r.metricsJson === '[]') continue;
+        sumD += r.droppedItems ?? 0;
+        sumP += r.processedItems ?? 0;
+      }
+      dropped.set(key, sumD);
+      processed.set(key, sumP);
     }
-    return scores;
+    return { droppedScores: dropped, processedScores: processed };
   }, [byBouncer]);
 
   const visibleBouncers = useMemo(() => {
@@ -197,12 +203,15 @@ export function BouncersContent({
       .sort((a, b) => {
         const keyA = `${a.lapiServerName}::${a.bouncerName}`;
         const keyB = `${b.lapiServerName}::${b.bouncerName}`;
-        const scoreA = activityScores.get(keyA) ?? 0;
-        const scoreB = activityScores.get(keyB) ?? 0;
-        if (scoreB !== scoreA) return scoreB - scoreA; // higher score first
-        return a.bouncerName.localeCompare(b.bouncerName); // alpha tiebreaker
+        const dA = droppedScores.get(keyA) ?? 0;
+        const dB = droppedScores.get(keyB) ?? 0;
+        if (dB !== dA) return dB - dA; // primary: dropped desc
+        const pA = processedScores.get(keyA) ?? 0;
+        const pB = processedScores.get(keyB) ?? 0;
+        if (pB !== pA) return pB - pA; // secondary: processed desc
+        return a.bouncerName.localeCompare(b.bouncerName); // tertiary: alpha
       });
-  }, [bouncers, serverFilter, activityScores]);
+  }, [bouncers, serverFilter, droppedScores, processedScores]);
 
   // `active_decisions` is a LAPI-global gauge: every bouncer reports the same
   // count (the number of decisions currently held by the LAPI it queries).
