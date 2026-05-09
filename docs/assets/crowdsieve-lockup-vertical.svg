@@ -46,6 +46,6 @@
       <circle cx="52" cy="84" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
       <circle cx="62" cy="84" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
   </g>
-  <text x="210" y="378" text-anchor="middle" font-family="&#39;Space Grotesk&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-weight="700" font-size="32" letter-spacing="6.4" fill="#1a0e10">CROWDSIEVE</text>
+  <text x="210" y="378" text-anchor="middle" font-family="&#39;Space Grotesk&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-weight="700" font-size="32" letter-spacing="6.4" fill="#6e1f2a">CROWDSIEVE</text>
   <text x="210" y="416" text-anchor="middle" font-family="&#39;JetBrains Mono&#39;, &#39;Menlo&#39;, &#39;Monaco&#39;, monospace" font-weight="500" font-size="14" letter-spacing="2.5" fill="#1a0e10" opacity="0.55">FILTER · FORWARD · OBSERVE</text>
 </svg>
