@@ -597,7 +597,7 @@ Logos and brand assets (horizontal lockup, vertical lockup, mark-only) are avail
 
 AGPL-3.0-only
 
-## Sponsor
+## Made by
 
 <p align="center">
   <a href="https://www.linagora.com">
