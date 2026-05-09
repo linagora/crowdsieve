@@ -1,4 +1,7 @@
-# CrowdSieve
+<a href="https://www.linagora.com"><img src="./docs/assets/linagora-readme.png" alt="Linagora" width="200" align="right"></a>
+<img src="./docs/assets/crowdsieve-lockup-horizontal.svg" alt="CrowdSieve" width="360" align="left">
+
+<br clear="all">
 
 A filtering proxy for CrowdSec that sits between your local CrowdSec instances (LAPI) and the Central API (CAPI). Filter alerts before they're sent to the CrowdSec console, and visualize them in a local dashboard.
 
@@ -14,7 +17,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Bouncer Metrics**: Transparent capture of CrowdSec `usage-metrics` as LAPI relays them to CAPI (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard with no extra LAPI configuration
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
-- **Dashboard Authentication**: Two modes, both documented in [doc/oidc-authentication.md](./doc/oidc-authentication.md)
+- **Dashboard Authentication**: Two modes, both documented in [docs/oidc-authentication.md](./docs/oidc-authentication.md)
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
@@ -586,6 +589,20 @@ flowchart LR
     Proxy <-.->|Decisions & Bans| LAPI2
 ```
 
+## Branding
+
+Logos and brand assets (horizontal lockup, vertical lockup, mark-only) are available in [docs/branding.md](./docs/branding.md) for reuse in blog posts, slides, integrations, etc.
+
 ## License
 
 AGPL-3.0-only
+
+## Made by
+
+<p align="center">
+  <a href="https://www.linagora.com">
+    <img src="./docs/assets/linagora.png" alt="Linagora" height="60">
+  </a>
+</p>
+
+CrowdSieve is developed and maintained by [Linagora](https://www.linagora.com), a leading European open source software vendor. Linagora develops and supports a comprehensive suite of collaboration, identity, and AI tools — including [LemonLDAP::NG](https://lemonldap-ng.org), [Twake Mail](https://twake.email), [Twake Workplace](https://twake.com), and many others.
