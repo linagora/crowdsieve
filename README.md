@@ -1,4 +1,6 @@
-# CrowdSieve
+<p align="center">
+  <img src="./docs/assets/crowdsieve-lockup-horizontal.svg" alt="CrowdSieve" width="480">
+</p>
 
 A filtering proxy for CrowdSec that sits between your local CrowdSec instances (LAPI) and the Central API (CAPI). Filter alerts before they're sent to the CrowdSec console, and visualize them in a local dashboard.
 
@@ -586,6 +588,20 @@ flowchart LR
     Proxy <-.->|Decisions & Bans| LAPI2
 ```
 
+## Branding
+
+Logos and brand assets (horizontal lockup, vertical lockup, mark-only) are available in [docs/branding.md](./docs/branding.md) for reuse in blog posts, slides, integrations, etc.
+
 ## License
 
 AGPL-3.0-only
+
+## Sponsor
+
+<p align="center">
+  <a href="https://www.linagora.com">
+    <img src="./docs/assets/linagora.png" alt="Linagora" height="60">
+  </a>
+</p>
+
+CrowdSieve is developed and maintained by [Linagora](https://www.linagora.com), a leading European open source software vendor. Linagora develops and supports a comprehensive suite of collaboration, identity, and AI tools — including [LemonLDAP::NG](https://lemonldap-ng.org), [Twake Mail](https://twake.email), [Twake Workplace](https://twake.com), and many others.
