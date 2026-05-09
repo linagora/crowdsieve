@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { UserMenu } from './UserMenu';
@@ -21,7 +22,15 @@ export function Header() {
     <header className="bg-crowdsec-primary text-white">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">CrowdSieve</h1>
+          <Link href="/" aria-label="CrowdSieve home" className="flex items-center">
+            <Image
+              src="/crowdsieve-lockup-horizontal-dark.svg"
+              alt="CrowdSieve"
+              width={180}
+              height={60}
+              priority
+            />
+          </Link>
 
           {/* Desktop navigation */}
           <nav className="hidden md:flex items-center gap-4">

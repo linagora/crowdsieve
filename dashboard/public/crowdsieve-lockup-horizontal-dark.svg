@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" role="img" aria-label="Crowdsieve">
+  <title>Crowdsieve · horizontal lockup</title>
+  
+  <g transform="translate(60 56) scale(1.2)">
+    <path d="M 54 8 L 96 22 L 96 56 C 96 78 78 94 54 102 C 30 94 12 78 12 56 L 12 22 Z" fill="#f6efea" stroke="#6e1f2a" stroke-width="3" stroke-linejoin="round"></path>
+    <circle cx="22" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="32" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="62" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="72" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="82" cy="24" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="22" cy="34" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="32" cy="34" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="34" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="34" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="62" cy="34" r="3.4" fill="#e8953a"></circle>
+      <circle cx="72" cy="34" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="82" cy="34" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="22" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="32" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="62" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="72" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="82" cy="44" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="22" cy="54" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="32" cy="54" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="54" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="54" r="3.4" fill="#d2387a"></circle>
+      <circle cx="62" cy="54" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="72" cy="54" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="82" cy="54" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="32" cy="64" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="64" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="64" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="62" cy="64" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="72" cy="64" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="32" cy="74" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="74" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="74" r="3.4" fill="#4faec0"></circle>
+      <circle cx="62" cy="74" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="72" cy="74" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="42" cy="84" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="52" cy="84" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+      <circle cx="62" cy="84" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
+  </g>
+  <g transform="translate(220 0)">
+    <text x="0" y="138" font-family="&#39;Space Grotesk&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-weight="600" font-size="84" fill="#ffffff" letter-spacing="-2.1">crowdsieve</text>
+    <text x="220" y="172" text-anchor="middle" font-family="&#39;JetBrains Mono&#39;, &#39;Menlo&#39;, &#39;Monaco&#39;, monospace" font-weight="500" font-size="16" letter-spacing="2.5" fill="#ffffff" opacity="0.55">FILTER · FORWARD · OBSERVE</text>
+  </g>
+</svg>
