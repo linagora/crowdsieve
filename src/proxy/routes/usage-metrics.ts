@@ -337,17 +337,24 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       }
 
       const responseBody = await response.text();
-      logger.info(
-        {
-          rows: rows.length,
-          status: response.status,
-          chunks: chunks.length,
-          gzippedBytes: outgoing.length,
-          machineId: rawMachineId,
-          lapiServerName,
-        },
-        'Forwarded usage-metrics to CAPI'
-      );
+      const logFields = {
+        rows: rows.length,
+        status: response.status,
+        chunks: chunks.length,
+        gzippedBytes: outgoing.length,
+        machineId: rawMachineId,
+        lapiServerName,
+      };
+      if (response.ok) {
+        logger.info(logFields, 'Forwarded usage-metrics to CAPI');
+      } else {
+        // Surface the CAPI error body so we can diagnose schema/format issues
+        // (412/413/422 etc.) rather than blindly retrying.
+        logger.warn(
+          { ...logFields, responseBody: responseBody.slice(0, 1024) },
+          'CAPI rejected usage-metrics forward'
+        );
+      }
 
       reply.code(response.status);
       const contentType = response.headers.get('content-type');
