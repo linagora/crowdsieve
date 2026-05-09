@@ -47,7 +47,7 @@
       <circle cx="62" cy="84" r="1.5" fill="#6e1f2a" opacity="0.45"></circle>
   </g>
   <g transform="translate(220 0)">
-    <text x="0" y="138" font-family="&#39;Space Grotesk&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-weight="600" font-size="84" fill="#1a0e10" letter-spacing="-2.1">crowdsieve</text>
+    <text x="0" y="138" font-family="&#39;Space Grotesk&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-weight="600" font-size="84" fill="#6e1f2a" letter-spacing="-2.1">crowdsieve</text>
     <text x="220" y="172" text-anchor="middle" font-family="&#39;JetBrains Mono&#39;, &#39;Menlo&#39;, &#39;Monaco&#39;, monospace" font-weight="500" font-size="16" letter-spacing="2.5" fill="#1a0e10" opacity="0.55">FILTER · FORWARD · OBSERVE</text>
   </g>
 </svg>
