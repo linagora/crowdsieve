@@ -46,11 +46,16 @@ COPY package*.json ./
 RUN npm ci --omit=dev && \
     npm cache clean --force && \
     rm -rf /root/.npm && \
+    rm -rf node_modules/@types \
+           node_modules/better-sqlite3/deps \
+           node_modules/better-sqlite3/src \
+           node_modules/better-sqlite3/binding.gyp && \
     find node_modules -type f \( \
         -name "README*" -o \
         -name "CHANGELOG*" -o \
         -name "*.md" -o \
-        -name "*.map" \
+        -name "*.map" -o \
+        -name "*.ts" \
     \) -delete && \
     find node_modules -type d \( \
         -name "test" -o \
@@ -60,12 +65,15 @@ RUN npm ci --omit=dev && \
     \) -exec rm -rf {} + 2>/dev/null || true
 
 # Production stage
-FROM node:24-alpine AS runner
+FROM alpine:3.21 AS runner
 
 RUN apk update && \
     apk upgrade --no-cache && \
-    apk add --no-cache tini && \
+    apk add --no-cache tini libstdc++ && \
     rm -rf /var/cache/apk/*
+
+# Copy Node 24 binary from the official image (no npm/npx)
+COPY --from=node:24-alpine /usr/local/bin/node /usr/local/bin/node
 
 # Create non-root user first
 RUN addgroup --system --gid 1001 nodejs && \

@@ -2,15 +2,7 @@ import { createHash } from 'crypto';
 import type { Decision } from './config.js';
 import type { DetectionResult } from './detection.js';
 import type { LapiServer } from '../config/index.js';
-
-// JWT token cache for machine authentication
-interface TokenCacheEntry {
-  token: string;
-  expiresAt: number;
-}
-const tokenCache = new Map<string, TokenCacheEntry>();
-
-const CROWDSIEVE_VERSION = '1.0.0';
+import { CROWDSIEVE_VERSION, getMachineToken } from '../auth/machineToken.js';
 
 export interface PushResult {
   server: string;
@@ -18,62 +10,6 @@ export interface PushResult {
   decisionsPushed: number;
   error?: string;
   decisionIds?: string[];
-}
-
-/**
- * Get or refresh JWT token for a LAPI server using machine credentials
- */
-async function getMachineToken(
-  server: LapiServer,
-  timeoutMs: number,
-  logger: { error: (obj: object, msg: string) => void; debug: (obj: object, msg: string) => void }
-): Promise<string | null> {
-  if (!server.machine_id || !server.password) {
-    return null;
-  }
-
-  const cacheKey = `${server.name}:${server.machine_id}`;
-  const cached = tokenCache.get(cacheKey);
-
-  // Return cached token if still valid (with 10s margin)
-  if (cached && cached.expiresAt > Date.now() + 10000) {
-    return cached.token;
-  }
-
-  try {
-    const response = await fetch(`${server.url}/v1/watchers/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': `crowdsieve-analyzer/${CROWDSIEVE_VERSION}`,
-      },
-      body: JSON.stringify({
-        machine_id: server.machine_id,
-        password: server.password,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error(
-        { server: server.name, status: response.status, error: errorBody },
-        'Failed to get machine token from LAPI'
-      );
-      return null;
-    }
-
-    const data = (await response.json()) as { token: string; expire: string };
-    const expiresAt = new Date(data.expire).getTime();
-
-    tokenCache.set(cacheKey, { token: data.token, expiresAt });
-    logger.debug({ server: server.name }, 'Got new machine token from LAPI');
-
-    return data.token;
-  } catch (err) {
-    logger.error({ server: server.name, err }, 'Error getting machine token');
-    return null;
-  }
 }
 
 /**
@@ -173,7 +109,7 @@ async function pushToServer(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': `crowdsieve-analyzer/${CROWDSIEVE_VERSION}`,
+        'User-Agent': `crowdsieve/${CROWDSIEVE_VERSION}`,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(alerts),

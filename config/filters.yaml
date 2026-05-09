@@ -2,24 +2,24 @@
 
 proxy:
   listen_port: 8080
-  capi_url: "https://api.crowdsec.net"
+  capi_url: 'https://api.crowdsec.net'
   timeout_ms: 30000
   # Set to false to disable forwarding to CAPI (test mode)
   forward_enabled: true
 
 storage:
-  path: "./data/crowdsieve.db"
+  path: './data/crowdsieve.db'
   retention_days: 30
 
 logging:
-  level: info  # debug, info, warn, error
+  level: info # debug, info, warn, error
   format: json # json, pretty
 
 # Filter configuration
 # mode: "block" = matching alerts are NOT forwarded to CAPI
 # mode: "allow" = only matching alerts are forwarded to CAPI
 filters:
-  mode: "block"
+  mode: 'block'
   # Rules are loaded from filters.d/ directory
 
 # Local LAPI servers for manual decisions (bans)
@@ -32,3 +32,10 @@ filters:
 #   - name: "server2"
 #     url: "http://192.168.1.10:8080"
 #     api_key: "another-api-key"
+
+# Bouncer metrics (always-on capture)
+# CrowdSieve intercepts the usage-metrics that CrowdSec LAPI relays to CAPI,
+# stores them locally, and forwards the payload upstream unchanged.
+# Only retention is configurable.
+# bouncer_metrics:
+#   retention_days: 30

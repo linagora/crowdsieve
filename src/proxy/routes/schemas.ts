@@ -14,7 +14,7 @@
  *   used for upstream LAPI/CAPI passthrough payloads we do not fully control.
  */
 
-import { Type, type TSchema } from '@sinclair/typebox';
+import { Type, type TSchema } from 'typebox';
 
 /**
  * Helper that turns a TypeBox schema into a nullable variant.
@@ -191,6 +191,7 @@ export const StatsResponse = Type.Object({
   total: Type.Integer(),
   filtered: Type.Integer(),
   forwarded: Type.Integer(),
+  blockedRequests: Type.Integer(),
   topScenarios: Type.Array(ScenarioCount),
   allScenarios: Type.Array(ScenarioCount),
   topCountries: Type.Array(CountryCount),
@@ -338,4 +339,50 @@ export const SignalsBody = Type.Array(Type.Object({}, { additionalProperties: tr
 
 export const SignalsResponse = Type.Object({
   message: Type.String(),
+});
+
+// --- Usage metrics relay (LAPI -> CAPI) --------------------------------------
+
+/**
+ * Permissive body schema for POST /v1/usage-metrics. CrowdSec's payload nests
+ * `remediation_components[]` and `log_processors[]`, each with a `metrics`
+ * field whose shape varies between releases (sometimes a flat item array,
+ * sometimes wrapped in `{ items: [...] }`). We don't constrain it here — the
+ * route's parser handles both shapes — but we do require a JSON object.
+ */
+export const UsageMetricsBody = Type.Object({}, { additionalProperties: true });
+
+// --- Bouncer metrics ---------------------------------------------------------
+
+/**
+ * One row of bouncer usage-metrics, mirroring the SelectBouncerMetric type
+ * from src/db/schema.ts. `metricsJson` is the raw `metrics[]` array verbatim
+ * for callers that want to drill into per-label values; the dashboard's
+ * standard graphs only need the typed counters.
+ */
+export const BouncerMetricResponse = Type.Object({
+  id: Type.Integer(),
+  lapiServerName: Type.String(),
+  componentKind: Type.String(),
+  bouncerName: Type.String(),
+  bouncerType: Nullable(Type.String()),
+  osName: Nullable(Type.String()),
+  osVersion: Nullable(Type.String()),
+  version: Nullable(Type.String()),
+  activeDecisions: Nullable(Type.Integer()),
+  processedItems: Nullable(Type.Integer()),
+  droppedItems: Nullable(Type.Integer()),
+  bytesProcessed: Nullable(Type.Integer()),
+  collectedAt: Type.Integer(),
+  metricsJson: Type.String(),
+});
+
+export const BouncerNameRow = Type.Object({
+  lapiServerName: Type.String(),
+  bouncerName: Type.String(),
+  bouncerType: Nullable(Type.String()),
+});
+
+export const BouncerNamesResponse = Type.Object({
+  bouncers: Type.Array(BouncerNameRow),
 });

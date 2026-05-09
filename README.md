@@ -11,6 +11,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - Configurable detection rules (YAML) with grouping, distinct counting, and thresholds
   - Global whitelist for IPs and CIDR ranges
   - Push decisions to all your CrowdSec LAPI servers
+- **Bouncer Metrics**: Transparent capture of CrowdSec `usage-metrics` as LAPI relays them to CAPI (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard with no extra LAPI configuration
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
 - **Dashboard Authentication**: Two modes, both documented in [doc/oidc-authentication.md](./doc/oidc-authentication.md)
@@ -221,7 +222,7 @@ lapi_servers:
 
 CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
 
-1. **Source server exclusion**: Decisions are not replicated back to the server they originated from. Configure `source_machine_ids` with all machine IDs of agents connected to each LAPI server.
+1. **Source server exclusion**: Decisions are not replicated back to the server they originated from. Configure `source_machine_ids` with all machine IDs of agents connected to each LAPI server. The same `source_machine_ids` are also used to resolve the friendly server name when capturing `usage-metrics` from the LAPI's CAPI relay — if the LAPI's online API machine_id matches one of these entries, the row is tagged with this server's `name` instead of the raw machine_id.
 2. **Origin tagging**: Replicated decisions are marked with `origin: crowdsieve-replication`
 3. **Origin filtering**: Decisions with `crowdsieve` or `crowdsieve-replication` origins are never replicated
 4. **CAPI filtering**: Crowdsieve-originated alerts are not forwarded to CAPI
@@ -470,6 +471,37 @@ The dashboard includes an **Analyzers** page showing:
 - `POST /api/analyzers/:id/run` - Trigger manual run
 
 See the [full REST API reference](https://linagora.github.io/crowdsieve/api/) for all endpoints, schemas, and examples (also available as a raw [OpenAPI 3.x spec](https://linagora.github.io/crowdsieve/api/openapi.json)).
+
+## Bouncer Metrics
+
+CrowdSieve transparently captures the `usage-metrics` payloads that CrowdSec LAPI relays to CAPI (CrowdSec ≥ 1.6). Because CrowdSieve sits between LAPI and CAPI as the configured `api_url`, these `POST /v1/usage-metrics` requests already pass through us — we persist a per-bouncer snapshot row per relay and forward the body upstream unchanged. No extra polling, no extra credentials, no LAPI-side configuration.
+
+This surfaces in the dashboard as:
+
+- A **"Blocked Requests"** stat on the homepage — total requests dropped by all bouncers **over the configured retention window** (default 30 days). CrowdSec emits these as **per-window counters** (one block per `WindowSizeSeconds`, default 15 minutes), so we sum them straight; no delta or reset detection needed.
+- A **Bouncers** page with per-bouncer time-series charts of active decisions, processed items, dropped items, and bytes processed.
+
+### Configuration
+
+The feature is always-on once CrowdSieve is the upstream of your LAPI(s). Only the retention sweep is configurable in `config/filters.yaml`:
+
+```yaml
+bouncer_metrics:
+  retention_days: 30 # Keep snapshots for 30 days
+```
+
+| Field            | Default | Description                                              |
+| ---------------- | ------- | -------------------------------------------------------- |
+| `retention_days` | `30`    | Snapshots older than this are deleted by a daily cleanup |
+
+### Bouncer Metrics API Endpoints
+
+- `GET /api/bouncer-metrics` — Query stored snapshots, with filters `machine`, `bouncer`, `since`, `until`, `limit`
+- `GET /api/bouncer-metrics/names` — List distinct `(lapiServerName, bouncerName, bouncerType)` tuples for the dashboard dropdown
+
+### Storage
+
+Snapshots are stored in the `bouncer_metrics` table (auto-created at startup on both SQLite and PostgreSQL). Each row has hot columns for the common counters (`activeDecisions`, `processedItems`, `droppedItems`, `bytesProcessed`) plus a `metricsJson` blob preserving any extra fields reported by the bouncer.
 
 ## Environment Variables
 

@@ -79,6 +79,7 @@ async function getStats(): Promise<ApiResult<AlertStats>> {
     total: 0,
     filtered: 0,
     forwarded: 0,
+    blockedRequests: 0,
     topScenarios: [],
     allScenarios: [],
     topCountries: [],

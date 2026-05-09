@@ -45,6 +45,7 @@ async function main() {
     filters: fileConfig.filters, // Filters only from file
     client_validation: { ...fileConfig.client_validation, ...envConfig.client_validation },
     analyzers: fileConfig.analyzers, // Analyzers only from file
+    bouncer_metrics: fileConfig.bouncer_metrics, // Bouncer metrics retention settings
   };
 
   // Initialize logger (with custom `notice` level wired in for audit-friendly
@@ -216,6 +217,10 @@ async function main() {
     );
   }
 
+  // Bouncer metrics are captured by the POST /v1/usage-metrics route
+  // (registered in proxy/server.ts). Retention sweeps run alongside the
+  // existing daily alert cleanup further below.
+
   // Create and start proxy server
   const server = await createProxyServer({
     config,
@@ -266,6 +271,20 @@ async function main() {
       }
     } catch (err) {
       logger.error({ err }, 'Cleanup failed');
+    }
+
+    // Cleanup old bouncer metrics rows alongside alert retention. Same cadence,
+    // independent retention window so the metrics history can be longer or
+    // shorter than the alerts history without an extra interval timer.
+    try {
+      const deletedMetrics = await storage.cleanupBouncerMetrics(
+        config.bouncer_metrics.retention_days
+      );
+      if (deletedMetrics > 0) {
+        logger.info({ deleted: deletedMetrics }, 'Cleaned up old bouncer metrics');
+      }
+    } catch (err) {
+      logger.error({ err }, 'Bouncer metrics cleanup failed');
     }
 
     // Cleanup validation cache

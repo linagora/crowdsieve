@@ -11,6 +11,7 @@ const navLinks = [
   { href: '/stats', label: 'Statistics' },
   { href: '/decisions', label: 'Decisions' },
   { href: '/analyzers', label: 'Analyzers' },
+  { href: '/bouncers', label: 'Bouncers' },
 ];
 
 export function Header() {

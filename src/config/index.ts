@@ -204,7 +204,17 @@ const ConfigSchema = z.object({
         .default({}),
     })
     .default({}),
+  // Bouncer metrics intercepted off the LAPI -> CAPI usage-metrics relay.
+  // Always-on (the proxy hosts POST /v1/usage-metrics regardless); only the
+  // retention sweep is configurable.
+  bouncer_metrics: z
+    .object({
+      retention_days: z.number().int().positive().default(30),
+    })
+    .default({}),
 });
+
+export type BouncerMetricsConfig = z.infer<typeof ConfigSchema.shape.bouncer_metrics>;
 
 export type Config = z.infer<typeof ConfigSchema>;
 

@@ -80,6 +80,10 @@ function buildMockStorage(): AlertStorage {
     getTimeDistributionStats: stub,
     getDecisionStats: stub,
     cleanup: stub,
+    saveBouncerMetrics: stub,
+    getBouncerMetrics: stub,
+    getBouncerNames: stub,
+    cleanupBouncerMetrics: stub,
   };
 }
 

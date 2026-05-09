@@ -1,0 +1,421 @@
+/**
+ * Route handler for POST /v1/usage-metrics and POST /v3/usage-metrics.
+ * (LAPI->CAPI uses v3, bouncers->LAPI use v1; we capture both.)
+ *
+ * CrowdSec LAPI relays bouncer/log-processor metrics to CAPI by POSTing this
+ * endpoint. CrowdSieve sits between LAPI and CAPI as the configured CAPI proxy
+ * URL, so this traffic naturally passes through us. We:
+ *
+ *   1. Parse the payload.
+ *   2. Persist per-bouncer rows via {@link AlertStorage.saveBouncerMetrics}.
+ *      This is done before forwarding so a CAPI outage doesn't lose metrics.
+ *   3. Forward the original body to the upstream CAPI when
+ *      `config.proxy.forward_enabled` is true (mirrors signals.ts).
+ *
+ * Auth follows the same pattern as `/v2/signals` and `/v3/signals`: when
+ * `config.client_validation.enabled` we run the bearer token through
+ * `clientValidator.validate`; otherwise the request is accepted as-is and
+ * forwarded upstream (CAPI itself does the real auth check, identical to the
+ * pre-existing CAPI passthrough hook).
+ *
+ * The `lapiServerName` column for the persisted rows is derived from the
+ * machine_id encoded in the JWT bearer token. The request body does not
+ * contain a LAPI identifier, and using the JWT subject keeps rows tied to the
+ * actual sender even if we have no matching `lapi_servers[]` entry locally.
+ */
+
+import { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
+import { promisify } from 'node:util';
+import { gzip } from 'node:zlib';
+import type { BaseLogger } from 'pino';
+import { buildRowsFromPayload, type UsageMetricsPayload } from '../../metrics/parse.js';
+import {
+  ErrorResponse,
+  ErrorWithMessageResponse,
+  SuccessResponse,
+  UsageMetricsBody,
+} from './schemas.js';
+
+const gzipAsync = promisify(gzip);
+
+// CAPI rejects requests whose **decompressed** body exceeds ~10 MiB (observed
+// `413 Request Too Long` even with an 870 KiB gzipped body that would
+// decompress to ~46 MiB). We bisect based on the uncompressed JSON size and
+// leave 1 MiB of headroom.
+const MAX_UNCOMPRESSED_BYTES = 9 * 1024 * 1024;
+
+// Delay between background chunk forwards. Spreads load on CAPI and avoids
+// rate limiting if many chunks pile up.
+const BACKGROUND_CHUNK_INTERVAL_MS = 60_000;
+
+/**
+ * Bisect a usage-metrics payload until each chunk's **uncompressed** JSON size
+ * fits under {@link MAX_UNCOMPRESSED_BYTES}. CAPI's body limit applies
+ * post-gunzip, not on the wire — small gzipped payloads can still be rejected
+ * if they expand to a large decompressed body.
+ *
+ * Splits across `remediation_components[]` and `log_processors[]` only —
+ * never across the `metrics[]` blocks of a single component (each block is a
+ * snapshot keyed by `meta.utc_now_timestamp`, semantically atomic). If a
+ * single component on its own exceeds the limit (extremely rare — would
+ * require thousands of buffered metric blocks), we give up and return it
+ * as-is; CAPI will 413 and the LAPI will retry. This degrades gracefully.
+ */
+function chunkPayload(
+  payload: UsageMetricsPayload,
+  maxBytes: number
+): UsageMetricsPayload[] {
+  const json = JSON.stringify(payload);
+  if (Buffer.byteLength(json, 'utf8') <= maxBytes) return [payload];
+
+  const recs = payload.remediation_components ?? [];
+  const lps = payload.log_processors ?? [];
+  const totalComponents = recs.length + lps.length;
+  if (totalComponents <= 1) {
+    // Cannot split further at the component level. Return as-is and let CAPI
+    // reject; not worth fragmenting metric blocks within a single component.
+    return [payload];
+  }
+
+  // Bisect. Treat (recs ++ lps) as a single sequence and split in the middle.
+  const mid = Math.ceil(totalComponents / 2);
+  const half1Recs = recs.slice(0, Math.min(mid, recs.length));
+  const half1Lps = mid > recs.length ? lps.slice(0, mid - recs.length) : [];
+  const half2Recs = recs.slice(half1Recs.length);
+  const half2Lps = mid > recs.length ? lps.slice(half1Lps.length) : lps;
+
+  // Preserve any extra envelope fields (e.g. metadata) on each chunk.
+  const half1: UsageMetricsPayload = {
+    ...payload,
+    remediation_components: half1Recs,
+    log_processors: half1Lps,
+  };
+  const half2: UsageMetricsPayload = {
+    ...payload,
+    remediation_components: half2Recs,
+    log_processors: half2Lps,
+  };
+
+  return [...chunkPayload(half1, maxBytes), ...chunkPayload(half2, maxBytes)];
+}
+
+/**
+ * Schedule remaining chunks to be forwarded in the background, one per
+ * {@link BACKGROUND_CHUNK_INTERVAL_MS}. Failures are logged but never bubble
+ * up — the user explicitly accepted this trade-off ("losing stats is not so
+ * bad") in exchange for letting LAPI free its buffer immediately after the
+ * first successful chunk. Chunks held only in memory: a process restart
+ * drops them, which is also acceptable per the same trade-off.
+ */
+function scheduleBackgroundChunks(
+  chunks: UsageMetricsPayload[],
+  capiUrl: string,
+  requestUrl: string,
+  forwardHeaders: Record<string, string>,
+  timeoutMs: number,
+  logger: BaseLogger
+): void {
+  let i = 0;
+  const sendNext = async () => {
+    if (i >= chunks.length) return;
+    const idx = i++;
+    const chunk = chunks[idx];
+    try {
+      const body = await gzipAsync(JSON.stringify(chunk));
+      const response = await fetch(`${capiUrl}${requestUrl}`, {
+        method: 'POST',
+        headers: forwardHeaders,
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      logger.info(
+        {
+          status: response.status,
+          chunkIndex: idx + 2, // +2: human-friendly (1-based, +1 for the synchronous chunk already sent)
+          totalChunks: chunks.length + 1,
+          gzippedBytes: body.length,
+        },
+        'Background usage-metrics chunk forwarded'
+      );
+    } catch (err) {
+      logger.error(
+        { err, chunkIndex: idx + 2, totalChunks: chunks.length + 1 },
+        'Background usage-metrics chunk failed (stat loss accepted)'
+      );
+    }
+    setTimeout(sendNext, BACKGROUND_CHUNK_INTERVAL_MS).unref();
+  };
+  setTimeout(sendNext, BACKGROUND_CHUNK_INTERVAL_MS).unref();
+}
+
+/**
+ * Best-effort decode of the `id` (machine_id) claim from a CrowdSec machine
+ * JWT. The LAPI -> CAPI traffic always carries one in the `Authorization`
+ * header. We do NOT verify the signature: CAPI is the source of truth for that
+ * (and our own `clientValidator` already takes that role when enabled).
+ *
+ * Returns `'unknown'` when the header is missing or malformed — the row still
+ * gets persisted, just bucketed under that fallback name. This keeps data
+ * collection robust to occasional CrowdSec format changes.
+ */
+function extractMachineIdFromAuth(authHeader: string | undefined): string {
+  if (!authHeader) return 'unknown';
+  const m = /^Bearer\s+(.+)$/i.exec(authHeader.trim());
+  const token = m ? m[1] : authHeader.trim();
+  const parts = token.split('.');
+  if (parts.length < 2) return 'unknown';
+  try {
+    // JWT payload is base64url
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const decoded = Buffer.from(padded, 'base64').toString('utf-8');
+    const obj = JSON.parse(decoded) as Record<string, unknown>;
+    // CrowdSec emits `id` for machine tokens.
+    const id = obj.id ?? obj.machine_id ?? obj.sub;
+    if (typeof id === 'string' && id.length > 0) return id;
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
+  const { config, storage, proxyLogger: logger, clientValidator } = fastify;
+
+  // Build a reverse-lookup map from JWT machine_id → friendly LAPI server name.
+  // Populated from `lapi_servers[].source_machine_ids` — the same field used for
+  // loop-prevention so the configuration is self-consistent.
+  const machineIdToServerName = new Map<string, string>();
+  for (const server of config.lapi_servers ?? []) {
+    for (const mid of server.source_machine_ids ?? []) {
+      machineIdToServerName.set(mid, server.name);
+    }
+  }
+
+  const handle = async (
+    request: FastifyRequest<{ Body: UsageMetricsPayload }>,
+    reply: FastifyReply
+  ) => {
+    if (request.validationError) {
+      return reply.code(400).send({ error: request.validationError.message || 'Invalid request' });
+    }
+
+    // Optional client validation, identical to /v2/signals.
+    if (config.client_validation?.enabled) {
+      if (!clientValidator) {
+        logger.error('Client validation enabled but clientValidator not initialized');
+        return reply.code(500).send({ error: 'Internal server error' });
+      }
+      const result = await clientValidator.validate(request.headers.authorization);
+      if (!result.valid) {
+        logger.warn(
+          { reason: result.reason, clientIp: request.ip },
+          'Rejected usage-metrics from invalid client'
+        );
+        return reply.code(401).send({ error: 'Unauthorized', message: 'Client validation failed' });
+      }
+    }
+
+    // Even when client_validation is off we still want to refuse anonymous
+    // posts: this endpoint is only meaningful for authenticated LAPI relays.
+    // Lack of an Authorization header is the simplest signal of that.
+    if (!request.headers.authorization) {
+      return reply
+        .code(401)
+        .send({ error: 'Unauthorized', message: 'Missing Authorization header' });
+    }
+
+    const body = request.body ?? {};
+    const rawMachineId = extractMachineIdFromAuth(request.headers.authorization);
+    const lapiServerName = machineIdToServerName.get(rawMachineId) ?? rawMachineId;
+    const rows = buildRowsFromPayload(lapiServerName, body, Date.now());
+
+    // Persist before forwarding so a CAPI outage cannot drop metrics. A DB
+    // failure must NOT 500 the request — CrowdSec retries the relay on its
+    // own cycle and we don't want to break community telemetry over a hiccup.
+    if (rows.length > 0) {
+      try {
+        await storage.saveBouncerMetrics(rows);
+        logger.debug(
+          { rows: rows.length, machineId: rawMachineId, lapiServerName },
+          'Persisted bouncer metrics from intercepted usage-metrics POST'
+        );
+      } catch (err) {
+        logger.error(
+          { err, rows: rows.length, machineId: rawMachineId, lapiServerName },
+          'Failed to persist bouncer metrics'
+        );
+      }
+    }
+
+    // No upstream forwarding (test mode): respond 201 like a generic accept.
+    if (!config.proxy.forward_enabled) {
+      logger.info({ rows: rows.length }, 'Forwarding disabled, usage-metrics stored only');
+      return reply.code(201).send({ success: true });
+    }
+
+    // Forward to CAPI. We rebuild the body from `request.body` (already
+    // parsed) rather than re-streaming the raw request because Fastify has
+    // consumed the underlying stream by now.
+    try {
+      const capiUrl = config.proxy.capi_url;
+
+      // Mirror signals.ts: forward all headers except hop-by-hop ones.
+      // We set `Content-Type` and `Content-Encoding` ourselves below so we
+      // drop the inbound ones — letting them through would create duplicate
+      // headers (JS object keys are case-sensitive but undici normalizes,
+      // producing undefined-behavior duplicates that some servers reject).
+      // Same idea for `accept-encoding` — let fetch negotiate.
+      const headersToSkip = new Set([
+        'host',
+        'connection',
+        'keep-alive',
+        'transfer-encoding',
+        'content-length',
+        'content-type',
+        'content-encoding',
+        'accept-encoding',
+        'te',
+        'trailer',
+        'upgrade',
+      ]);
+      const forwardHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Content-Encoding': 'gzip',
+      };
+      for (const [key, value] of Object.entries(request.headers)) {
+        const lowerKey = key.toLowerCase();
+        if (!headersToSkip.has(lowerKey) && typeof value === 'string') {
+          forwardHeaders[key] = value;
+        }
+      }
+
+      // Gzip the outgoing body. CrowdSec LAPI normally sends usage-metrics
+      // gzipped (highly repetitive JSON compresses 5-10×); Fastify gunzipped
+      // it on the way in. CAPI enforces a 10 MiB wire-size limit, so we MUST
+      // re-compress on the way out — otherwise a payload that arrived 2 MiB
+      // gzipped becomes 15-20 MiB plain and gets rejected with 413.
+      //
+      // After a long CAPI outage the LAPI buffer can grow large enough that
+      // even gzipped it exceeds 10 MiB. Bisect the payload across components
+      // until each chunk fits, then send the first chunk synchronously and
+      // schedule the rest in the background (1 per minute). The first
+      // chunk's status is what we relay back to LAPI: a 200 lets LAPI clear
+      // its buffer and prevents the runaway accumulation cycle. Background
+      // chunks may fail (logged) and the lost stats are accepted as the
+      // cost of keeping the pipeline unblocked.
+      const chunks = chunkPayload(body, MAX_UNCOMPRESSED_BYTES);
+      const firstChunk = chunks[0];
+      const firstChunkJson = JSON.stringify(firstChunk);
+      const outgoing = await gzipAsync(firstChunkJson);
+
+      // Debug-log the JSON we're about to send (truncated) so we can diagnose
+      // CAPI rejections without having to capture the wire traffic.
+      logger.debug(
+        {
+          chunkPreview: firstChunkJson.slice(0, 300),
+          chunkBytes: firstChunkJson.length,
+          gzippedBytes: outgoing.length,
+          totalChunks: chunks.length,
+        },
+        'Outgoing usage-metrics chunk (debug preview)'
+      );
+
+      const response = await fetch(`${capiUrl}${request.url}`, {
+        method: 'POST',
+        headers: forwardHeaders,
+        body: outgoing,
+        signal: AbortSignal.timeout(config.proxy.timeout_ms),
+      });
+
+      // Schedule remaining chunks only when the first succeeded (CAPI
+      // accepted the auth + format). On failure, return the error to LAPI;
+      // it'll retry the whole buffer next cycle and we'll re-chunk then.
+      if (response.ok && chunks.length > 1) {
+        logger.info(
+          {
+            totalChunks: chunks.length,
+            firstChunkBytes: outgoing.length,
+            machineId: rawMachineId,
+            lapiServerName,
+          },
+          'Splitting usage-metrics across multiple CAPI POSTs'
+        );
+        scheduleBackgroundChunks(
+          chunks.slice(1),
+          capiUrl,
+          request.url,
+          forwardHeaders,
+          config.proxy.timeout_ms,
+          logger
+        );
+      }
+
+      const responseBody = await response.text();
+      const logFields = {
+        rows: rows.length,
+        status: response.status,
+        chunks: chunks.length,
+        gzippedBytes: outgoing.length,
+        machineId: rawMachineId,
+        lapiServerName,
+      };
+      if (response.ok) {
+        logger.info(logFields, 'Forwarded usage-metrics to CAPI');
+      } else {
+        // Surface the CAPI error body so we can diagnose schema/format issues
+        // (412/413/422 etc.) rather than blindly retrying.
+        logger.warn(
+          { ...logFields, responseBody: responseBody.slice(0, 1024) },
+          'CAPI rejected usage-metrics forward'
+        );
+      }
+
+      reply.code(response.status);
+      const contentType = response.headers.get('content-type');
+      if (contentType) reply.header('content-type', contentType);
+      return reply.send(responseBody);
+    } catch (err) {
+      logger.error({ err }, 'Failed to forward usage-metrics to CAPI');
+      return reply.code(502).send({ error: 'Failed to forward to CAPI' });
+    }
+  };
+
+  const routeOpts = {
+    attachValidation: true,
+    // CrowdSec LAPI relays accumulated bouncer/agent metrics every ~30 min
+    // and the body can easily exceed the 1 MiB default (especially after a
+    // CAPI outage where multiple cycles backlog).
+    bodyLimit: 50 * 1024 * 1024,
+    schema: {
+      tags: ['metrics'],
+      summary: 'Intercept CrowdSec LAPI -> CAPI usage-metrics relay',
+      description:
+        'Receives the usage-metrics payload that CrowdSec LAPI POSTs to its ' +
+        'configured CAPI URL, persists per-bouncer counters locally, then ' +
+        'forwards the same body upstream to the real CAPI when forwarding is ' +
+        'enabled. Auth and forwarding behavior mirror /v2/signals.',
+      body: UsageMetricsBody,
+      response: {
+        201: SuccessResponse,
+        400: ErrorResponse,
+        401: ErrorWithMessageResponse,
+        500: ErrorResponse,
+        502: ErrorResponse,
+      },
+    },
+  };
+
+  // CrowdSec LAPI uses URLPrefix "v3" when talking to CAPI
+  // (pkg/apiserver/apic.go), and bouncers post to "/v1/usage-metrics" on a
+  // LAPI directly. We register both so that whichever client lands on the
+  // CrowdSieve proxy port is captured.
+  for (const path of ['/v1/usage-metrics', '/v3/usage-metrics']) {
+    fastify.post(path, routeOpts, (request, reply) =>
+      handle(request as FastifyRequest<{ Body: UsageMetricsPayload }>, reply)
+    );
+  }
+};
+
+export default usageMetricsRoute;

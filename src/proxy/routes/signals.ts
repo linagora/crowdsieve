@@ -201,13 +201,19 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       const capiUrl = config.proxy.capi_url;
       const outgoingBody = JSON.stringify(crowdsieveFilterResult.alerts);
       logger.debug({ outgoingBody }, 'Outgoing alerts to CAPI');
-      // Forward all headers except hop-by-hop headers that shouldn't be proxied
+      // Forward all headers except hop-by-hop headers that shouldn't be proxied.
+      // Also drop `content-encoding` and `accept-encoding`: Fastify already
+      // gunzipped the request body for us and we re-serialize as plain JSON
+      // below — keeping an inbound `Content-Encoding: gzip` would make CAPI
+      // try to gunzip a plain JSON payload and reject it with 415.
       const headersToSkip = new Set([
         'host',
         'connection',
         'keep-alive',
         'transfer-encoding',
         'content-length',
+        'content-encoding',
+        'accept-encoding',
         'te',
         'trailer',
         'upgrade',

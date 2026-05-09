@@ -2,10 +2,13 @@ import {
   pgTable,
   text,
   integer,
+  bigint,
   doublePrecision,
   boolean,
   serial,
   index,
+  uniqueIndex,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 export const alerts = pgTable(
@@ -186,6 +189,69 @@ export const analyzerResults = pgTable(
   })
 );
 
+// Bouncer registry — quasi-static metadata per (lapi, bouncer, kind).
+// Mirrors the SQLite `bouncers` table.
+export const bouncers = pgTable(
+  'bouncers',
+  {
+    lapiServerName: text('lapi_server_name').notNull(),
+    bouncerName: text('bouncer_name').notNull(),
+    componentKind: text('component_kind').notNull(),
+    bouncerType: text('bouncer_type'),
+    osName: text('os_name'),
+    osVersion: text('os_version'),
+    version: text('version'),
+    firstSeenAt: bigint('first_seen_at', { mode: 'number' }).notNull(),
+    lastSeenAt: bigint('last_seen_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.lapiServerName, table.bouncerName, table.componentKind],
+    }),
+  })
+);
+
+// Bouncer usage-metrics snapshots polled from LAPI /v1/usage-metrics.
+// Mirrors the SQLite schema in src/db/schema.ts; collectedAt is a unix-ms bigint
+// stored as PostgreSQL bigint (drizzle's `integer` maps to int4, so we use
+// bigint here via the `bigint` column with `mode: 'number'`). Bouncer metadata
+// (OS, version, type) lives in the `bouncers` table — joined back at read time.
+export const bouncerMetrics = pgTable(
+  'bouncer_metrics',
+  {
+    id: serial('id').primaryKey(),
+    lapiServerName: text('lapi_server_name').notNull(),
+    componentKind: text('component_kind').notNull(), // 'remediation' | 'log_processor'
+    bouncerName: text('bouncer_name').notNull(),
+    activeDecisions: integer('active_decisions'),
+    processedItems: integer('processed_items'),
+    droppedItems: integer('dropped_items'),
+    bytesProcessed: integer('bytes_processed'),
+    collectedAt: bigint('collected_at', { mode: 'number' }).notNull(),
+    metricsJson: text('metrics_json').notNull(),
+  },
+  (table) => ({
+    serverCollectedIdx: index('idx_bouncer_metrics_server_collected').on(
+      table.lapiServerName,
+      table.collectedAt
+    ),
+    bouncerCollectedIdx: index('idx_bouncer_metrics_bouncer_collected').on(
+      table.bouncerName,
+      table.collectedAt
+    ),
+    // Deduplication: CrowdSec LAPI may re-relay the same usage-metrics block
+    // (same `meta.utc_now_timestamp`, hence same collectedAt). The unique
+    // index combined with `ON CONFLICT DO NOTHING` (see saveBouncerMetrics)
+    // keeps per-window counters from being double-counted on retries.
+    uniqueSnapshotIdx: uniqueIndex('bouncer_metrics_unique').on(
+      table.lapiServerName,
+      table.bouncerName,
+      table.componentKind,
+      table.collectedAt
+    ),
+  })
+);
+
 // Types for inserting
 export type InsertAlert = typeof alerts.$inferInsert;
 export type SelectAlert = typeof alerts.$inferSelect;
@@ -197,3 +263,7 @@ export type InsertAnalyzerRun = typeof analyzerRuns.$inferInsert;
 export type SelectAnalyzerRun = typeof analyzerRuns.$inferSelect;
 export type InsertAnalyzerResult = typeof analyzerResults.$inferInsert;
 export type SelectAnalyzerResult = typeof analyzerResults.$inferSelect;
+export type InsertBouncerMetric = typeof bouncerMetrics.$inferInsert;
+export type SelectBouncerMetric = typeof bouncerMetrics.$inferSelect;
+export type InsertBouncer = typeof bouncers.$inferInsert;
+export type SelectBouncer = typeof bouncers.$inferSelect;

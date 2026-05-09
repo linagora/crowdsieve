@@ -216,6 +216,43 @@ function runSQLiteMigrations(sqlite: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_analyzer_results_run_id ON analyzer_results(run_id);
     CREATE INDEX IF NOT EXISTS idx_analyzer_results_source_ip ON analyzer_results(source_ip);
+
+    -- Bouncer registry — quasi-static metadata per (lapi, bouncer, kind).
+    -- Updated via upsert on every usage-metrics push.
+    CREATE TABLE IF NOT EXISTS bouncers (
+      lapi_server_name TEXT NOT NULL,
+      bouncer_name TEXT NOT NULL,
+      component_kind TEXT NOT NULL,
+      bouncer_type TEXT,
+      os_name TEXT,
+      os_version TEXT,
+      version TEXT,
+      first_seen_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      PRIMARY KEY (lapi_server_name, bouncer_name, component_kind)
+    );
+
+    -- Bouncer usage-metrics snapshots (GET /v1/usage-metrics). Hot counters in
+    -- typed columns for fast time-series queries; raw items in metrics_json.
+    -- Bouncer metadata (OS, version, type) is stored in the bouncers table
+    -- and joined back at read time.
+    CREATE TABLE IF NOT EXISTS bouncer_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lapi_server_name TEXT NOT NULL,
+      component_kind TEXT NOT NULL,
+      bouncer_name TEXT NOT NULL,
+      active_decisions INTEGER,
+      processed_items INTEGER,
+      dropped_items INTEGER,
+      bytes_processed INTEGER,
+      collected_at INTEGER NOT NULL,
+      metrics_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_server_collected
+      ON bouncer_metrics(lapi_server_name, collected_at);
+    CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_bouncer_collected
+      ON bouncer_metrics(bouncer_name, collected_at);
   `);
 
   // Migration: Add replicated column to alerts if it doesn't exist
@@ -249,6 +286,22 @@ function runSQLiteMigrations(sqlite: Database.Database) {
   sqlite.exec(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_uuid ON alerts(uuid) WHERE uuid IS NOT NULL'
   );
+
+  // Migration: Deduplicate bouncer_metrics on the natural snapshot key, then
+  // add the unique index. Pre-existing deployments (PR #37 upgrade path) may
+  // contain duplicate rows from the previous parser, which would make the
+  // unique index creation fail. Order matters: dedup MUST run before index
+  // creation. The DELETE keeps the lowest id per group as the canonical row.
+  sqlite.exec(`
+    DELETE FROM bouncer_metrics
+    WHERE id NOT IN (
+      SELECT MIN(id) FROM bouncer_metrics
+      GROUP BY lapi_server_name, bouncer_name, component_kind, collected_at
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS bouncer_metrics_unique
+      ON bouncer_metrics(lapi_server_name, bouncer_name, component_kind, collected_at);
+  `);
 }
 
 /**

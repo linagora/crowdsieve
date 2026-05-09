@@ -149,14 +149,20 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
       return; // Let other routes handle this
     }
 
-    // Skip /v2/signals and /v3/signals - they have their own handler with filtering logic
-    if (
+    // Skip routes that have their own handlers (signals filtering, usage-metrics
+    // capture). Without this, the catch-all forward hook responds before
+    // Fastify routing reaches the dedicated route.
+    const handledByOwnRoute =
       url === '/v2/signals' ||
       url.startsWith('/v2/signals?') ||
       url === '/v3/signals' ||
-      url.startsWith('/v3/signals?')
-    ) {
-      return; // Let the signals route handle this
+      url.startsWith('/v3/signals?') ||
+      url === '/v1/usage-metrics' ||
+      url.startsWith('/v1/usage-metrics?') ||
+      url === '/v3/usage-metrics' ||
+      url.startsWith('/v3/usage-metrics?');
+    if (handledByOwnRoute) {
+      return;
     }
 
     const capiUrl = config.proxy.capi_url;
@@ -283,6 +289,7 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
   // Register routes
   await app.register(import('./routes/api.js'));
   await app.register(import('./routes/signals.js'));
+  await app.register(import('./routes/usage-metrics.js'));
 
   return app;
 }

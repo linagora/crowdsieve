@@ -55,6 +55,9 @@ function createMockConfig(lapiServers: Config['lapi_servers'] = []): Config {
       whitelist: [],
       sources: {},
     },
+    bouncer_metrics: {
+      retention_days: 30,
+    },
   };
 }
 

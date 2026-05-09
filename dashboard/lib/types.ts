@@ -64,6 +64,14 @@ export interface AlertStats {
   total: number;
   filtered: number;
   forwarded: number;
+  /**
+   * Sum of `droppedItems` across every `componentKind='remediation'`
+   * bouncer_metrics snapshot in the retention window. CrowdSec emits
+   * `dropped` as a per-window counter (one block per `WindowSizeSeconds`),
+   * so a plain sum gives the total dropped requests over the window.
+   * 0 when bouncer metrics are disabled or no data is available.
+   */
+  blockedRequests: number;
   /** Top 10 scenarios for the stats panel — excludes audit-only rows. */
   topScenarios: Array<{ scenario: string; count: number }>;
   /**
@@ -153,4 +161,31 @@ export interface DecisionStats {
   byDurationCategory: Array<{ category: string; count: number }>;
   topScenarios: Array<{ scenario: string; count: number }>;
   byCountry: Array<{ countryCode: string; countryName: string; count: number }>;
+}
+
+/**
+ * Single snapshot of bouncer usage-metrics, mirroring the backend
+ * BouncerMetricResponse schema (src/proxy/routes/schemas.ts).
+ */
+export interface BouncerMetric {
+  id: number;
+  lapiServerName: string;
+  componentKind: string;
+  bouncerName: string;
+  bouncerType: string | null;
+  osName: string | null;
+  osVersion: string | null;
+  version: string | null;
+  activeDecisions: number | null;
+  processedItems: number | null;
+  droppedItems: number | null;
+  bytesProcessed: number | null;
+  collectedAt: number;
+  metricsJson: string;
+}
+
+export interface BouncerName {
+  lapiServerName: string;
+  bouncerName: string;
+  bouncerType: string | null;
 }
