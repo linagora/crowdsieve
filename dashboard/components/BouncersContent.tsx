@@ -66,8 +66,11 @@ function DualChart({ series }: DualChartProps) {
   }
   const maxProcessed = Math.max(...series.map((p) => p.processed), 1);
   const maxDropped = Math.max(...series.map((p) => p.dropped), 1);
-  const lastProcessed = series[series.length - 1].processed;
-  const lastDropped = series[series.length - 1].dropped;
+  // Show totals over the visible window. The last snapshot alone is misleading
+  // for sparse-activity bouncers whose most recent row may be a quiet one
+  // even when the chart shows real spikes.
+  const sumProcessed = series.reduce((s, p) => s + p.processed, 0);
+  const sumDropped = series.reduce((s, p) => s + p.dropped, 0);
   const startTs = series[0].collectedAt;
   const endTs = series[series.length - 1].collectedAt;
   return (
@@ -91,12 +94,12 @@ function DualChart({ series }: DualChartProps) {
       <div className="flex justify-between items-center text-xs mt-2 gap-2">
         <span className="flex items-center gap-1 text-slate-700">
           <span className="inline-block w-2 h-2 bg-blue-500 rounded-sm" />
-          <span className="font-medium">{lastProcessed.toLocaleString()}</span>
+          <span className="font-medium">{sumProcessed.toLocaleString()}</span>
           <span className="text-slate-400">proc</span>
         </span>
         <span className="flex items-center gap-1 text-slate-700">
           <span className="inline-block w-2 h-2 bg-amber-500 rounded-sm" />
-          <span className="font-medium">{lastDropped.toLocaleString()}</span>
+          <span className="font-medium">{sumDropped.toLocaleString()}</span>
           <span className="text-slate-400">drop</span>
         </span>
       </div>
@@ -169,19 +172,21 @@ export function BouncersContent({
   // Pre-compute an activity score per bouncer key so we don't re-derive it
   // inside the sort comparator (O(n) build, O(1) lookup during sort).
   // Skip registration-only rows (metricsJson === '[]') — they carry all-zero
-  // counters with a fresh `now` timestamp, which would otherwise mask the
-  // real activity of bouncers that mix remediation + log_processor kinds
-  // (the registration log_processor row is always newer than the real
-  // remediation snapshot and would win `rows[0]`).
-  // Score = latest droppedItems: dropped is the security-relevant metric
-  // (actual bans applied), more meaningful than processed which is mostly
-  // benign traffic volume.
+  // counters and would dilute the score.
+  // Score = SUM of droppedItems over the visible window. Using LATEST instead
+  // of SUM made bouncers like `llng` (sparse drops: occasional spikes of
+  // 24-34 then quiet for hours) drop to 0 because their most recent snapshot
+  // was a quiet one, even though the chart visibly showed real activity.
+  // SUM matches what the bars convey and ranks bouncers by total impact
+  // over the period.
   const activityScores = useMemo(() => {
     const scores = new Map<string, number>();
     for (const [key, rows] of byBouncer) {
-      const realRows = rows.filter((r) => r.metricsJson !== '[]');
-      const latest = realRows[0] ?? rows[0]; // API returns newest-first
-      scores.set(key, latest?.droppedItems ?? 0);
+      const sumDropped = rows.reduce(
+        (s, r) => s + (r.metricsJson === '[]' ? 0 : r.droppedItems ?? 0),
+        0
+      );
+      scores.set(key, sumDropped);
     }
     return scores;
   }, [byBouncer]);
