@@ -25,7 +25,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **REST API**: Fully documented with OpenAPI ([interactive docs](https://linagora.github.io/crowdsieve/api/) · [openapi.json](https://linagora.github.io/crowdsieve/api/openapi.json))
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
 - **GeoIP Enrichment**: Enrich alerts with geographic information
-- **Lightweight**: Docker image under 250MB
+- **Lightweight**: Docker image under 200MB
 
 ## Why Crowdsieve?
 
@@ -482,7 +482,7 @@ CrowdSieve transparently captures the `usage-metrics` payloads that CrowdSec LAP
 This surfaces in the dashboard as:
 
 - A **"Blocked Requests"** stat on the homepage — total requests dropped by all bouncers **over the configured retention window** (default 30 days). CrowdSec emits these as **per-window counters** (one block per `WindowSizeSeconds`, default 15 minutes), so we sum them straight; no delta or reset detection needed.
-- A **Bouncers** page with per-bouncer time-series charts of active decisions, processed items, dropped items, and bytes processed.
+- A **Bouncers** page with per-bouncer time-series charts: a dual-series mini-chart per card (processed vs dropped, each on its own scale), arranged in a responsive grid (3-4 cards per row on wide screens). Bouncers are sorted by total dropped over the visible window, with total processed as tiebreaker. The current LAPI-wide active-decisions gauge and the global Blocked Requests counter are shown as summary cards at the top of the page.
 
 ### Configuration
 
@@ -504,7 +504,19 @@ bouncer_metrics:
 
 ### Storage
 
-Snapshots are stored in the `bouncer_metrics` table (auto-created at startup on both SQLite and PostgreSQL). Each row has hot columns for the common counters (`activeDecisions`, `processedItems`, `droppedItems`, `bytesProcessed`) plus a `metricsJson` blob preserving any extra fields reported by the bouncer.
+Snapshots are stored across two tables (auto-created at startup on both SQLite and PostgreSQL):
+
+- `bouncers` — registry of every (lapiServerName, bouncerName, componentKind) the proxy has ever seen, with quasi-static metadata (`bouncerType`, `osName`, `osVersion`, `version`) plus `firstSeenAt` / `lastSeenAt`. Updated via upsert on every push so the latest metadata always wins, while `firstSeenAt` is preserved.
+- `bouncer_metrics` — one row per snapshot block per bouncer. Hot counters (`activeDecisions`, `processedItems`, `droppedItems`, `bytesProcessed`) live in typed columns for fast time-series queries; the raw `metrics[]` array from CrowdSec is preserved verbatim in `metricsJson` for forensic drill-down. Deduplicated on `(lapiServerName, bouncerName, componentKind, collectedAt)` so LAPI retries are no-ops.
+
+The dashboard `/bouncers` page joins the two tables at read time so the API contract stays a flat `BouncerMetric` shape.
+
+### Outbound chunking
+
+CrowdSec CAPI rejects requests whose **decompressed** body exceeds ~10 MiB. After a long CAPI outage the LAPI buffer can grow well beyond that, leaving the relay stuck in a 413 retry loop. CrowdSieve handles this transparently:
+
+1. Re-gzip the body before forwarding (CrowdSec's usage-metrics JSON compresses ~50× — Fastify gunzipped it on ingress, sending plain JSON would otherwise balloon the wire size).
+2. If the uncompressed JSON exceeds 9 MiB, bisect across `remediation_components[]` and `log_processors[]` until each chunk fits. The first chunk is POSTed synchronously and its CAPI response is relayed to LAPI — a 200 lets LAPI clear its accumulated buffer, breaking the retry loop. Remaining chunks are sent in the background, one per minute. Background failures are logged and tolerated (CAPI dedupes by `(machine_id, window_timestamp)` so a future LAPI cycle can retry naturally).
 
 ## Environment Variables
 
