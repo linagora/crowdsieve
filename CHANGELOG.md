@@ -5,6 +5,28 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-09
+
+### Added
+
+#### Bouncer metrics
+
+- **CrowdSec bouncer usage-metrics collection**: CrowdSieve now intercepts `POST /v1/usage-metrics` and `POST /v3/usage-metrics`.
+  - **CAPI chunked forwarding**: oversized usage-metrics payloads are now split across multiple CAPI POSTs, preventing CAPI rejections on large fleets.
+  - **Bouncers dashboard page**
+  - **Blocked Requests stat card**: new home-dashboard tile that computes blocked requests as a windowed sum with reset detection.
+
+### Changed
+
+#### Operations
+
+- **Slimmer Docker runtime image**: ~43 MB smaller (now ~190 MB).
+
+### Fixed
+
+- **CAPI forward 415 on signals**: strip `content-encoding` on the CAPI forward path so the upstream no longer rejects re-encoded bodies.
+- **Phantom delta inflation**: empty snapshot blocks are skipped, preventing inflated deltas on idle bouncers.
+
 ## [0.5.2] - 2026-05-07
 
 ### Changed
