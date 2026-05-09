@@ -74,7 +74,7 @@ function DualChart({ series }: DualChartProps) {
     <>
       <div className="flex items-end gap-px h-16">
         {series.map((p, i) => (
-          <div key={i} className="flex-1 min-w-[3px] flex items-end gap-px">
+          <div key={i} className="flex-1 min-w-[3px] h-full flex items-end gap-px">
             <div
               className="flex-1 bg-blue-500 rounded-t"
               style={{ height: `${Math.max((p.processed / maxProcessed) * 100, 2)}%` }}
