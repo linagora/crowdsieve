@@ -255,37 +255,6 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       ON bouncer_metrics(bouncer_name, collected_at);
   `);
 
-  // Migration: bouncer_metrics used to carry per-row bouncer metadata
-  // (bouncer_type, os_name, os_version, version). These now live in the
-  // `bouncers` table. If we detect the legacy schema, wipe the metrics table
-  // and recreate it without those columns. Metric data is short-lived and
-  // re-populated by the next LAPI push, so a clean drop is acceptable.
-  const bmInfo = sqlite.prepare('PRAGMA table_info(bouncer_metrics)').all() as { name: string }[];
-  const hasLegacyMetadataCols = bmInfo.some((c) =>
-    ['os_name', 'os_version', 'version', 'bouncer_type'].includes(c.name)
-  );
-  if (hasLegacyMetadataCols) {
-    sqlite.exec(`
-      DROP TABLE bouncer_metrics;
-      CREATE TABLE bouncer_metrics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        lapi_server_name TEXT NOT NULL,
-        component_kind TEXT NOT NULL,
-        bouncer_name TEXT NOT NULL,
-        active_decisions INTEGER,
-        processed_items INTEGER,
-        dropped_items INTEGER,
-        bytes_processed INTEGER,
-        collected_at INTEGER NOT NULL,
-        metrics_json TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_server_collected
-        ON bouncer_metrics(lapi_server_name, collected_at);
-      CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_bouncer_collected
-        ON bouncer_metrics(bouncer_name, collected_at);
-    `);
-  }
-
   // Migration: Add replicated column to alerts if it doesn't exist
   // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
   const tableInfo = sqlite.prepare('PRAGMA table_info(alerts)').all() as { name: string }[];
