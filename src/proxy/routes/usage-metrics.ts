@@ -28,15 +28,125 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
+import type { BaseLogger } from 'pino';
 import { buildRowsFromPayload, type UsageMetricsPayload } from '../../metrics/parse.js';
-
-const gzipAsync = promisify(gzip);
 import {
   ErrorResponse,
   ErrorWithMessageResponse,
   SuccessResponse,
   UsageMetricsBody,
 } from './schemas.js';
+
+const gzipAsync = promisify(gzip);
+
+// CAPI rejects requests > 10 MiB. We aim a bit lower to leave headroom for
+// gzip nondeterminism and HTTP overhead.
+const MAX_GZIPPED_BYTES = 9 * 1024 * 1024;
+
+// Delay between background chunk forwards. Spreads load on CAPI and avoids
+// rate limiting if many chunks pile up.
+const BACKGROUND_CHUNK_INTERVAL_MS = 60_000;
+
+/**
+ * Bisect a usage-metrics payload until each chunk's gzipped wire size fits
+ * under {@link MAX_GZIPPED_BYTES}.
+ *
+ * Splits across `remediation_components[]` and `log_processors[]` only —
+ * never across the `metrics[]` blocks of a single component (each block is a
+ * snapshot keyed by `meta.utc_now_timestamp`, semantically atomic). If a
+ * single component on its own exceeds the limit (extremely rare — would
+ * require thousands of buffered metric blocks), we give up and return it
+ * as-is; CAPI will 413 and the LAPI will retry. This degrades gracefully.
+ */
+async function chunkPayload(
+  payload: UsageMetricsPayload,
+  maxBytes: number
+): Promise<UsageMetricsPayload[]> {
+  const gz = await gzipAsync(JSON.stringify(payload));
+  if (gz.length <= maxBytes) return [payload];
+
+  const recs = payload.remediation_components ?? [];
+  const lps = payload.log_processors ?? [];
+  const totalComponents = recs.length + lps.length;
+  if (totalComponents <= 1) {
+    // Cannot split further at the component level. Return as-is and let CAPI
+    // reject; not worth fragmenting metric blocks within a single component.
+    return [payload];
+  }
+
+  // Bisect. Treat (recs ++ lps) as a single sequence and split in the middle.
+  const mid = Math.ceil(totalComponents / 2);
+  const half1Recs = recs.slice(0, Math.min(mid, recs.length));
+  const half1Lps = mid > recs.length ? lps.slice(0, mid - recs.length) : [];
+  const half2Recs = recs.slice(half1Recs.length);
+  const half2Lps = mid > recs.length ? lps.slice(half1Lps.length) : lps;
+
+  // Preserve any extra envelope fields (e.g. metadata) on each chunk.
+  const half1: UsageMetricsPayload = {
+    ...payload,
+    remediation_components: half1Recs,
+    log_processors: half1Lps,
+  };
+  const half2: UsageMetricsPayload = {
+    ...payload,
+    remediation_components: half2Recs,
+    log_processors: half2Lps,
+  };
+
+  return [
+    ...(await chunkPayload(half1, maxBytes)),
+    ...(await chunkPayload(half2, maxBytes)),
+  ];
+}
+
+/**
+ * Schedule remaining chunks to be forwarded in the background, one per
+ * {@link BACKGROUND_CHUNK_INTERVAL_MS}. Failures are logged but never bubble
+ * up — the user explicitly accepted this trade-off ("losing stats is not so
+ * bad") in exchange for letting LAPI free its buffer immediately after the
+ * first successful chunk. Chunks held only in memory: a process restart
+ * drops them, which is also acceptable per the same trade-off.
+ */
+function scheduleBackgroundChunks(
+  chunks: UsageMetricsPayload[],
+  capiUrl: string,
+  requestUrl: string,
+  forwardHeaders: Record<string, string>,
+  timeoutMs: number,
+  logger: BaseLogger
+): void {
+  let i = 0;
+  const sendNext = async () => {
+    if (i >= chunks.length) return;
+    const idx = i++;
+    const chunk = chunks[idx];
+    try {
+      const body = await gzipAsync(JSON.stringify(chunk));
+      const response = await fetch(`${capiUrl}${requestUrl}`, {
+        method: 'POST',
+        headers: forwardHeaders,
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      logger.info(
+        {
+          status: response.status,
+          chunkIndex: idx + 2, // +2: human-friendly (1-based, +1 for the synchronous chunk already sent)
+          totalChunks: chunks.length + 1,
+          gzippedBytes: body.length,
+        },
+        'Background usage-metrics chunk forwarded'
+      );
+    } catch (err) {
+      logger.error(
+        { err, chunkIndex: idx + 2, totalChunks: chunks.length + 1 },
+        'Background usage-metrics chunk failed (stat loss accepted)'
+      );
+    }
+    setTimeout(sendNext, BACKGROUND_CHUNK_INTERVAL_MS).unref();
+  };
+  setTimeout(sendNext, BACKGROUND_CHUNK_INTERVAL_MS).unref();
+}
 
 /**
  * Best-effort decode of the `id` (machine_id) claim from a CrowdSec machine
@@ -149,13 +259,6 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     // consumed the underlying stream by now.
     try {
       const capiUrl = config.proxy.capi_url;
-      // Gzip the outgoing body. CrowdSec LAPI normally sends usage-metrics
-      // gzipped (highly repetitive JSON compresses 5-10×); Fastify gunzipped
-      // it on the way in. CAPI enforces a 10 MiB wire-size limit, so we MUST
-      // re-compress on the way out — otherwise a payload that arrived 2 MiB
-      // gzipped becomes 15-20 MiB plain and gets rejected with 413.
-      const outgoingJson = JSON.stringify(body);
-      const outgoing = await gzipAsync(outgoingJson);
 
       // Mirror signals.ts: forward all headers except hop-by-hop ones.
       // We set `Content-Encoding: gzip` ourselves below, so we drop the
@@ -184,6 +287,24 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
         }
       }
 
+      // Gzip the outgoing body. CrowdSec LAPI normally sends usage-metrics
+      // gzipped (highly repetitive JSON compresses 5-10×); Fastify gunzipped
+      // it on the way in. CAPI enforces a 10 MiB wire-size limit, so we MUST
+      // re-compress on the way out — otherwise a payload that arrived 2 MiB
+      // gzipped becomes 15-20 MiB plain and gets rejected with 413.
+      //
+      // After a long CAPI outage the LAPI buffer can grow large enough that
+      // even gzipped it exceeds 10 MiB. Bisect the payload across components
+      // until each chunk fits, then send the first chunk synchronously and
+      // schedule the rest in the background (1 per minute). The first
+      // chunk's status is what we relay back to LAPI: a 200 lets LAPI clear
+      // its buffer and prevents the runaway accumulation cycle. Background
+      // chunks may fail (logged) and the lost stats are accepted as the
+      // cost of keeping the pipeline unblocked.
+      const chunks = await chunkPayload(body, MAX_GZIPPED_BYTES);
+      const firstChunk = chunks[0];
+      const outgoing = await gzipAsync(JSON.stringify(firstChunk));
+
       const response = await fetch(`${capiUrl}${request.url}`, {
         method: 'POST',
         headers: forwardHeaders,
@@ -191,9 +312,39 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
         signal: AbortSignal.timeout(config.proxy.timeout_ms),
       });
 
+      // Schedule remaining chunks only when the first succeeded (CAPI
+      // accepted the auth + format). On failure, return the error to LAPI;
+      // it'll retry the whole buffer next cycle and we'll re-chunk then.
+      if (response.ok && chunks.length > 1) {
+        logger.info(
+          {
+            totalChunks: chunks.length,
+            firstChunkBytes: outgoing.length,
+            machineId: rawMachineId,
+            lapiServerName,
+          },
+          'Splitting usage-metrics across multiple CAPI POSTs'
+        );
+        scheduleBackgroundChunks(
+          chunks.slice(1),
+          capiUrl,
+          request.url,
+          forwardHeaders,
+          config.proxy.timeout_ms,
+          logger
+        );
+      }
+
       const responseBody = await response.text();
       logger.info(
-        { rows: rows.length, status: response.status, machineId: rawMachineId, lapiServerName },
+        {
+          rows: rows.length,
+          status: response.status,
+          chunks: chunks.length,
+          gzippedBytes: outgoing.length,
+          machineId: rawMachineId,
+          lapiServerName,
+        },
         'Forwarded usage-metrics to CAPI'
       );
 
