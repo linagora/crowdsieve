@@ -3,7 +3,7 @@
   "info": {
     "title": "CrowdSieve API",
     "description": "CrowdSec CAPI filtering proxy — internal management API + signals passthrough.",
-    "version": "0.5.2"
+    "version": "0.6.0"
   },
   "components": {
     "securitySchemes": {
@@ -58,10 +58,10 @@
         "parameters": [
           {
             "schema": {
+              "type": "integer",
               "minimum": 1,
               "maximum": 1000,
-              "default": 100,
-              "type": "integer"
+              "default": 100
             },
             "in": "query",
             "name": "limit",
@@ -69,9 +69,9 @@
           },
           {
             "schema": {
+              "type": "integer",
               "minimum": 0,
-              "default": 0,
-              "type": "integer"
+              "default": 0
             },
             "in": "query",
             "name": "offset",
@@ -95,8 +95,8 @@
           },
           {
             "schema": {
-              "maxLength": 200,
-              "type": "string"
+              "type": "string",
+              "maxLength": 200
             },
             "in": "query",
             "name": "scenario",
@@ -104,8 +104,8 @@
           },
           {
             "schema": {
-              "pattern": "^[A-Z]{2}$",
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
             },
             "in": "query",
             "name": "country",
@@ -114,9 +114,9 @@
           },
           {
             "schema": {
+              "type": "string",
               "pattern": "^[a-zA-Z0-9_\\-.:]+$",
-              "maxLength": 255,
-              "type": "string"
+              "maxLength": 255
             },
             "in": "query",
             "name": "machineId",
@@ -132,8 +132,8 @@
           },
           {
             "schema": {
-              "format": "date-time",
-              "type": "string"
+              "type": "string",
+              "format": "date-time"
             },
             "in": "query",
             "name": "since",
@@ -142,8 +142,8 @@
           },
           {
             "schema": {
-              "format": "date-time",
-              "type": "string"
+              "type": "string",
+              "format": "date-time"
             },
             "in": "query",
             "name": "until",
@@ -152,8 +152,8 @@
           },
           {
             "schema": {
-              "format": "date-time",
-              "type": "string"
+              "type": "string",
+              "format": "date-time"
             },
             "in": "query",
             "name": "newerThan",
@@ -675,8 +675,8 @@
         "parameters": [
           {
             "schema": {
-              "minimum": 1,
-              "type": "integer"
+              "type": "integer",
+              "minimum": 1
             },
             "in": "path",
             "name": "id",
@@ -1220,6 +1220,7 @@
                     "total",
                     "filtered",
                     "forwarded",
+                    "blockedRequests",
                     "topScenarios",
                     "allScenarios",
                     "topCountries",
@@ -1233,6 +1234,9 @@
                       "type": "integer"
                     },
                     "forwarded": {
+                      "type": "integer"
+                    },
+                    "blockedRequests": {
                       "type": "integer"
                     },
                     "topScenarios": {
@@ -1831,9 +1835,9 @@
         "parameters": [
           {
             "schema": {
+              "type": "string",
               "minLength": 1,
-              "maxLength": 64,
-              "type": "string"
+              "maxLength": 64
             },
             "in": "path",
             "name": "ip",
@@ -2044,8 +2048,8 @@
         "parameters": [
           {
             "schema": {
-              "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "in": "query",
             "name": "ip",
@@ -2083,7 +2087,6 @@
                           "decisions": {
                             "type": "array",
                             "items": {
-                              "additionalProperties": true,
                               "type": "object",
                               "required": [
                                 "id",
@@ -2119,7 +2122,8 @@
                                 "until": {
                                   "type": "string"
                                 }
-                              }
+                              },
+                              "additionalProperties": true
                             }
                           },
                           "error": {
@@ -2131,7 +2135,6 @@
                     "shared": {
                       "type": "array",
                       "items": {
-                        "additionalProperties": true,
                         "type": "object",
                         "required": [
                           "id",
@@ -2167,7 +2170,8 @@
                           "until": {
                             "type": "string"
                           }
-                        }
+                        },
+                        "additionalProperties": true
                       }
                     }
                   }
@@ -2252,22 +2256,22 @@
                 ],
                 "properties": {
                   "server": {
-                    "pattern": "^[a-zA-Z0-9_-]+$",
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
                   },
                   "ip": {
-                    "minLength": 1,
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
                   },
                   "duration": {
+                    "type": "string",
                     "pattern": "^\\d+[smh]$",
-                    "description": "Duration like 30s, 5m, 4h, 24h",
-                    "type": "string"
+                    "description": "Duration like 30s, 5m, 4h, 24h"
                   },
                   "reason": {
+                    "type": "string",
                     "minLength": 1,
-                    "maxLength": 500,
-                    "type": "string"
+                    "maxLength": 500
                   }
                 }
               }
@@ -2428,13 +2432,13 @@
                 ],
                 "properties": {
                   "reason": {
+                    "type": "string",
                     "minLength": 1,
-                    "maxLength": 500,
-                    "type": "string"
+                    "maxLength": 500
                   },
                   "ip": {
-                    "minLength": 1,
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
                   }
                 }
               }
@@ -2444,8 +2448,8 @@
         "parameters": [
           {
             "schema": {
-              "pattern": "^[a-zA-Z0-9_-]+$",
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
             },
             "in": "query",
             "name": "server",
@@ -2453,8 +2457,8 @@
           },
           {
             "schema": {
-              "minimum": 1,
-              "type": "integer"
+              "type": "integer",
+              "minimum": 1
             },
             "in": "path",
             "name": "id",
@@ -2603,7 +2607,6 @@
                     "analyzers": {
                       "type": "array",
                       "items": {
-                        "additionalProperties": true,
                         "type": "object",
                         "required": [
                           "id",
@@ -2622,9 +2625,9 @@
                             "type": "boolean"
                           },
                           "lastRun": {
-                            "additionalProperties": true,
                             "type": "object",
-                            "properties": {}
+                            "properties": {},
+                            "additionalProperties": true
                           },
                           "nextRun": {
                             "type": "string"
@@ -2632,7 +2635,8 @@
                           "intervalMs": {
                             "type": "integer"
                           }
-                        }
+                        },
+                        "additionalProperties": true
                       }
                     }
                   }
@@ -2688,8 +2692,8 @@
         "parameters": [
           {
             "schema": {
-              "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "in": "path",
             "name": "id",
@@ -2708,12 +2712,11 @@
                   ],
                   "properties": {
                     "analyzer": {
-                      "additionalProperties": true,
                       "type": "object",
-                      "properties": {}
+                      "properties": {},
+                      "additionalProperties": true
                     },
                     "status": {
-                      "additionalProperties": true,
                       "type": "object",
                       "required": [
                         "id",
@@ -2732,9 +2735,9 @@
                           "type": "boolean"
                         },
                         "lastRun": {
-                          "additionalProperties": true,
                           "type": "object",
-                          "properties": {}
+                          "properties": {},
+                          "additionalProperties": true
                         },
                         "nextRun": {
                           "type": "string"
@@ -2742,7 +2745,8 @@
                         "intervalMs": {
                           "type": "integer"
                         }
-                      }
+                      },
+                      "additionalProperties": true
                     }
                   }
                 }
@@ -2815,10 +2819,10 @@
         "parameters": [
           {
             "schema": {
+              "type": "integer",
               "minimum": 1,
               "maximum": 100,
-              "default": 10,
-              "type": "integer"
+              "default": 10
             },
             "in": "query",
             "name": "limit",
@@ -2826,8 +2830,8 @@
           },
           {
             "schema": {
-              "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "in": "path",
             "name": "id",
@@ -2848,9 +2852,9 @@
                     "runs": {
                       "type": "array",
                       "items": {
-                        "additionalProperties": true,
                         "type": "object",
-                        "properties": {}
+                        "properties": {},
+                        "additionalProperties": true
                       }
                     }
                   }
@@ -2915,6 +2919,339 @@
         }
       }
     },
+    "/api/bouncer-metrics": {
+      "get": {
+        "summary": "List bouncer usage-metrics snapshots",
+        "tags": [
+          "bouncer-metrics"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "in": "query",
+            "name": "machine",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "bouncer",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "until",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "lapiServerName",
+                      "componentKind",
+                      "bouncerName",
+                      "bouncerType",
+                      "osName",
+                      "osVersion",
+                      "version",
+                      "activeDecisions",
+                      "processedItems",
+                      "droppedItems",
+                      "bytesProcessed",
+                      "collectedAt",
+                      "metricsJson"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "lapiServerName": {
+                        "type": "string"
+                      },
+                      "componentKind": {
+                        "type": "string"
+                      },
+                      "bouncerName": {
+                        "type": "string"
+                      },
+                      "bouncerType": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "osName": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "osVersion": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "activeDecisions": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "processedItems": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "droppedItems": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bytesProcessed": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "collectedAt": {
+                        "type": "integer"
+                      },
+                      "metricsJson": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bouncer-metrics/names": {
+      "get": {
+        "summary": "Distinct bouncer names with their LAPI server",
+        "tags": [
+          "bouncer-metrics"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "bouncers"
+                  ],
+                  "properties": {
+                    "bouncers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lapiServerName",
+                          "bouncerName",
+                          "bouncerType"
+                        ],
+                        "properties": {
+                          "lapiServerName": {
+                            "type": "string"
+                          },
+                          "bouncerName": {
+                            "type": "string"
+                          },
+                          "bouncerType": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analyzers/{id}/run": {
       "post": {
         "summary": "Manually trigger an analyzer run",
@@ -2924,8 +3261,8 @@
         "parameters": [
           {
             "schema": {
-              "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "in": "path",
             "name": "id",
@@ -2948,9 +3285,9 @@
                       "type": "boolean"
                     },
                     "result": {
-                      "additionalProperties": true,
                       "type": "object",
-                      "properties": {}
+                      "properties": {},
+                      "additionalProperties": true
                     }
                   }
                 }
@@ -3026,13 +3363,13 @@
           "content": {
             "application/json": {
               "schema": {
-                "maxItems": 1000,
                 "type": "array",
                 "items": {
-                  "additionalProperties": true,
                   "type": "object",
-                  "properties": {}
-                }
+                  "properties": {},
+                  "additionalProperties": true
+                },
+                "maxItems": 1000
               }
             }
           }
@@ -3164,13 +3501,13 @@
           "content": {
             "application/json": {
               "schema": {
-                "maxItems": 1000,
                 "type": "array",
                 "items": {
-                  "additionalProperties": true,
                   "type": "object",
-                  "properties": {}
-                }
+                  "properties": {},
+                  "additionalProperties": true
+                },
+                "maxItems": 1000
               }
             }
           }
