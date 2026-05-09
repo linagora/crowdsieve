@@ -31,38 +31,71 @@ function buildSeries(rows: BouncerMetric[]): SeriesPoint[] {
   }));
 }
 
-interface MiniChartProps {
-  data: number[];
-  title: string;
-  colorClass: string;
+/**
+ * Compact timestamp formatter for chart axis labels. "DD/MM HH:mm" so a
+ * span across days stays readable in a small label.
+ */
+function formatChartTime(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function MiniChart({ data, title, colorClass }: MiniChartProps) {
-  const max = Math.max(...data, 1);
+interface DualChartProps {
+  series: SeriesPoint[];
+}
+
+/**
+ * Dual-series mini-chart: paired bars per timestamp (processed in blue,
+ * dropped in amber). Each series is normalized to ITS OWN max so they share
+ * the visual height even though their absolute values can differ by orders
+ * of magnitude (typical: millions of processed vs handful of dropped).
+ */
+function DualChart({ series }: DualChartProps) {
+  if (series.length === 0) {
+    return <div className="text-center text-slate-400 py-6 text-sm">No data</div>;
+  }
+  const maxProcessed = Math.max(...series.map((p) => p.processed), 1);
+  const maxDropped = Math.max(...series.map((p) => p.dropped), 1);
+  const lastProcessed = series[series.length - 1].processed;
+  const lastDropped = series[series.length - 1].dropped;
+  const startTs = series[0].collectedAt;
+  const endTs = series[series.length - 1].collectedAt;
   return (
-    <div className="card p-4">
-      <h4 className="text-sm font-semibold text-slate-700 mb-2">{title}</h4>
-      {data.length > 0 ? (
-        <>
-          <div className="flex items-end gap-px h-20">
-            {data.map((value, i) => (
-              <div
-                key={i}
-                className={`flex-1 ${colorClass} rounded-t min-w-[2px] transition-colors`}
-                style={{ height: `${Math.max((value / max) * 100, 2)}%` }}
-                title={`${value.toLocaleString()}`}
-              />
-            ))}
+    <>
+      <div className="flex items-end gap-px h-16">
+        {series.map((p, i) => (
+          <div key={i} className="flex-1 min-w-[3px] flex items-end gap-px">
+            <div
+              className="flex-1 bg-blue-500 rounded-t"
+              style={{ height: `${Math.max((p.processed / maxProcessed) * 100, 2)}%` }}
+              title={`${formatChartTime(p.collectedAt)} · processed: ${p.processed.toLocaleString()}`}
+            />
+            <div
+              className="flex-1 bg-amber-500 rounded-t"
+              style={{ height: `${Math.max((p.dropped / maxDropped) * 100, 2)}%` }}
+              title={`${formatChartTime(p.collectedAt)} · dropped: ${p.dropped.toLocaleString()}`}
+            />
           </div>
-          <div className="flex justify-between text-xs text-slate-500 mt-1">
-            <span>{data[0]?.toLocaleString() ?? '0'}</span>
-            <span className="font-medium">{(data[data.length - 1] ?? 0).toLocaleString()}</span>
-          </div>
-        </>
-      ) : (
-        <div className="text-center text-slate-400 py-6 text-sm">No data</div>
-      )}
-    </div>
+        ))}
+      </div>
+      <div className="flex justify-between items-center text-xs mt-2 gap-2">
+        <span className="flex items-center gap-1 text-slate-700">
+          <span className="inline-block w-2 h-2 bg-blue-500 rounded-sm" />
+          <span className="font-medium">{lastProcessed.toLocaleString()}</span>
+          <span className="text-slate-400">proc</span>
+        </span>
+        <span className="flex items-center gap-1 text-slate-700">
+          <span className="inline-block w-2 h-2 bg-amber-500 rounded-sm" />
+          <span className="font-medium">{lastDropped.toLocaleString()}</span>
+          <span className="text-slate-400">drop</span>
+        </span>
+      </div>
+      <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+        <span>{formatChartTime(startTs)}</span>
+        <span>{formatChartTime(endTs)}</span>
+      </div>
+    </>
   );
 }
 
@@ -127,12 +160,15 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
   // real activity of bouncers that mix remediation + log_processor kinds
   // (the registration log_processor row is always newer than the real
   // remediation snapshot and would win `rows[0]`).
+  // Score = latest droppedItems: dropped is the security-relevant metric
+  // (actual bans applied), more meaningful than processed which is mostly
+  // benign traffic volume.
   const activityScores = useMemo(() => {
     const scores = new Map<string, number>();
     for (const [key, rows] of byBouncer) {
       const realRows = rows.filter((r) => r.metricsJson !== '[]');
       const latest = realRows[0] ?? rows[0]; // API returns newest-first
-      scores.set(key, (latest?.processedItems ?? 0) + (latest?.droppedItems ?? 0));
+      scores.set(key, latest?.droppedItems ?? 0);
     }
     return scores;
   }, [byBouncer]);
@@ -227,7 +263,14 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
         </div>
       </div>
 
-      {/* Per-bouncer charts */}
+      {/* Per-bouncer compact cards in a responsive grid (3-4 per row).
+          Each card shows a dual-series chart (processed/dropped, each
+          with its own scale) so we can fit many bouncers on screen at
+          once. `active_decisions` is a LAPI-global gauge so it only
+          appears in the summary card above. `bytesProcessed` is dropped
+          for now — CrowdSec encodes byte counts as a unit modifier on
+          `processed`, not as a separate `bytes` metric, so the parser
+          never populates it. */}
       {visibleBouncers.length === 0 ? (
         <div className="card p-8 text-center text-slate-500">
           No bouncer metrics yet. Make sure <code>bouncer_metrics.enabled</code> is{' '}
@@ -235,42 +278,30 @@ export function BouncersContent({ initialBouncers, initialMetrics }: BouncersCon
           successfully.
         </div>
       ) : (
-        visibleBouncers.map((b) => {
-          const key = `${b.lapiServerName}::${b.bouncerName}`;
-          const rows = byBouncer.get(key) ?? [];
-          const series = buildSeries(rows);
-          return (
-            <div key={key} className="space-y-2">
-              <div className="flex items-baseline gap-3">
-                <h3 className="text-lg font-semibold">{b.bouncerName}</h3>
-                <span className="text-xs text-slate-500">
-                  {b.lapiServerName}
-                  {b.bouncerType ? ` · ${b.bouncerType}` : ''}
-                </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {visibleBouncers.map((b) => {
+            const key = `${b.lapiServerName}::${b.bouncerName}`;
+            const rows = byBouncer.get(key) ?? [];
+            const series = buildSeries(rows);
+            return (
+              <div key={key} className="card p-3 space-y-1">
+                <div className="flex flex-col gap-0.5">
+                  <h3
+                    className="text-sm font-semibold truncate"
+                    title={`${b.bouncerName}${b.bouncerType ? ` · ${b.bouncerType}` : ''}`}
+                  >
+                    {b.bouncerName}
+                  </h3>
+                  <span className="text-[10px] text-slate-500 truncate" title={b.lapiServerName}>
+                    {b.lapiServerName}
+                    {b.bouncerType ? ` · ${b.bouncerType}` : ''}
+                  </span>
+                </div>
+                <DualChart series={series} />
               </div>
-              {/* `active_decisions` is a LAPI-global gauge — same value on
-                  every bouncer — so we only show it in the summary card up
-                  top. Per-bouncer views focus on the per-bouncer counters. */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MiniChart
-                  data={series.map((p) => p.processed)}
-                  title="Processed"
-                  colorClass="bg-blue-500"
-                />
-                <MiniChart
-                  data={series.map((p) => p.dropped)}
-                  title="Dropped"
-                  colorClass="bg-amber-500"
-                />
-                <MiniChart
-                  data={series.map((p) => p.bytes)}
-                  title="Bytes"
-                  colorClass="bg-emerald-500"
-                />
-              </div>
-            </div>
-          );
-        })
+            );
+          })}
+        </div>
       )}
     </div>
   );
