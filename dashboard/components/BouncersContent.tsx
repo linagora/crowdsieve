@@ -19,9 +19,17 @@ interface SeriesPoint {
 }
 
 function buildSeries(rows: BouncerMetric[]): SeriesPoint[] {
+  // Drop registration-only rows (metricsJson === '[]'): they're injected by
+  // the parser at "now" timestamp for bouncers that never push real metrics
+  // (or for hybrid bouncers where the log_processor side has nothing to
+  // report). They carry all-zero counters and would pollute the chart with
+  // misleading zero bars AND make the legend's "latest value" indicator
+  // always read 0/0 since the registration row tends to be newest.
   // Rows arrive newest-first from the API; flip to oldest-first for the chart
   // so time flows left-to-right.
-  const sorted = [...rows].sort((a, b) => a.collectedAt - b.collectedAt);
+  const sorted = rows
+    .filter((r) => r.metricsJson !== '[]')
+    .sort((a, b) => a.collectedAt - b.collectedAt);
   return sorted.map((r) => ({
     collectedAt: r.collectedAt,
     active: r.activeDecisions ?? 0,
