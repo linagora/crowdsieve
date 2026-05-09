@@ -262,15 +262,18 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       const capiUrl = config.proxy.capi_url;
 
       // Mirror signals.ts: forward all headers except hop-by-hop ones.
-      // We set `Content-Encoding: gzip` ourselves below, so we drop the
-      // inbound one (we just re-encoded the body). Same idea for
-      // `accept-encoding` — let fetch negotiate.
+      // We set `Content-Type` and `Content-Encoding` ourselves below so we
+      // drop the inbound ones — letting them through would create duplicate
+      // headers (JS object keys are case-sensitive but undici normalizes,
+      // producing undefined-behavior duplicates that some servers reject).
+      // Same idea for `accept-encoding` — let fetch negotiate.
       const headersToSkip = new Set([
         'host',
         'connection',
         'keep-alive',
         'transfer-encoding',
         'content-length',
+        'content-type',
         'content-encoding',
         'accept-encoding',
         'te',
@@ -304,7 +307,20 @@ const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       // cost of keeping the pipeline unblocked.
       const chunks = chunkPayload(body, MAX_UNCOMPRESSED_BYTES);
       const firstChunk = chunks[0];
-      const outgoing = await gzipAsync(JSON.stringify(firstChunk));
+      const firstChunkJson = JSON.stringify(firstChunk);
+      const outgoing = await gzipAsync(firstChunkJson);
+
+      // Debug-log the JSON we're about to send (truncated) so we can diagnose
+      // CAPI rejections without having to capture the wire traffic.
+      logger.debug(
+        {
+          chunkPreview: firstChunkJson.slice(0, 300),
+          chunkBytes: firstChunkJson.length,
+          gzippedBytes: outgoing.length,
+          totalChunks: chunks.length,
+        },
+        'Outgoing usage-metrics chunk (debug preview)'
+      );
 
       const response = await fetch(`${capiUrl}${request.url}`, {
         method: 'POST',
