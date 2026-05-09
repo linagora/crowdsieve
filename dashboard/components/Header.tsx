@@ -19,7 +19,7 @@ export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <header className="bg-crowdsec-primary text-white">
+    <header className="bg-[#6e1f2a] text-white">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link href="/" aria-label="CrowdSieve home" className="flex items-center">
