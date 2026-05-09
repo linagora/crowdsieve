@@ -1,15 +1,7 @@
-<table width="100%" border="0">
-  <tr>
-    <td align="left" valign="middle">
-      <img src="./docs/assets/crowdsieve-lockup-horizontal.svg" alt="CrowdSieve" width="360">
-    </td>
-    <td align="right" valign="middle">
-      <a href="https://www.linagora.com">
-        <img src="./docs/assets/linagora.png" alt="Linagora" height="48">
-      </a>
-    </td>
-  </tr>
-</table>
+<a href="https://www.linagora.com"><img src="./docs/assets/linagora.png" alt="Linagora" height="48" align="right"></a>
+<img src="./docs/assets/crowdsieve-lockup-horizontal.svg" alt="CrowdSieve" width="360" align="left">
+
+<br clear="all">
 
 A filtering proxy for CrowdSec that sits between your local CrowdSec instances (LAPI) and the Central API (CAPI). Filter alerts before they're sent to the CrowdSec console, and visualize them in a local dashboard.
 
