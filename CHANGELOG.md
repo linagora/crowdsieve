@@ -5,6 +5,17 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-11
+
+### Fixed
+
+#### Bouncer metrics (broken version is 0.6.0 only)
+
+- **Blocked Requests inflated by ~5 orders of magnitude**: the metrics parser was summing every `dropped` (and `processed`) item under the same name.
+- **Backfill tooling for already-polluted history**: existing rows still hold the correct per-unit breakdown in `metrics_json`, so the columns can be re-derived without data loss. Two equivalent one-shot tools ship in this release:
+  - `npm run backfill:bouncer-units` (Node/TypeScript, for dev hosts).
+  - `scripts/backfill-bouncer-units.sql` for production containers — the runtime image carries neither `npm` nor `tsx`, so a `sqlite3 ... < fix.sql` from a throwaway alpine container mounted on the data volume is the simplest path. Both are idempotent (zero rows touched on a second run) and transactional.
+
 ## [0.6.0] - 2026-05-09
 
 ### Added
