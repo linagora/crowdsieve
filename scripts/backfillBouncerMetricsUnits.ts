@@ -121,7 +121,10 @@ console.log(`Opening database: ${dbPath}`);
 if (dryRun) console.log('DRY RUN — no changes will be written.');
 
 const db = new Database(dbPath, { readonly: dryRun });
-db.pragma('journal_mode = WAL');
+// WAL mode requires a write; skip it when the DB is opened read-only (dry-run).
+if (!dryRun) {
+  db.pragma('journal_mode = WAL');
+}
 
 const rows = db
   .prepare(

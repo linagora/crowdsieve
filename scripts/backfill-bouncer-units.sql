@@ -9,7 +9,8 @@
 -- filter as the runtime parser: `unit === 'byte'` is excluded for these
 -- countable counters; missing/other units are kept.
 --
--- Idempotent — running twice yields zero updates the second time. Wrapped in
+-- Idempotent — rows where both columns already hold the correct values are
+-- skipped, so running twice yields zero updates the second time. Wrapped in
 -- a transaction so a partial failure leaves the DB untouched.
 --
 -- Run inside the prod container:
@@ -32,7 +33,22 @@ SET dropped_items = COALESCE((
         WHERE json_extract(value, '$.name') = 'processed'
           AND IFNULL(json_extract(value, '$.unit'), '') != 'byte'
       ), 0)
-WHERE metrics_json != '[]';
+WHERE metrics_json != '[]'
+  AND (
+    dropped_items IS NOT COALESCE((
+        SELECT SUM(CAST(json_extract(value, '$.value') AS INTEGER))
+        FROM json_each(metrics_json)
+        WHERE json_extract(value, '$.name') = 'dropped'
+          AND IFNULL(json_extract(value, '$.unit'), '') != 'byte'
+      ), 0)
+    OR
+    processed_items IS NOT COALESCE((
+        SELECT SUM(CAST(json_extract(value, '$.value') AS INTEGER))
+        FROM json_each(metrics_json)
+        WHERE json_extract(value, '$.name') = 'processed'
+          AND IFNULL(json_extract(value, '$.unit'), '') != 'byte'
+      ), 0)
+  );
 
 COMMIT;
 
