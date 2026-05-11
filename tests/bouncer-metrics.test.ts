@@ -19,11 +19,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import * as schema from '../src/db/schema.js';
-import {
-  createStorage,
-  type AlertStorage,
-  type NewBouncerMetric,
-} from '../src/storage/index.js';
+import { createStorage, type AlertStorage, type NewBouncerMetric } from '../src/storage/index.js';
 import type { Config } from '../src/config/index.js';
 import { createLogger } from '../src/logging.js';
 import { buildRowsFromPayload } from '../src/metrics/parse.js';
@@ -429,7 +425,10 @@ describe('buildRowsFromPayload (parser)', () => {
         remediation_components: [
           {
             name: 'fw',
-            metrics: [{ name: 'dropped', value: 5 }, { name: 'processed', value: 10 }],
+            metrics: [
+              { name: 'dropped', value: 5 },
+              { name: 'processed', value: 10 },
+            ],
           },
         ],
       },
@@ -680,6 +679,114 @@ describe('buildRowsFromPayload (parser)', () => {
     expect(rows[0].collectedAt).toBe(1730125256 * 1000);
   });
 
+  // ── Unit-filter tests (byte exclusion) ─────────────────────────────────────
+
+  it('excludes byte-unit items from droppedItems and processedItems', () => {
+    // Real firewall bouncer payload: same name, three units.
+    // Only packet + request are countable items; bytes are bandwidth.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456 },
+                items: [
+                  { name: 'dropped', value: 1000, unit: 'byte' },
+                  { name: 'dropped', value: 5, unit: 'packet' },
+                  { name: 'dropped', value: 2, unit: 'request' },
+                  { name: 'processed', value: 99999, unit: 'byte' },
+                  { name: 'processed', value: 10, unit: 'packet' },
+                  { name: 'processed', value: 3, unit: 'request' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    // packet + request only; bytes excluded
+    expect(rows[0].droppedItems).toBe(7); // 5 + 2
+    expect(rows[0].processedItems).toBe(13); // 10 + 3
+  });
+
+  it('droppedItems is 0 when only byte-unit dropped items are present', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456 },
+                items: [{ name: 'dropped', value: 99999, unit: 'byte' }],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(0);
+  });
+
+  it('items without a unit field are treated as countable (legacy back-compat)', () => {
+    // Legacy/test data never set unit — those items must still sum normally.
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              { name: 'dropped', value: 42 },
+              { name: 'processed', value: 100 },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].droppedItems).toBe(42);
+    expect(rows[0].processedItems).toBe(100);
+  });
+
+  it('active_decisions are unaffected by the byte-unit filter', () => {
+    const rows = buildRowsFromPayload(
+      'srv1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [
+              {
+                meta: { utc_now_timestamp: 1730123456 },
+                items: [
+                  { name: 'active_decisions', value: 20, unit: 'ip' },
+                  { name: 'dropped', value: 5000, unit: 'byte' },
+                  { name: 'dropped', value: 3, unit: 'packet' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      0
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].activeDecisions).toBe(20);
+    expect(rows[0].droppedItems).toBe(3);
+  });
+
+  // ── End unit-filter tests ───────────────────────────────────────────────────
+
   it('emits a registration-only row for components with no usable items', () => {
     // Bouncers like LemonLDAP-NG / libwww-perl register with the LAPI and pull
     // decisions, but never POST usage-metrics. CrowdSec still includes them in
@@ -820,8 +927,20 @@ describe('Bouncer metrics storage', () => {
     // hybrid crowdsec agents. The registry stores both rows; getBouncerNames
     // must collapse them to a single entry for the dashboard.
     await storage.saveBouncerMetrics([
-      makeRow({ lapiServerName: 'srv1', bouncerName: 'hybrid', componentKind: 'remediation', bouncerType: 'fw', collectedAt: now }),
-      makeRow({ lapiServerName: 'srv1', bouncerName: 'hybrid', componentKind: 'log_processor', bouncerType: null, collectedAt: now }),
+      makeRow({
+        lapiServerName: 'srv1',
+        bouncerName: 'hybrid',
+        componentKind: 'remediation',
+        bouncerType: 'fw',
+        collectedAt: now,
+      }),
+      makeRow({
+        lapiServerName: 'srv1',
+        bouncerName: 'hybrid',
+        componentKind: 'log_processor',
+        bouncerType: null,
+        collectedAt: now,
+      }),
     ]);
 
     const names = await storage.getBouncerNames();
@@ -837,18 +956,66 @@ describe('Bouncer metrics storage', () => {
 
     await storage.saveBouncerMetrics([
       // (serverA, fwBouncer): 5 per-window snapshots — every value is summed.
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 100, collectedAt: now - 25 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 250, collectedAt: now - 20 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 80,  collectedAt: now - 15 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now - 10 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'remediation', droppedItems: 300, collectedAt: now -  5 * day }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'fwBouncer',
+        componentKind: 'remediation',
+        droppedItems: 100,
+        collectedAt: now - 25 * day,
+      }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'fwBouncer',
+        componentKind: 'remediation',
+        droppedItems: 250,
+        collectedAt: now - 20 * day,
+      }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'fwBouncer',
+        componentKind: 'remediation',
+        droppedItems: 80,
+        collectedAt: now - 15 * day,
+      }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'fwBouncer',
+        componentKind: 'remediation',
+        droppedItems: 300,
+        collectedAt: now - 10 * day,
+      }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'fwBouncer',
+        componentKind: 'remediation',
+        droppedItems: 300,
+        collectedAt: now - 5 * day,
+      }),
 
       // (serverA, nginxBouncer): 2 per-window snapshots.
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 50,  collectedAt: now - 12 * day }),
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'nginxBouncer', componentKind: 'remediation', droppedItems: 170, collectedAt: now -  1 * day }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'nginxBouncer',
+        componentKind: 'remediation',
+        droppedItems: 50,
+        collectedAt: now - 12 * day,
+      }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'nginxBouncer',
+        componentKind: 'remediation',
+        droppedItems: 170,
+        collectedAt: now - 1 * day,
+      }),
 
       // log_processor row — must be excluded from the total.
-      makeRow({ lapiServerName: 'serverA', bouncerName: 'fwBouncer', componentKind: 'log_processor', droppedItems: 999, collectedAt: now - 5 * day }),
+      makeRow({
+        lapiServerName: 'serverA',
+        bouncerName: 'fwBouncer',
+        componentKind: 'log_processor',
+        droppedItems: 999,
+        collectedAt: now - 5 * day,
+      }),
     ]);
 
     const stats = await storage.getStats();
@@ -866,7 +1033,13 @@ describe('Bouncer metrics storage', () => {
   it('getStats blockedRequests counts a single snapshot directly (no baseline subtraction)', async () => {
     const now = Date.now();
     await storage.saveBouncerMetrics([
-      makeRow({ lapiServerName: 'serverB', bouncerName: 'singleBouncer', componentKind: 'remediation', droppedItems: 500, collectedAt: now - 1000 }),
+      makeRow({
+        lapiServerName: 'serverB',
+        bouncerName: 'singleBouncer',
+        componentKind: 'remediation',
+        droppedItems: 500,
+        collectedAt: now - 1000,
+      }),
     ]);
 
     const stats = await storage.getStats();
@@ -881,15 +1054,33 @@ describe('Bouncer metrics storage', () => {
     // counters in that case.
     const ts = Date.now() - 1000;
     await storage.saveBouncerMetrics([
-      makeRow({ lapiServerName: 'srvX', bouncerName: 'bX', componentKind: 'remediation', droppedItems: 100, collectedAt: ts }),
+      makeRow({
+        lapiServerName: 'srvX',
+        bouncerName: 'bX',
+        componentKind: 'remediation',
+        droppedItems: 100,
+        collectedAt: ts,
+      }),
     ]);
     // Same key, different value — must be silently dropped.
     await storage.saveBouncerMetrics([
-      makeRow({ lapiServerName: 'srvX', bouncerName: 'bX', componentKind: 'remediation', droppedItems: 999, collectedAt: ts }),
+      makeRow({
+        lapiServerName: 'srvX',
+        bouncerName: 'bX',
+        componentKind: 'remediation',
+        droppedItems: 999,
+        collectedAt: ts,
+      }),
     ]);
     // Different componentKind on same (server, bouncer, ts) is allowed.
     await storage.saveBouncerMetrics([
-      makeRow({ lapiServerName: 'srvX', bouncerName: 'bX', componentKind: 'log_processor', droppedItems: 7, collectedAt: ts }),
+      makeRow({
+        lapiServerName: 'srvX',
+        bouncerName: 'bX',
+        componentKind: 'log_processor',
+        droppedItems: 7,
+        collectedAt: ts,
+      }),
     ]);
 
     const rows = await storage.getBouncerMetrics({});

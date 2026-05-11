@@ -94,6 +94,19 @@ function isBlockForm(metrics: MetricsComponent['metrics']): boolean {
  *
  * CrowdSec emits one item per label combination (e.g. dropped{ipv4} + dropped{ipv6}).
  * We collapse them into a single total per counter name.
+ *
+ * Unit filtering for `dropped` and `processed`:
+ *   CrowdSec firewall bouncers emit the same metric name under three different
+ *   units — "byte" (bandwidth), "packet", and "request". The `dropped_items`
+ *   and `processed_items` columns represent countable events, NOT bandwidth.
+ *   Items with `unit === "byte"` are therefore excluded from those counters to
+ *   prevent byte values (typically millions) from dwarfing packet/request counts
+ *   by five orders of magnitude.
+ *
+ *   Items without a unit field are treated as countable (legacy/test data
+ *   compatibility).
+ *
+ *   `active_decisions` (unit: "ip") and `bytes` are unaffected.
  */
 function sumItemsByName(items: MetricsItem[]): Record<HotCounterKey, number> {
   const counters: Record<HotCounterKey, number> = {
@@ -106,6 +119,12 @@ function sumItemsByName(items: MetricsItem[]): Record<HotCounterKey, number> {
     if (!item || typeof item.name !== 'string') continue;
     const target = HOT_COUNTER_NAMES[item.name as keyof typeof HOT_COUNTER_NAMES];
     if (!target) continue;
+    // Skip byte-unit items for the "items" counters (dropped/processed).
+    // Bytes are tracked separately in bytesProcessed; mixing them into the
+    // item count inflates blocked-request stats by orders of magnitude.
+    if (item.unit === 'byte' && (target === 'droppedItems' || target === 'processedItems')) {
+      continue;
+    }
     const value = typeof item.value === 'number' ? item.value : Number(item.value);
     if (Number.isFinite(value)) {
       counters[target] += value;
