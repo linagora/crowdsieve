@@ -15,7 +15,7 @@ spec:
       {{- include "crowdsieve.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: proxy
   strategy:
-    type: Recreate
+    {{- toYaml .Values.crowdsieve.strategy | nindent 4 }}
   template:
     metadata:
       annotations:

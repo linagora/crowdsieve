@@ -19,6 +19,21 @@ crowdsieve:
   #       you can safely scale to multiple replicas.
   replicaCount: 1
 
+  # -- Deployment update strategy.
+  # Defaults to Recreate: with the SQLite backend a single RWO volume cannot be
+  # shared by two pods, so the old pod must stop before the new one starts.
+  # With PostgreSQL (no exclusive local state) you can switch to a zero-downtime
+  # rolling update, e.g.:
+  #   strategy:
+  #     type: RollingUpdate
+  #     rollingUpdate:
+  #       maxUnavailable: 0
+  #       maxSurge: 1
+  # The app shuts down gracefully on SIGTERM (drains HTTP, closes DB), and the
+  # readiness probe gates the new pod, so no requests are dropped.
+  strategy:
+    type: Recreate
+
   image:
     # -- CrowdSieve image repository
     repository: yadd/crowdsieve

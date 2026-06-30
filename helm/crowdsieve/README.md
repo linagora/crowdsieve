@@ -117,6 +117,7 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | Parameter                                           | Description                                           | Default                    |
 | --------------------------------------------------- | ----------------------------------------------------- | -------------------------- |
 | `crowdsieve.enabled`                                | Enable CrowdSieve                                     | `true`                     |
+| `crowdsieve.strategy`                               | Deployment update strategy (use RollingUpdate with PostgreSQL for zero-downtime) | `{type: Recreate}` |
 | `crowdsieve.proxy.capiUrl`                          | URL of CrowdSec CAPI                                  | `https://api.crowdsec.net` |
 | `crowdsieve.proxy.forwardEnabled`                   | Forward alerts to CAPI                                | `true`                     |
 | `crowdsieve.dashboard.port`                         | Dashboard port                                        | `3000`                     |
