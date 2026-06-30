@@ -260,13 +260,27 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $i, $server := .Values.crowdsieve.lapiServers.servers }}
-            {{- if $server.apiKey }}
+            {{- if or $server.apiKey (and $server.existingSecret $server.apiKeyKey) }}
             - name: LAPI_SERVER_{{ $i }}_API_KEY
+              {{- if $server.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $server.existingSecret }}
+                  key: {{ $server.apiKeyKey | default "api_key" }}
+              {{- else }}
               value: {{ $server.apiKey | quote }}
+              {{- end }}
             {{- end }}
-            {{- if $server.password }}
+            {{- if or $server.password (and $server.existingSecret $server.passwordKey $server.machineId) }}
             - name: LAPI_SERVER_{{ $i }}_PASSWORD
+              {{- if $server.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $server.existingSecret }}
+                  key: {{ $server.passwordKey | default "password" }}
+              {{- else }}
               value: {{ $server.password | quote }}
+              {{- end }}
             {{- end }}
             {{- end }}
             # Runtime

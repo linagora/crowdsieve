@@ -190,12 +190,19 @@ crowdsieve:
     # WARNING: Avoid putting credentials in values.yaml committed to git.
     # Use existingSecret or environment variable references instead.
     servers: []
-    # Example:
+    # Example (inline credentials - avoid in git):
     # - name: "remote-lapi"
     #   url: "https://remote-lapi.example.com:8080"
     #   apiKey: ""           # Bouncer API key for reading decisions
     #   machineId: ""        # Machine ID for creating bans (optional)
     #   password: ""         # Machine password for creating bans (optional)
+    # Example (credentials sourced from an existing Secret - recommended):
+    # - name: "local"
+    #   url: "http://my-crowdsec-lapi:8080"
+    #   machineId: "crowdsieve"     # rendered in clear (not a secret)
+    #   existingSecret: "lapi-creds"
+    #   apiKeyKey: "api_key"        # key in the secret holding the bouncer API key
+    #   passwordKey: "password"     # key in the secret holding the machine password
 
   # ---------------------------------------------------------------------------
   # Logging Configuration

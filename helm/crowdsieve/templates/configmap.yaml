@@ -45,7 +45,7 @@ data:
       {{- range $i, $server := .Values.crowdsieve.lapiServers.servers }}
       - name: {{ $server.name | quote }}
         url: {{ $server.url | quote }}
-        {{- if $server.apiKey }}
+        {{- if or $server.apiKey (and $server.existingSecret $server.apiKeyKey) }}
         api_key: "${LAPI_SERVER_{{ $i }}_API_KEY}"
         {{- end }}
         {{- if $server.machineId }}
