@@ -5,6 +5,24 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-06-30
+
+### Fixed
+
+#### PostgreSQL
+
+- **Bouncer usage-metrics lost on PostgreSQL**: the `bouncers` upsert used SQLite's scalar `MAX(a, b)` to widen `last_seen_at`, but in PostgreSQL `MAX()` is aggregate-only, so the second snapshot for a known bouncer raised `function max(bigint, bigint) does not exist` (SQLSTATE 42883) and the metrics were dropped. PostgreSQL now uses `GREATEST(a, b)`; SQLite is unchanged. Covered by a PostgreSQL integration regression test.
+
+#### SQLite → PostgreSQL migration
+
+- **`scripts/migrate-sqlite-to-postgres.js` was missing half the schema**: the `analyzer_runs`, `analyzer_results`, `bouncers`, and `bouncer_metrics` tables, plus the `replicated`, `local_audit`, and `actor` columns on `alerts`, were not created or copied, so migrating a populated SQLite database silently lost analyzer history and bouncer data. The script now covers every table and column, remapping `analyzer_results.run_id` to the new `analyzer_runs` ids and skipping rows from databases predating each table.
+
+### Added
+
+#### Tests
+
+- **Migration drift guard**: a new test (`tests/migrate-sqlite-to-postgres.test.ts`) derives the expected tables and columns from the Drizzle schemas and fails if the migration script stops covering any of them, so future schema additions can't silently regress the migration again.
+
 ## [0.6.3] - 2026-06-30
 
 ### Added
