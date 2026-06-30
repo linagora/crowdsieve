@@ -828,8 +828,15 @@ export function createStorage(): AlertStorage {
       let blockedRequests = 0;
       try {
         if (isPostgres) {
-          const rows = await db.execute(blockedRequestsQuery);
-          blockedRequests = Number((rows as unknown as Array<{ total: number }>)[0]?.total) || 0;
+          // drizzle-orm/node-postgres resolves db.execute() to a pg QueryResult
+          // ({ rows: [...] }), NOT a bare array — reading [0] off the result
+          // object yields undefined and silently pins blockedRequests to 0.
+          // Stay agnostic in case a future driver returns the array directly.
+          const res = await db.execute(blockedRequestsQuery);
+          const rows = (
+            Array.isArray(res) ? res : ((res as { rows?: Array<{ total: number }> })?.rows ?? [])
+          ) as Array<{ total: number }>;
+          blockedRequests = Number(rows[0]?.total) || 0;
         } else {
           const rows = (db as unknown as { all<T>(q: unknown): T[] }).all<{ total: number }>(
             blockedRequestsQuery

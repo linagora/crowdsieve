@@ -223,6 +223,38 @@ describePostgres('PostgreSQL Integration', () => {
       expect(rows).toHaveLength(2);
     });
 
+    it('should aggregate blockedRequests from remediation metrics (node-postgres QueryResult)', async () => {
+      // Regression: getStats() read db.execute()'s result as a bare array, but
+      // drizzle-orm/node-postgres resolves it to a pg QueryResult ({ rows }),
+      // so [0]?.total was undefined and blockedRequests was pinned to 0 on PG
+      // regardless of the data. Note metricsJson must be non-empty: the query
+      // skips rows with metrics_json = '[]'.
+      const baseline = (await storage.getStats()).blockedRequests;
+
+      const dropped = 1234;
+      await storage.saveBouncerMetrics([
+        {
+          lapiServerName: 'blocked-req-lapi',
+          componentKind: 'remediation',
+          bouncerName: `blocked-req-bouncer-${Date.now()}`,
+          bouncerType: 'crowdsec-bouncer',
+          osName: 'linux',
+          osVersion: '1.0',
+          version: '1.0.0',
+          activeDecisions: 0,
+          processedItems: 9999,
+          droppedItems: dropped,
+          bytesProcessed: 0,
+          collectedAt: Date.now(),
+          metricsJson: '[{"name":"dropped","unit":"request","value":1234}]',
+        },
+      ]);
+
+      const after = (await storage.getStats()).blockedRequests;
+      expect(after).toBeGreaterThan(0);
+      expect(after).toBe(baseline + dropped);
+    });
+
     it('should get statistics', async () => {
       const stats = await storage.getStats();
 
