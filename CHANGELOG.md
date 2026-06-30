@@ -5,6 +5,14 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-06-30
+
+### Added
+
+#### Helm chart
+
+- **Source `lapiServers` credentials from an existing Secret**: each entry under `crowdsieve.lapiServers.servers` now accepts `existingSecret` together with `apiKeyKey` / `passwordKey`, so the bouncer API key and machine password can be pulled from a Kubernetes Secret (via `secretKeyRef`) instead of being inlined in `values.yaml`. Inline `apiKey` / `password` keep working unchanged.
+
 ## [0.6.1] - 2026-05-11
 
 ### Fixed
