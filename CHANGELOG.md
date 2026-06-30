@@ -5,6 +5,20 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-06-30
+
+### Fixed
+
+#### PostgreSQL
+
+- **Blocked-requests stat stuck at 0 on PostgreSQL**: `getStats()` read the result of `db.execute()` as a bare array (`[0]?.total`), but `drizzle-orm/node-postgres` resolves it to a pg `QueryResult` object (`{ rows: [...] }`), so the value was always `undefined` and `blockedRequests` was silently pinned to `0` regardless of the data. It now reads `result.rows` (staying tolerant of a driver that returns the array directly); SQLite is unchanged. Covered by a PostgreSQL integration regression test.
+
+### Added
+
+#### Helm
+
+- **Configurable deployment update strategy**: the proxy `Deployment` hardcoded `strategy.type: Recreate` (required by the SQLite backend, whose single RWO volume cannot be shared by two pods). The new `crowdsieve.strategy` value (default `{type: Recreate}`, unchanged behavior) lets PostgreSQL users opt into a zero-downtime rolling update — e.g. `type: RollingUpdate` with `maxUnavailable: 0`. The app drains in-flight HTTP and closes the database on `SIGTERM`, and the readiness probe gates the new pod, so no requests are dropped.
+
 ## [0.6.4] - 2026-06-30
 
 ### Fixed
