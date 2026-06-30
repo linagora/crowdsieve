@@ -88,6 +88,12 @@ crowdsieve:
   dashboard:
     # -- Dashboard listen port
     port: 3000
+    # -- Public base URL of the dashboard (scheme + host[:port]), used as
+    # NEXTAUTH_URL to build the OIDC redirect_uri and back-channel-logout URL.
+    # Set this when routing the dashboard through something other than the
+    # bundled ingress (e.g. a Traefik IngressRoute / gateway). When empty, it
+    # falls back to "https://<ingress.hosts[0].host>" if ingress is enabled.
+    publicUrl: ""
     # -- API key for dashboard authentication
     # If empty, a random key is auto-generated on each helm install/upgrade.
     # For persistent authentication, set this to a secure value.

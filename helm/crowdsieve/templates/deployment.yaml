@@ -145,7 +145,10 @@ spec:
                   key: {{ .Values.crowdsieve.dashboard.oidc.session.secretKey | default "session-secret" }}
             - name: SESSION_COOKIE_SECURE
               value: {{ .Values.crowdsieve.dashboard.oidc.session.cookieSecure | quote }}
-            {{- if .Values.crowdsieve.ingress.enabled }}
+            {{- if .Values.crowdsieve.dashboard.publicUrl }}
+            - name: NEXTAUTH_URL
+              value: {{ .Values.crowdsieve.dashboard.publicUrl | quote }}
+            {{- else if .Values.crowdsieve.ingress.enabled }}
             - name: NEXTAUTH_URL
               value: {{ printf "https://%s" (index .Values.crowdsieve.ingress.hosts 0).host | quote }}
             {{- end }}
