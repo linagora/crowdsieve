@@ -1338,7 +1338,11 @@ export function createStorage(): AlertStorage {
               osName: sql`excluded.os_name`,
               osVersion: sql`excluded.os_version`,
               version: sql`excluded.version`,
-              lastSeenAt: sql`MAX(excluded.last_seen_at, ${schema.bouncers.lastSeenAt})`,
+              // Scalar two-arg max differs by dialect: SQLite spells it MAX(a, b),
+              // PostgreSQL uses GREATEST(a, b) (its MAX() is aggregate-only).
+              lastSeenAt: isPostgres
+                ? sql`GREATEST(excluded.last_seen_at, ${schema.bouncers.lastSeenAt})`
+                : sql`MAX(excluded.last_seen_at, ${schema.bouncers.lastSeenAt})`,
             },
           });
         if (isPostgres) {

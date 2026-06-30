@@ -187,6 +187,42 @@ describePostgres('PostgreSQL Integration', () => {
       expect(results[0].machineId).toBe(machineId);
     });
 
+    it('should upsert bouncer metrics across snapshots (GREATEST, not MAX)', async () => {
+      // Regression: the bouncers upsert previously used MAX(a, b), which is
+      // SQLite's scalar max but an aggregate in PostgreSQL, so the second
+      // (conflicting) snapshot threw a DrizzleQueryError and metrics were lost.
+      const bouncerName = `regression-bouncer-${Date.now()}`;
+      const baseRow = {
+        lapiServerName: 'regression-lapi',
+        componentKind: 'remediation',
+        bouncerName,
+        bouncerType: 'crowdsec-bouncer',
+        osName: 'linux',
+        osVersion: '1.0',
+        version: '1.0.0',
+        activeDecisions: 1,
+        processedItems: 10,
+        droppedItems: 2,
+        bytesProcessed: 100,
+        collectedAt: Date.now(),
+        metricsJson: '[]',
+      };
+
+      // First snapshot creates the registry row + a metric.
+      await storage.saveBouncerMetrics([baseRow]);
+      // Second snapshot (newer collectedAt, same bouncer) hits onConflictDoUpdate
+      // on the registry -> exercises GREATEST(last_seen_at, ...). Must not throw.
+      await expect(
+        storage.saveBouncerMetrics([{ ...baseRow, collectedAt: baseRow.collectedAt + 60_000 }])
+      ).resolves.not.toThrow();
+
+      const rows = (await storage.getBouncerMetrics({})).filter(
+        (r) => r.bouncerName === bouncerName
+      );
+      // Both snapshots persisted (distinct collectedAt -> not deduped).
+      expect(rows).toHaveLength(2);
+    });
+
     it('should get statistics', async () => {
       const stats = await storage.getStats();
 
