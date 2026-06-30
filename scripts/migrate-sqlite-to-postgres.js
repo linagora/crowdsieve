@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   simulated BOOLEAN DEFAULT FALSE,
   remediation BOOLEAN DEFAULT FALSE,
   has_decisions BOOLEAN DEFAULT FALSE,
+  replicated BOOLEAN DEFAULT FALSE,
   source_scope TEXT,
   source_value TEXT,
   source_ip TEXT,
@@ -80,6 +81,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   filter_reasons TEXT,
   forwarded_to_capi BOOLEAN DEFAULT FALSE,
   forwarded_at TEXT,
+  local_audit BOOLEAN DEFAULT FALSE,
+  actor TEXT,
   raw_json TEXT
 );
 
@@ -89,6 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_received_at ON alerts(received_at);
 CREATE INDEX IF NOT EXISTS idx_country_code ON alerts(geo_country_code);
 CREATE INDEX IF NOT EXISTS idx_filtered ON alerts(filtered);
 CREATE INDEX IF NOT EXISTS idx_machine_id ON alerts(machine_id);
+CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit);
 
 CREATE TABLE IF NOT EXISTS decisions (
   id SERIAL PRIMARY KEY,
@@ -129,6 +133,68 @@ CREATE TABLE IF NOT EXISTS validated_clients (
 );
 
 CREATE INDEX IF NOT EXISTS idx_vc_expires_at ON validated_clients(expires_at);
+
+CREATE TABLE IF NOT EXISTS analyzer_runs (
+  id SERIAL PRIMARY KEY,
+  analyzer_id TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  status TEXT NOT NULL,
+  logs_fetched INTEGER DEFAULT 0,
+  alerts_generated INTEGER DEFAULT 0,
+  decisions_pushed INTEGER DEFAULT 0,
+  error_message TEXT,
+  results_json TEXT,
+  push_results_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_analyzer_runs_analyzer_id ON analyzer_runs(analyzer_id);
+CREATE INDEX IF NOT EXISTS idx_analyzer_runs_started_at ON analyzer_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS analyzer_results (
+  id SERIAL PRIMARY KEY,
+  run_id INTEGER NOT NULL REFERENCES analyzer_runs(id) ON DELETE CASCADE,
+  source_ip TEXT NOT NULL,
+  distinct_count INTEGER NOT NULL,
+  total_count INTEGER NOT NULL,
+  first_seen TEXT,
+  last_seen TEXT,
+  decision_pushed BOOLEAN DEFAULT FALSE,
+  decision_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_analyzer_results_run_id ON analyzer_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_analyzer_results_source_ip ON analyzer_results(source_ip);
+
+CREATE TABLE IF NOT EXISTS bouncers (
+  lapi_server_name TEXT NOT NULL,
+  bouncer_name TEXT NOT NULL,
+  component_kind TEXT NOT NULL,
+  bouncer_type TEXT,
+  os_name TEXT,
+  os_version TEXT,
+  version TEXT,
+  first_seen_at BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
+  PRIMARY KEY (lapi_server_name, bouncer_name, component_kind)
+);
+
+CREATE TABLE IF NOT EXISTS bouncer_metrics (
+  id SERIAL PRIMARY KEY,
+  lapi_server_name TEXT NOT NULL,
+  component_kind TEXT NOT NULL,
+  bouncer_name TEXT NOT NULL,
+  active_decisions INTEGER,
+  processed_items INTEGER,
+  dropped_items INTEGER,
+  bytes_processed INTEGER,
+  collected_at BIGINT NOT NULL,
+  metrics_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_server_collected ON bouncer_metrics(lapi_server_name, collected_at);
+CREATE INDEX IF NOT EXISTS idx_bouncer_metrics_bouncer_collected ON bouncer_metrics(bouncer_name, collected_at);
+CREATE UNIQUE INDEX IF NOT EXISTS bouncer_metrics_unique ON bouncer_metrics(lapi_server_name, bouncer_name, component_kind, collected_at);
 `;
 
 async function migrate() {
@@ -169,15 +235,17 @@ async function migrate() {
           uuid, machine_id, scenario, scenario_hash, scenario_version,
           message, events_count, capacity, leakspeed, start_at, stop_at,
           created_at, received_at, simulated, remediation, has_decisions,
-          source_scope, source_value, source_ip, source_range,
+          replicated, source_scope, source_value, source_ip, source_range,
           source_as_number, source_as_name, source_cn,
           geo_country_code, geo_country_name, geo_city, geo_region,
           geo_latitude, geo_longitude, geo_timezone, geo_isp, geo_org,
-          filtered, filter_reasons, forwarded_to_capi, forwarded_at, raw_json
+          filtered, filter_reasons, forwarded_to_capi, forwarded_at,
+          local_audit, actor, raw_json
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
           $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
-          $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37
+          $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37,
+          $38, $39, $40
         ) RETURNING id`,
         [
           alert.uuid,
@@ -196,6 +264,7 @@ async function migrate() {
           Boolean(alert.simulated),
           Boolean(alert.remediation),
           Boolean(alert.has_decisions),
+          Boolean(alert.replicated),
           alert.source_scope,
           alert.source_value,
           alert.source_ip,
@@ -216,6 +285,8 @@ async function migrate() {
           alert.filter_reasons,
           Boolean(alert.forwarded_to_capi),
           alert.forwarded_at,
+          Boolean(alert.local_audit),
+          alert.actor,
           alert.raw_json,
         ]
       );
@@ -303,8 +374,153 @@ async function migrate() {
       console.log('No validated_clients table found, skipping');
     }
 
+    // Migrate analyzer_runs (and remap their ids for analyzer_results)
+    let analyzerRunCount = 0;
+    let analyzerResultCount = 0;
+    const analyzerRunIdMap = new Map();
+    console.log('Migrating analyzer_runs...');
+    try {
+      const runs = sqlite.prepare('SELECT * FROM analyzer_runs').all();
+      console.log(`Found ${runs.length} analyzer runs`);
+
+      for (const run of runs) {
+        const res = await client.query(
+          `INSERT INTO analyzer_runs (
+            analyzer_id, started_at, completed_at, status,
+            logs_fetched, alerts_generated, decisions_pushed,
+            error_message, results_json, push_results_json
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [
+            run.analyzer_id,
+            run.started_at,
+            run.completed_at,
+            run.status,
+            run.logs_fetched,
+            run.alerts_generated,
+            run.decisions_pushed,
+            run.error_message,
+            run.results_json,
+            run.push_results_json,
+          ]
+        );
+        analyzerRunIdMap.set(run.id, res.rows[0].id);
+      }
+      analyzerRunCount = runs.length;
+      console.log(`Migrated ${runs.length} analyzer runs`);
+    } catch (err) {
+      console.log('No analyzer_runs table found, skipping');
+    }
+
+    // Migrate analyzer_results (depends on analyzer_runs id remap)
+    console.log('Migrating analyzer_results...');
+    try {
+      const results = sqlite.prepare('SELECT * FROM analyzer_results').all();
+      console.log(`Found ${results.length} analyzer results`);
+
+      for (const r of results) {
+        const newRunId = analyzerRunIdMap.get(r.run_id);
+        if (!newRunId) {
+          console.warn(
+            `Warning: Analyzer result ${r.id} references non-existent run ${r.run_id}, skipping`
+          );
+          continue;
+        }
+
+        await client.query(
+          `INSERT INTO analyzer_results (
+            run_id, source_ip, distinct_count, total_count,
+            first_seen, last_seen, decision_pushed, decision_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            newRunId,
+            r.source_ip,
+            r.distinct_count,
+            r.total_count,
+            r.first_seen,
+            r.last_seen,
+            Boolean(r.decision_pushed),
+            r.decision_id,
+          ]
+        );
+        analyzerResultCount++;
+      }
+      console.log(`Migrated ${analyzerResultCount} analyzer results`);
+    } catch (err) {
+      console.log('No analyzer_results table found, skipping');
+    }
+
+    // Migrate bouncers (composite primary key, no surrogate id)
+    let bouncerCount = 0;
+    console.log('Migrating bouncers...');
+    try {
+      const rows = sqlite.prepare('SELECT * FROM bouncers').all();
+      console.log(`Found ${rows.length} bouncers`);
+
+      for (const b of rows) {
+        await client.query(
+          `INSERT INTO bouncers (
+            lapi_server_name, bouncer_name, component_kind, bouncer_type,
+            os_name, os_version, version, first_seen_at, last_seen_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (lapi_server_name, bouncer_name, component_kind) DO NOTHING`,
+          [
+            b.lapi_server_name,
+            b.bouncer_name,
+            b.component_kind,
+            b.bouncer_type,
+            b.os_name,
+            b.os_version,
+            b.version,
+            b.first_seen_at,
+            b.last_seen_at,
+          ]
+        );
+        bouncerCount++;
+      }
+      console.log(`Migrated ${bouncerCount} bouncers`);
+    } catch (err) {
+      console.log('No bouncers table found, skipping');
+    }
+
+    // Migrate bouncer_metrics (snapshots; dedup via unique index)
+    let bouncerMetricCount = 0;
+    console.log('Migrating bouncer_metrics...');
+    try {
+      const rows = sqlite.prepare('SELECT * FROM bouncer_metrics').all();
+      console.log(`Found ${rows.length} bouncer metric snapshots`);
+
+      for (const m of rows) {
+        await client.query(
+          `INSERT INTO bouncer_metrics (
+            lapi_server_name, component_kind, bouncer_name, active_decisions,
+            processed_items, dropped_items, bytes_processed, collected_at, metrics_json
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (lapi_server_name, bouncer_name, component_kind, collected_at) DO NOTHING`,
+          [
+            m.lapi_server_name,
+            m.component_kind,
+            m.bouncer_name,
+            m.active_decisions,
+            m.processed_items,
+            m.dropped_items,
+            m.bytes_processed,
+            m.collected_at,
+            m.metrics_json,
+          ]
+        );
+        bouncerMetricCount++;
+      }
+      console.log(`Migrated ${bouncerMetricCount} bouncer metric snapshots`);
+    } catch (err) {
+      console.log('No bouncer_metrics table found, skipping');
+    }
+
     console.log('\nMigration completed successfully!');
-    console.log(`Total: ${alerts.length} alerts, ${decisions.length} decisions, ${events.length} events`);
+    console.log(
+      `Total: ${alerts.length} alerts, ${decisions.length} decisions, ${events.length} events, ` +
+        `${analyzerRunCount} analyzer runs, ${analyzerResultCount} analyzer results, ` +
+        `${bouncerCount} bouncers, ${bouncerMetricCount} bouncer metric snapshots`
+    );
   } catch (err) {
     console.error('Migration failed:', err.message);
     process.exit(1);
