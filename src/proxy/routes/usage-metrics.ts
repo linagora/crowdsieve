@@ -62,10 +62,7 @@ const BACKGROUND_CHUNK_INTERVAL_MS = 60_000;
  * require thousands of buffered metric blocks), we give up and return it
  * as-is; CAPI will 413 and the LAPI will retry. This degrades gracefully.
  */
-function chunkPayload(
-  payload: UsageMetricsPayload,
-  maxBytes: number
-): UsageMetricsPayload[] {
+function chunkPayload(payload: UsageMetricsPayload, maxBytes: number): UsageMetricsPayload[] {
   const json = JSON.stringify(payload);
   if (Buffer.byteLength(json, 'utf8') <= maxBytes) return [payload];
 

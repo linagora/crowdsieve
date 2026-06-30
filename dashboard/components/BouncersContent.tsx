@@ -292,9 +292,7 @@ export function BouncersContent({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-slate-500">Blocked Requests</p>
-              <p className="text-2xl font-bold mt-1">
-                {initialBlockedRequests.toLocaleString()}
-              </p>
+              <p className="text-2xl font-bold mt-1">{initialBlockedRequests.toLocaleString()}</p>
               <p className="text-xs text-slate-400 mt-1">retention window</p>
             </div>
             <div className="p-2 rounded-lg bg-red-50">
