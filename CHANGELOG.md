@@ -5,6 +5,14 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-06-30
+
+### Added
+
+#### Helm chart
+
+- **`dashboard.publicUrl` for `NEXTAUTH_URL`**: the dashboard's public base URL (used to build the OIDC `redirect_uri` and the back-channel-logout URL) can now be set independently of the bundled ingress. When left empty it falls back to `https://<ingress.hosts[0].host>` if `ingress.enabled`. Required when routing the dashboard through a custom ingress (e.g. a Traefik `IngressRoute`).
+
 ## [0.6.2] - 2026-06-30
 
 ### Added
