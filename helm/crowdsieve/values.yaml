@@ -710,6 +710,19 @@ crowdsec:
   config:
     # -- config.yaml.local override
     config.yaml.local: ""
+    # -- console.yaml override: controls which signals the LAPI shares with the
+    # CrowdSec Console (app.crowdsec.net). Left empty, the container keeps the
+    # image defaults (custom + tainted shared, manual + context NOT shared), so
+    # manually-added decisions never appear in the Console. Set it to opt in.
+    # Example (share everything, incl. manual decisions and alert context):
+    #   console.yaml: |
+    #     share_manual_decisions: true
+    #     share_custom: true
+    #     share_tainted: true
+    #     share_context: true
+    # `console_management` (receive decisions from the Console) is a separate,
+    # bigger step: enable it via the LAPI env var ENABLE_CONSOLE_MANAGEMENT.
+    console.yaml: ""
 
 # =============================================================================
 # CAPI Credentials for CrowdSec -> CrowdSieve connection
