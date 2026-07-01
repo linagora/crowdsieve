@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EventEmitter } from 'events';
+import net from 'net';
+import dns from 'dns';
 import {
   getIPInfo,
   reverseDnsLookup,
@@ -8,6 +11,25 @@ import {
 } from '../src/ipinfo/index.js';
 
 describe('IP Info Module', () => {
+  // Prevent real DNS/WHOIS network calls, which hang and time out in CI where
+  // outbound port 43 (WHOIS) is blocked. The lookup functions swallow errors,
+  // so simulating an immediate failure keeps behaviour identical to a network
+  // that returns nothing, while making the tests deterministic and fast.
+  beforeEach(() => {
+    vi.spyOn(net, 'connect').mockImplementation(() => {
+      const socket = new EventEmitter() as unknown as net.Socket;
+      (socket as unknown as { setEncoding: () => void }).setEncoding = () => {};
+      (socket as unknown as { write: () => void }).write = () => {};
+      (socket as unknown as { destroy: () => void }).destroy = () => {};
+      queueMicrotask(() => socket.emit('error', new Error('network disabled in tests')));
+      return socket;
+    });
+    vi.spyOn(dns.promises, 'reverse').mockRejectedValue(new Error('network disabled in tests'));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   describe('parseWhoisResponse', () => {
     it('should parse ARIN-style WHOIS response', () => {
       const response = `
