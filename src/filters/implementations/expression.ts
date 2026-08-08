@@ -1,5 +1,5 @@
-import IPCIDR from 'ip-cidr';
 import { minimatch } from 'minimatch';
+import { cidrContains } from '../cidr.js';
 import type { Filter, FilterContext, FilterResult } from '../types.js';
 import type { ExpressionConditionType } from '../../config/index.js';
 
@@ -285,8 +285,7 @@ export class ExpressionFilter implements Filter {
 
   private isInCIDR(ip: string, cidr: string): boolean {
     try {
-      const cidrObj = new IPCIDR(cidr);
-      return cidrObj.contains(ip);
+      return cidrContains(cidr, ip);
     } catch (error) {
       console.warn(
         `ExpressionFilter "${this.name}": failed to parse CIDR "${cidr}" for IP "${ip}". ` +
