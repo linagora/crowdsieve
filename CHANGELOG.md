@@ -5,6 +5,39 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-08-08
+
+Security release: upgrade is recommended for anyone running 0.6.5 or earlier.
+
+### Security
+
+#### Dependencies
+
+- **`@fastify/static` 9.0.0 → 10.1.2**: authorization bypass via non-canonical URL paths, and route-guard bypass via path traversal. Runtime dependency serving the dashboard assets, so every 0.6.5 deployment is affected. Major bump of the plugin, but the usage here (`root` / `prefix` / `decorateReply`) is unchanged.
+- **`sharp` pinned to `^0.35.3` via `overrides`**: libvips CVE-2026-33327/33328/35590/35591, reached through Next.js image optimization. An override was needed because `npm audit fix --force` would have downgraded `next` to 14.2.35.
+- **`next` → 16.2.12**; `tsx` → 4.23.1 and `vitest` → 4.1.10 on the development side.
+- **`ip-cidr` removed**, clearing the last `npm audit` entries (GHSA-v2v4-37r5-5v8g, GHSA-mwp4-54f8-5fhr via its pinned `ip-address@^9`). Neither was reachable here, so this clears the audit rather than closing a live hole. `npm audit` now reports 0 vulnerabilities.
+
+### Changed
+
+#### Filters
+
+- **The `cidr` operator no longer matches across address families.** `ip-cidr` compared raw integers with no family check, so `::1` matched `0.0.0.0/0`. As a consequence `::ffff:192.168.1.1` no longer matches `192.168.0.0/16` — **if you rely on an IPv4 range catching IPv4-mapped sources, add the matching `::ffff:…` range.** This aligns with `expandIPv6()` in `src/analyzers/detection.ts`.
+- CIDR matching moved in-tree to `src/filters/cidr.ts`, parsing gated by Node's `net.isIPv4` / `net.isIPv6`. Validated against `ip-cidr@4.0.2` over ~100k generated pairs (IPv4, full-form IPv6, `::`-compressed IPv6) with zero divergences; the remaining edge-case differences are all cases where `ip-cidr` was wrong, arbitrated against Python's `ipaddress` and pinned as tests.
+
+### Fixed
+
+#### Filters
+
+- Ranges with an embedded IPv4 tail were evaluated wrongly: `::ffff:0:0/96` did not contain `::ffff:8.8.8.8`. Both now match.
+- Inputs that made the operator throw and never match are now accepted: bare address (implicit `/32`/`/128`), surrounding whitespace, and full-form embedded IPv4 bases. Invalid input keeps its previous behavior (warning logged, condition `false`).
+
+### Added
+
+- `tests/cidr.test.ts` covering containment, `::` compression, embedded IPv4, zone indices, non-aligned prefixes, family separation and malformed input.
+- `tests/ipinfo.test.ts` now mocks DNS/WHOIS calls, fixing intermittent CI timeouts.
+- Helm: `crowdsec.config."console.yaml"` documented in `values.yaml` (passthrough to the upstream subchart, no template change).
+
 ## [0.6.5] - 2026-06-30
 
 ### Fixed
