@@ -5,6 +5,10 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.7] - 2026-10-23
+
+Rebuild with updated dependencies and updated Node.js due to CVEs CVE-2026-105481 CVE-2026-105482 CVE-2026-105483 CVE-2026-106069 CVE-2026-106072 CVE-2026-106073 CVE-2026-106074)
+
 ## [0.6.6] - 2026-08-08
 
 Security release: upgrade is recommended for anyone running 0.6.5 or earlier.
