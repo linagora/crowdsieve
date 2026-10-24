@@ -45,7 +45,7 @@
     "pino": "^8.19.0",
     "typebox": "^1.1.38",
     "yaml": "^2.3.0",
-    "zod": "^3.22.0"
+    "zod": "^4.6.7"
   },
   "optionalDependencies": {
     "pg": "^8.16.3"
@@ -92,5 +92,10 @@
     "next": {
       "postcss": "^8.5.10"
     }
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
   }
 }

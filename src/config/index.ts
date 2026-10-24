@@ -166,13 +166,13 @@ const ConfigSchema = z.object({
       level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
       format: z.enum(['json', 'pretty']).default('json'),
     })
-    .default({}),
+    .prefault({}),
   filters: z
     .object({
       mode: z.enum(['block', 'allow']).default('block'),
       rules: z.array(FilterRuleSchema).default([]),
     })
-    .default({}),
+    .prefault({}),
   client_validation: z
     .object({
       enabled: z.boolean().default(false),
@@ -182,7 +182,7 @@ const ConfigSchema = z.object({
       max_memory_entries: z.number().positive().default(1000),
       fail_closed: z.boolean().default(false),
     })
-    .default({}),
+    .prefault({}),
   analyzers: z
     .object({
       enabled: z.boolean().default(false),
@@ -194,6 +194,7 @@ const ConfigSchema = z.object({
       whitelist: z.array(z.string()).default([]),
       sources: z
         .record(
+          z.string(),
           z.object({
             type: z.literal('loki'),
             grafana_url: z.string(),
@@ -203,7 +204,7 @@ const ConfigSchema = z.object({
         )
         .default({}),
     })
-    .default({}),
+    .prefault({}),
   // Bouncer metrics intercepted off the LAPI -> CAPI usage-metrics relay.
   // Always-on (the proxy hosts POST /v1/usage-metrics regardless); only the
   // retention sweep is configurable.
@@ -211,7 +212,7 @@ const ConfigSchema = z.object({
     .object({
       retention_days: z.number().int().positive().default(30),
     })
-    .default({}),
+    .prefault({}),
 });
 
 export type BouncerMetricsConfig = z.infer<typeof ConfigSchema.shape.bouncer_metrics>;
