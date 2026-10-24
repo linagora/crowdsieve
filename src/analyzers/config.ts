@@ -83,7 +83,7 @@ export type SourceRef = z.infer<typeof SourceRefSchema>;
 // Field extraction schema
 const ExtractionSchema = z.object({
   format: z.enum(['json']).default('json'), // Only JSON for now
-  fields: z.record(z.string()).refine((fields) => Object.keys(fields).length > 0, {
+  fields: z.record(z.string(), z.string()).refine((fields) => Object.keys(fields).length > 0, {
     message: 'At least one field must be defined',
   }),
 });
@@ -118,7 +118,7 @@ const AnalyzerConfigSchema = z.object({
   enabled: z.boolean().default(true),
   version: z.string().default('1.0.0'),
 
-  schedule: ScheduleSchema.default({}),
+  schedule: ScheduleSchema.prefault({}),
   source: SourceRefSchema,
   extraction: ExtractionSchema,
   detection: DetectionSchema,
@@ -143,7 +143,7 @@ const AnalyzersGlobalConfigSchema = z.object({
     .transform((val) => (val === 'all' ? ['all'] : val)),
   // Global whitelist: IPs and CIDR ranges to ignore in all analyzers
   whitelist: z.array(z.string()).default([]),
-  sources: z.record(SourceSchema).default({}),
+  sources: z.record(z.string(), SourceSchema).default({}),
 });
 
 export type AnalyzersGlobalConfig = z.infer<typeof AnalyzersGlobalConfigSchema>;
