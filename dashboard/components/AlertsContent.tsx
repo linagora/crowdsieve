@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { useAlertFilters } from '@/components/hooks/useAlertFilters';
 import { AlertCard } from '@/components/AlertCard';
+import { alertDetailHref } from '@/lib/alertFilters';
 import { Button } from '@/components/ui/button';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
@@ -28,6 +29,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
     machines,
     lastUpdated,
     refresh,
+    persistFilters,
   } = useAlertFilters({ initialAlerts, limit: 200, statsTimeBounds: stats.timeBounds });
 
   // Force re-render every minute to update relative times
@@ -82,7 +84,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
             <AlertCard
               key={alert.id}
               alert={alert}
-              onClick={() => router.push(`/alerts/${alert.id}`)}
+              onClick={() => router.push(alertDetailHref(alert.id, persistFilters()))}
             />
           ))}
 

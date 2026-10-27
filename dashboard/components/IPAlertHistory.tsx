@@ -6,12 +6,15 @@ import { History, Loader2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { StoredAlert } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { alertDetailHref } from '@/lib/alertFilters';
 
 const PAGE_SIZE = 5;
 
 interface IPAlertHistoryProps {
   ip: string;
   currentAlertId: number;
+  /** Alert list to go back to, kept when jumping between alerts */
+  returnPath?: string;
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -32,7 +35,7 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
+export function IPAlertHistory({ ip, currentAlertId, returnPath }: IPAlertHistoryProps) {
   const [alerts, setAlerts] = useState<StoredAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -152,7 +155,7 @@ export function IPAlertHistory({ ip, currentAlertId }: IPAlertHistoryProps) {
           {alerts.map((alert) => (
             <Link
               key={alert.id}
-              href={`/alerts/${alert.id}`}
+              href={alertDetailHref(alert.id, returnPath)}
               className="block p-3 rounded-lg border border-slate-200 hover:border-crowdsec-primary hover:bg-slate-50 transition-colors"
             >
               <div className="flex items-center justify-between">
