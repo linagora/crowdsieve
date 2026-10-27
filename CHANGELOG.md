@@ -5,6 +5,16 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-10-27
+
+### Fixed
+
+- Dashboard: alert list filters (time range, scenario, server, status) are now kept in the URL, so Back, reload and shared links preserve them. The alert detail page links back to the originating filtered list.
+
+### Changed
+
+- Dependencies updated (`vitest` 4.1.12).
+
 ## [0.6.7] - 2026-10-23
 
 Rebuild with updated dependencies and updated Node.js due to CVEs CVE-2026-105481 CVE-2026-105482 CVE-2026-105483 CVE-2026-106069 CVE-2026-106072 CVE-2026-106073 CVE-2026-106074)
