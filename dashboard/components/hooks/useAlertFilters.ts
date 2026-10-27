@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { StoredAlert } from '@/lib/types';
 import { fetchAlerts } from '@/lib/api';
+import {
+  DEFAULT_FILTERS,
+  alertMatchesFilters,
+  parseFilterParams,
+  writeFilterParams,
+  type FilterState,
+} from '@/lib/alertFilters';
 
-export interface FilterState {
-  since: Date | null;
-  until: Date | null;
-  scenario: string | null;
-  machineId: string | null;
-  status: 'all' | 'filtered' | 'forwarded';
-}
+export type { FilterState } from '@/lib/alertFilters';
 
 interface UseAlertFiltersOptions {
   initialAlerts: StoredAlert[];
@@ -21,19 +23,32 @@ interface UseAlertFiltersOptions {
 
 const DEFAULT_AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
 
+// Delay before writing filters into the URL. The time slider fires on every
+// move and browsers throttle (Safari even throws on) frequent replaceState calls.
+const URL_SYNC_DELAY = 300;
+
+function buildFilterUrl(filters: FilterState): string {
+  const params = new URLSearchParams(window.location.search);
+  writeFilterParams(params, filters);
+  const qs = params.toString();
+  return `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+}
+
 export function useAlertFilters({
   initialAlerts,
   limit = 100,
   statsTimeBounds,
   autoRefreshInterval = DEFAULT_AUTO_REFRESH_INTERVAL,
 }: UseAlertFiltersOptions) {
-  const [filters, setFilters] = useState<FilterState>({
-    since: null,
-    until: null,
-    scenario: null,
-    machineId: null,
-    status: 'all',
-  });
+  // Filters are persisted in the query string so that they survive navigation
+  // (back button, reload, shared links)
+  const searchParams = useSearchParams();
+  const searchKey = searchParams.toString();
+  const [filters, setFilters] = useState<FilterState>(() => parseFilterParams(searchParams));
+  // Last query string written by this hook, to tell our own URL updates apart
+  // from external navigations (e.g. clicking the "Alerts" menu entry)
+  const lastSearchKeyRef = useRef(searchKey);
+  const urlSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [alerts, setAlerts] = useState<StoredAlert[]>(initialAlerts);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,25 +200,53 @@ export function useAlertFilters({
     return () => clearInterval(intervalId);
   }, [autoRefreshInterval, doFetch]);
 
-  // Apply client-side status filter
-  const filteredAlerts = alerts.filter((alert) => {
-    if (filters.status === 'filtered') return alert.filtered;
-    if (filters.status === 'forwarded') return alert.forwardedToCapi;
-    return true;
-  });
+  // Follow external URL changes
+  useEffect(() => {
+    if (searchKey === lastSearchKeyRef.current) return;
+    lastSearchKeyRef.current = searchKey;
+    setFilters(parseFilterParams(new URLSearchParams(searchKey)));
+  }, [searchKey]);
+
+  // Write the URL immediately and return it (path + query string)
+  const persistFilters = useCallback((): string => {
+    if (urlSyncTimerRef.current) {
+      clearTimeout(urlSyncTimerRef.current);
+      urlSyncTimerRef.current = null;
+    }
+    const url = buildFilterUrl(filters);
+    if (url !== `${window.location.pathname}${window.location.search}`) {
+      const qs = url.split('?')[1] ?? '';
+      lastSearchKeyRef.current = new URLSearchParams(qs).toString();
+      // Native history API: integrated with the Next.js router, without a server round-trip
+      window.history.replaceState(null, '', url);
+    }
+    return url;
+  }, [filters]);
+
+  // Sync filters into the URL (debounced)
+  useEffect(() => {
+    urlSyncTimerRef.current = setTimeout(() => {
+      urlSyncTimerRef.current = null;
+      persistFilters();
+    }, URL_SYNC_DELAY);
+    return () => {
+      if (urlSyncTimerRef.current) {
+        clearTimeout(urlSyncTimerRef.current);
+        urlSyncTimerRef.current = null;
+      }
+    };
+  }, [persistFilters]);
+
+  // Apply filters client-side too: the server already did it for fetched
+  // alerts, but this hides non-matching alerts from initialAlerts while loading
+  const filteredAlerts = alerts.filter((alert) => alertMatchesFilters(alert, filters));
 
   const updateFilters = useCallback((updates: Partial<FilterState>) => {
     setFilters((prev) => ({ ...prev, ...updates }));
   }, []);
 
   const resetFilters = useCallback(() => {
-    setFilters({
-      since: null,
-      until: null,
-      scenario: null,
-      machineId: null,
-      status: 'all',
-    });
+    setFilters(DEFAULT_FILTERS);
   }, []);
 
   const hasActiveFilters =
@@ -230,5 +273,6 @@ export function useAlertFilters({
     machines,
     lastUpdated,
     refresh,
+    persistFilters,
   };
 }

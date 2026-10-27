@@ -6,6 +6,7 @@ import { IPInfoPanel } from '@/components/IPInfoPanel';
 import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { ApiError } from '@/components/ApiError';
+import { parseReturnPath } from '@/lib/alertFilters';
 
 // Read env vars inside functions to ensure they're evaluated at runtime (not build time)
 function getApiConfig() {
@@ -77,10 +78,13 @@ async function getAlert(id: string): Promise<ApiResult<StoredAlert>> {
 
 interface AlertDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string | string[] }>;
 }
 
-export default async function AlertDetailPage({ params }: AlertDetailPageProps) {
-  const { id } = await params;
+export default async function AlertDetailPage({ params, searchParams }: AlertDetailPageProps) {
+  const [{ id }, { from }] = await Promise.all([params, searchParams]);
+  // Alert list (with its filters) the user came from
+  const returnPath = parseReturnPath(typeof from === 'string' ? from : null);
   const result = await getAlert(id);
 
   if (!result.success) {
@@ -101,13 +105,13 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
     <div className="space-y-6">
       {/* Back link */}
       <Link
-        href="/alerts"
+        href={returnPath?.href ?? '/alerts'}
         className="text-crowdsec-primary hover:underline flex items-center gap-2"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
-        Back to Alerts
+        Back to {returnPath?.label ?? 'Alerts'}
       </Link>
 
       {/* Alert Header */}
@@ -270,7 +274,11 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
 
       {/* Alert History for this IP */}
       {(alert.sourceIp || alert.sourceValue) && (
-        <IPAlertHistory ip={alert.sourceIp || alert.sourceValue || ''} currentAlertId={alert.id} />
+        <IPAlertHistory
+          ip={alert.sourceIp || alert.sourceValue || ''}
+          currentAlertId={alert.id}
+          returnPath={returnPath?.href}
+        />
       )}
 
       {/* Filter Information */}
