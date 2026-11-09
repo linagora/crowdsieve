@@ -1,0 +1,7 @@
+# Inscrit ce dépôt au bot auto-js-pr (mises à jour de dépendances vulnérables).
+#
+# `npm run build` construit aussi le tableau de bord : les tests et la
+# vérification des types suffisent à détecter une mauvaise mise à jour.
+verifyCommands:
+  - npm run test
+  - npm run typecheck

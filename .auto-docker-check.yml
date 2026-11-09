@@ -1,0 +1,32 @@
+# Inscrit ce dépôt au bot auto-docker-check : quand des paquets Alpine de
+# l'image publiée ont des mises à jour, le bot prépare la version suivante
+# (changelog, numéros de version) dans une pull request ; un humain fusionne
+# et tague.
+dockers:
+  - name: crowdsieve
+    branch: master
+    tagRegex: '^v\d+\.\d+\.\d+$'
+    images:
+      - yadd/crowdsieve:{version}
+    release:
+      tagBump: last
+      changelog:
+        file: CHANGELOG.md
+        insertBefore: '^## \['
+        marker: '[{version}]'
+        entry: |
+          ## [{version}] - {date}
+
+          ### Changed
+
+          - Rebuild with updated Alpine packages: {packages}.
+      bump:
+        - { file: package.json, match: '^  "version": "([^"]+)"', value: '{version}' }
+        - { file: dashboard/package.json, match: '^  "version": "([^"]+)"', value: '{version}' }
+        - { file: helm/crowdsieve/Chart.yaml, match: '^version: (\S+)$', value: '{version}' }
+        - { file: helm/crowdsieve/Chart.yaml, match: '^appVersion: "([^"]+)"$', value: '{version}' }
+        - { file: package-lock.json, match: '^  "version": "([^"]+)"', value: '{version}' }
+        - { file: package-lock.json, match: '^      "name": "crowdsieve",\n      "version": "([^"]+)"', value: '{version}' }
+        - { file: package-lock.json, match: '^      "name": "crowdsieve-dashboard",\n      "version": "([^"]+)"', value: '{version}' }
+    policies:
+      - pr
