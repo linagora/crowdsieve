@@ -1,0 +1,69 @@
+# QA stack started by start.sh: CrowdSieve (proxy + dashboard, the image of build.sh) in front of
+# a real CrowdSec LAPI, its dashboard behind Dex as OpenID Connect provider.
+#
+# - crowdsec: the local API only (no agent, no online API): CrowdSieve reads its decisions with a
+#   bouncer key and pushes manual bans with machine credentials.
+# - sso: Dex, over https with the self-signed certificate of start.sh (openid-client refuses a
+#   plain http issuer). Its issuer is https://sso:$QA_SSO_PORT, the one URL CrowdSieve (docker
+#   DNS) and the browser agree on: a container on the stack network resolves `sso` natively, a
+#   browser on the host needs `127.0.0.1 sso` in /etc/hosts.
+# - crowdsieve: forwarding to CAPI is off; the alerts and bouncer metrics a LAPI would relay are
+#   seeded by start.sh on the proxy port.
+#
+# The dashboard, the proxy and Dex are published on 127.0.0.1 only.
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.6.8
+    environment:
+      - DISABLE_AGENT=true
+      - DISABLE_ONLINE_API=true
+      - NO_HUB_UPGRADE=true
+      - COLLECTIONS=
+      - BOUNCER_KEY_crowdsieve=${QA_BOUNCER_KEY:?}
+
+  sso:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    command: dex serve /etc/dex/config.yaml
+    volumes:
+      - ./.generated/dex.yaml:/etc/dex/config.yaml:ro
+      - ./.generated/sso.crt:/etc/dex/tls.crt:ro
+      - ./.generated/sso.key:/etc/dex/tls.key:ro
+    ports:
+      - '127.0.0.1:${QA_SSO_PORT:?}:${QA_SSO_PORT:?}'
+    restart: on-failure
+
+  crowdsieve:
+    image: crowdsieve-qa
+    depends_on:
+      - crowdsec
+      - sso
+    environment:
+      - NODE_ENV=production
+      - CONFIG_PATH=/qa/filters.yaml
+      # The rules and analyzers of the tested commit, built into the image
+      - FILTERS_DIR=/app/config/filters.d
+      - DATABASE_PATH=/app/data/crowdsieve.db
+      - GEOIP_DB_PATH=/app/data/geoip-city.mmdb
+      - PROXY_PORT=8080
+      - DASHBOARD_PORT=3000
+      - FORWARD_ENABLED=false
+      - CAPI_URL=http://capi.invalid
+      - LOG_LEVEL=info
+      - DASHBOARD_API_KEY=${QA_DASHBOARD_API_KEY:?}
+      - OIDC_ISSUER=https://sso:${QA_SSO_PORT:?}
+      - OIDC_CLIENT_ID=crowdsieve-dashboard
+      - OIDC_CLIENT_SECRET=qa-client-secret-qa-client-secret
+      - SESSION_SECRET=qa-session-secret-qa-session-secret-0123456789
+      - SESSION_COOKIE_SECURE=false
+      - NEXTAUTH_URL=http://localhost:${QA_APP_PORT:?}
+      - AUTH_ACTOR_CLAIM=email
+      - NODE_EXTRA_CA_CERTS=/qa/sso.crt
+      - LAPI_MACHINE_PASSWORD=${QA_MACHINE_PASSWORD:?}
+      - LAPI_BOUNCER_KEY=${QA_BOUNCER_KEY:?}
+    volumes:
+      - ./.generated/filters.yaml:/qa/filters.yaml:ro
+      - ./.generated/sso.crt:/qa/sso.crt:ro
+    ports:
+      - '127.0.0.1:${QA_APP_PORT:?}:3000'
+      - '127.0.0.1:${QA_PROXY_PORT:?}:8080'
+    restart: on-failure
