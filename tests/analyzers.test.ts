@@ -106,6 +106,38 @@ name: Invalid
       expect(result.errors[0].file).toBe('invalid.yaml');
     });
 
+    it('should report an error for an interval that exceeds the timer limit', () => {
+      writeFileSync(
+        join(TEST_DIR, 'too-long.yaml'),
+        `id: too-long
+name: Too long
+schedule:
+  interval: "30d"
+  lookback: "1h"
+source:
+  ref: grafana-test
+  query: '{app="test"}'
+extraction:
+  fields:
+    ip: source_ip
+detection:
+  groupby: ip
+  threshold: 10
+decision:
+  duration: "1h"
+  scenario: "test/too-long"
+  reason: "Test"
+`
+      );
+
+      const result = loadAnalyzersFromDirectory(TEST_DIR);
+
+      expect(result.analyzers).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].file).toBe('too-long.yaml');
+      expect(result.errors[0].error).toMatch(/Duration must be at most/);
+    });
+
     it('should ignore files starting with underscore or dot', () => {
       writeFileSync(
         join(TEST_DIR, '_disabled.yaml'),
@@ -189,6 +221,15 @@ decision:
       expect(() => parseDuration('10x')).toThrow('Invalid duration format');
       expect(() => parseDuration('')).toThrow('Invalid duration format');
     });
+
+    it('should reject durations that are unsafe integers', () => {
+      expect(parseDuration('24d')).toBe(24 * 86400000); // 2073600000 <= 2^31-1
+      // Lookbacks and decision durations may legitimately exceed a timer delay.
+      expect(parseDuration('30d')).toBe(30 * 86400000);
+      for (const d of ['700000000000000s', '9'.repeat(400) + 's']) {
+        expect(() => parseDuration(d)).toThrow(/Invalid duration/);
+      }
+    });
   });
 
   describe('parseAnalyzersGlobalConfig', () => {
@@ -221,6 +262,14 @@ decision:
       expect(config.config_dir).toBe('./custom/analyzers');
       expect(config.whitelist).toEqual(['10.0.0.0/8', '192.168.1.1']);
       expect(config.sources['grafana-prod']).toBeDefined();
+    });
+
+    it('should reject an interval that exceeds the timer limit', () => {
+      expect(() => parseAnalyzersGlobalConfig({ default_interval: '25d' })).toThrow();
+      expect(() => parseAnalyzersGlobalConfig({ default_interval: '9000000000s' })).toThrow();
+      expect(parseAnalyzersGlobalConfig({ default_interval: '24d' }).default_interval).toBe('24d');
+      // A lookback is not a timer delay: a 30-day window stays valid.
+      expect(parseAnalyzersGlobalConfig({ default_lookback: '30d' }).default_lookback).toBe('30d');
     });
   });
 
