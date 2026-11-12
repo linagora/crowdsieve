@@ -70,6 +70,12 @@ function ipToBigInt(ip: string): bigint {
  * Expand an IPv6 address to full form (8 groups of 4 hex digits)
  */
 function expandIPv6(ip: string): string {
+  // A zone index ("fe80::1%eth0", "fe80::%eth0") is not part of the address.
+  // It must be removed before splitting on ':', otherwise a zone placed right
+  // after "::" becomes a group ("%eth0"), parseInt yields NaN and
+  // BigInt(NaN) throws a RangeError.
+  ip = ip.split('%')[0];
+
   // Handle IPv4-mapped IPv6 (e.g., ::ffff:192.168.1.1)
   const colonParts = ip.split(':');
   const lastPart = colonParts[colonParts.length - 1];
