@@ -837,6 +837,30 @@ describe('buildRowsFromPayload (parser)', () => {
   });
 });
 
+describe('buildRowsFromPayload on malformed components', () => {
+  const now = 1762862400000;
+  it.each([
+    { remediation_components: [null] },
+    { log_processors: [null, 3, 'x'] },
+    { remediation_components: [{ name: 1 }] },
+    { remediation_components: [{ name: { a: 1 } }] },
+    { remediation_components: {} },
+    { log_processors: 1 },
+  ])('does not throw on %j', (payload) => {
+    expect(() => buildRowsFromPayload('lapi-1', payload as never, now)).not.toThrow();
+    expect(buildRowsFromPayload('lapi-1', payload as never, now)).toEqual([]);
+  });
+
+  it('keeps the valid components next to a malformed one', () => {
+    const rows = buildRowsFromPayload(
+      'lapi-1',
+      { remediation_components: [null, { name: 'fw', metrics: [] }] } as never,
+      now
+    );
+    expect(rows.map((r) => r.bouncerName)).toEqual(['fw']);
+  });
+});
+
 describe('Bouncer metrics storage', () => {
   let storage: AlertStorage;
 
