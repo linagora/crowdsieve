@@ -251,10 +251,12 @@ export function detectRir(ianaResponse: string): string | null {
 
   // Match "refer:" or "whois:" lines in IANA response
   // Format: "refer:        whois.arin.net" or "whois:        whois.ripe.net"
-  const referPattern = /^(?:refer|whois):\s*(\S+)/im;
-  const match = referPattern.exec(ianaResponse);
+  // Only horizontal whitespace is allowed after the keyword: a referral must be on
+  // the same line, and an empty "refer:" line must not consume the next line.
+  const referPattern = /^(?:refer|whois):[ \t]*(\S+)/gim;
 
-  if (match) {
+  // Check every referral line until one points to an allowlisted RIR.
+  for (const match of ianaResponse.matchAll(referPattern)) {
     const server = match[1].toLowerCase();
     // Only accept exact matches from our allowlist
     if (Object.prototype.hasOwnProperty.call(rirServers, server)) {

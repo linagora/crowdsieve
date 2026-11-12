@@ -185,6 +185,22 @@ netname:        RIPE-NCC
       const response = `refer:        prefix-whois.arin.net`;
       expect(detectRir(response)).toBeNull();
     });
+
+    it('should not read a referral across line breaks', () => {
+      const response = `% IANA WHOIS server
+refer:
+whois:        whois.arin.net
+`;
+      expect(detectRir(response)).toBe('ARIN');
+      expect(detectRir('refer:\nwhois.ripe.net\n')).toBeNull();
+    });
+
+    it('should keep scanning after a non-allowlisted referral', () => {
+      const response = `refer:        whois.example.net
+whois:        whois.ripe.net
+`;
+      expect(detectRir(response)).toBe('RIPE');
+    });
   });
 
   describe('extractIpFromValue', () => {
