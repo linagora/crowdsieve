@@ -144,6 +144,30 @@ function canonicalizeBouncerName(name: string): string {
   return name.replace(/@(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]|[0-9a-f:]+)$/i, '');
 }
 
+/** Keep only strings for the text metadata columns. */
+function str(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+/** Metadata columns shared by every row emitted for a component. */
+function metadataColumns(component: MetricsComponent): {
+  bouncerType: string | null;
+  osName: string | null;
+  osVersion: string | null;
+  version: string | null;
+} {
+  const os =
+    component.os && typeof component.os === 'object'
+      ? (component.os as { name?: unknown; version?: unknown })
+      : undefined;
+  return {
+    bouncerType: str(component.type),
+    osName: str(os?.name),
+    osVersion: str(os?.version),
+    version: str(component.version),
+  };
+}
+
 /**
  * Build one row per DetailedMetrics block inside a component descriptor.
  *
@@ -177,10 +201,7 @@ function buildRowsForComponent(
     lapiServerName,
     componentKind: kind,
     bouncerName,
-    bouncerType: component.type ?? null,
-    osName: component.os?.name ?? null,
-    osVersion: component.os?.version ?? null,
-    version: component.version ?? null,
+    ...metadataColumns(component),
     activeDecisions: 0,
     processedItems: 0,
     droppedItems: 0,
@@ -217,10 +238,7 @@ function buildRowsForComponent(
         lapiServerName,
         componentKind: kind,
         bouncerName,
-        bouncerType: component.type ?? null,
-        osName: component.os?.name ?? null,
-        osVersion: component.os?.version ?? null,
-        version: component.version ?? null,
+        ...metadataColumns(component),
         activeDecisions: counters.activeDecisions,
         processedItems: counters.processedItems,
         droppedItems: counters.droppedItems,
@@ -242,10 +260,7 @@ function buildRowsForComponent(
       lapiServerName,
       componentKind: kind,
       bouncerName,
-      bouncerType: component.type ?? null,
-      osName: component.os?.name ?? null,
-      osVersion: component.os?.version ?? null,
-      version: component.version ?? null,
+      ...metadataColumns(component),
       activeDecisions: counters.activeDecisions,
       processedItems: counters.processedItems,
       droppedItems: counters.droppedItems,
