@@ -60,20 +60,38 @@ function matchIPv4Cidr(ip: string, cidr: string): boolean {
 }
 
 /**
- * Lightly normalize an IP for exact-match comparison: lowercase (for IPv6
- * hex digits), strip surrounding brackets if present.
+ * Canonicalize an IP for exact-match comparison.
+ *
+ * IPv4 is only lowercased (its dotted form has no case). IPv6 goes through the
+ * WHATWG URL parser, which returns the RFC 5952 compressed form and rejects
+ * invalid input. IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`,
+ * `0:0:0:0:0:ffff:1.2.3.4`, `::ffff:102:304`) are mapped to the dotted IPv4
+ * form so that exact matches work across spellings.
  */
 function normalizeIp(ip: string): string {
-  let n = ip.trim().toLowerCase();
+  let n = ip.trim();
   if (n.startsWith('[') && n.endsWith(']')) {
     n = n.slice(1, -1);
   }
-  // IPv4-mapped IPv6 (::ffff:1.2.3.4) — normalize to the IPv4 form so that
-  // exact matches against an IPv4 entry work even when the request comes via
-  // a dual-stack socket.
-  const v4MappedMatch = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(n);
-  if (v4MappedMatch) return v4MappedMatch[1];
-  return n;
+  // Leave IPv4 (and IPv4 CIDR) alone: the URL parser would reinterpret
+  // leading-zero octets as octal.
+  if (!n.includes(':')) return n.toLowerCase();
+
+  let canonical: string;
+  try {
+    // The WHATWG hostname is bracketed and lowercased, e.g. "[::ffff:a00:1]".
+    canonical = new URL(`http://[${n}]/`).hostname.slice(1, -1);
+  } catch {
+    return n.toLowerCase();
+  }
+
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canonical);
+  if (mapped) {
+    const high = parseInt(mapped[1], 16);
+    const low = parseInt(mapped[2], 16);
+    return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+  }
+  return canonical;
 }
 
 /**
