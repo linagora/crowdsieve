@@ -82,12 +82,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   // OIDC mode (existing behavior).
   const sessionCookie = request.cookies.get('crowdsieve-session');
   if (!sessionCookie) {
-    // Redirect to login with the original path for post-login redirect
+    // Redirect to login with the original path and query string, so a shared
+    // link such as /decisions?ip=... lands on the requested page after sign-in.
     const loginUrl = new URL('/login', request.url);
-    const pathname = request.nextUrl.pathname;
-    // SECURITY: Validate pathname before adding to redirect parameter
-    if (isSafeRedirect(pathname) && pathname !== '/') {
-      loginUrl.searchParams.set('redirect', pathname);
+    const returnPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+    // SECURITY: Validate the return path before adding it to the redirect
+    // parameter. The login page and the OIDC callback validate it again.
+    if (isSafeRedirect(returnPath) && returnPath !== '/') {
+      loginUrl.searchParams.set('redirect', returnPath);
     }
     return NextResponse.redirect(loginUrl);
   }

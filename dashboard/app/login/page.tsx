@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { isOidcEnabled } from '@/lib/oidc/config';
 import { isSessionValid } from '@/lib/oidc/session';
-import { isSafeRedirect } from '@/lib/oidc/validation';
+import { buildLoginHref, resolvePostLoginPath } from '@/lib/oidc/loginRedirect';
 import { getAuthMode } from '@/lib/auth/mode';
 import { getExternalLoginUrl } from '@/lib/auth/logout';
 
@@ -20,7 +20,7 @@ export default async function LoginPage({
   if (mode === 'headers') {
     if (await isSessionValid()) {
       const params = await searchParams;
-      redirect(isSafeRedirect(params.redirect) ? params.redirect : '/');
+      redirect(resolvePostLoginPath(params.redirect));
     }
 
     const externalLogin = getExternalLoginUrl();
@@ -88,11 +88,13 @@ export default async function LoginPage({
   // OIDC mode: existing behavior.
   if (await isSessionValid()) {
     const params = await searchParams;
-    redirect(isSafeRedirect(params.redirect) ? params.redirect : '/');
+    redirect(resolvePostLoginPath(params.redirect));
   }
 
   const params = await searchParams;
   const error = params.error;
+  // Forward the requested page (path + query string) through the SSO flow.
+  const loginHref = buildLoginHref(params.redirect);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -119,7 +121,7 @@ export default async function LoginPage({
           )}
 
           <a
-            href="/api/auth/login"
+            href={loginHref}
             className="block w-full bg-crowdsec-primary text-white text-center py-3 px-4 rounded-lg hover:bg-crowdsec-primary/90 transition-colors font-medium"
           >
             Sign in with SSO
