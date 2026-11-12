@@ -772,4 +772,22 @@ describe('Open Redirect Prevention', () => {
     expect(isSafeRedirect('evil.com')).toBe(false);
     expect(isSafeRedirect('../evil')).toBe(false);
   });
+
+  it('should reject paths a browser resolves to another host', () => {
+    for (const p of [
+      '/\\evil.com',
+      '/\\/evil.com',
+      '/\t/evil.com',
+      '/\t\\evil.com',
+      '/\n/evil.com',
+      '/\r/evil.com',
+    ]) {
+      expect(isSafeRedirect(p)).toBe(false);
+      // invariant: whatever is accepted stays on the dashboard
+    }
+    for (const p of ['/', '/dashboard', '/stats?filter=today', '/time?hour=12:30:00']) {
+      expect(isSafeRedirect(p)).toBe(true);
+      expect(new URL(p, 'https://dashboard.example/').origin).toBe('https://dashboard.example');
+    }
+  });
 });
