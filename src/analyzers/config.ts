@@ -46,11 +46,7 @@ const DurationRegex = /^\d+[smhd]$/;
 /** Largest delay a Node timer accepts: 2^31 - 1 ms (about 24 days). */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-/**
- * A duration string that parseDuration accepts. Bound to the timer limit so an
- * analyzer is rejected at load time instead of being scheduled every 1 ms by
- * setInterval (Node clamps longer delays).
- */
+/** A duration string that parseDuration accepts (safe, non-negative and finite). */
 const DurationStringSchema = z
   .string()
   .regex(DurationRegex, 'Invalid duration format (use: 30m, 3h, 1d)')
@@ -63,8 +59,19 @@ const DurationStringSchema = z
         return false;
       }
     },
-    { message: `Duration must be at most ${MAX_TIMER_MS} ms (about 24 days)` }
+    { message: 'Invalid duration format (use: 30m, 3h, 1d)' }
   );
+
+/**
+ * An interval is passed straight to setInterval, which clamps any delay above
+ * 2^31-1 ms to 1 ms. Reject it at load time instead of turning a monthly
+ * schedule into a busy loop. Lookbacks and decision durations are not timer
+ * delays and may legitimately be longer (e.g. a 30-day lookback).
+ */
+const IntervalDurationSchema = DurationStringSchema.refine(
+  (value) => parseDuration(value) <= MAX_TIMER_MS,
+  { message: `Duration must be at most ${MAX_TIMER_MS} ms (about 24 days)` }
+);
 
 // Source type schema - only Loki supported for now
 const LokiSourceSchema = z.object({
@@ -82,7 +89,7 @@ export type Source = z.infer<typeof SourceSchema>;
 
 // Schedule schema for analyzers
 const ScheduleSchema = z.object({
-  interval: DurationStringSchema.default('3h'),
+  interval: IntervalDurationSchema.default('3h'),
   lookback: DurationStringSchema.default('3h'),
 });
 
@@ -151,7 +158,7 @@ export type AnalyzerConfig = z.infer<typeof AnalyzerConfigSchema>;
 const AnalyzersGlobalConfigSchema = z.object({
   enabled: z.boolean().default(false),
   config_dir: z.string().default('./config/analyzers.d'),
-  default_interval: DurationStringSchema.default('3h'),
+  default_interval: IntervalDurationSchema.default('3h'),
   default_lookback: DurationStringSchema.default('3h'),
   // default_targets accepts 'all' or array, but normalizes to array for type consistency
   default_targets: z
@@ -195,13 +202,10 @@ export function parseDuration(duration: string): number {
       throw new Error(`Unknown duration unit: ${unit}`);
   }
 
-  // Reject unsafe, negative or oversized values. Node's setInterval clamps any
-  // delay above 2^31-1 ms to 1 ms, which used to turn a monthly schedule into a
-  // busy loop.
-  if (!Number.isSafeInteger(milliseconds) || milliseconds < 0 || milliseconds > MAX_TIMER_MS) {
-    throw new Error(
-      `Invalid duration format: ${duration} (must be at most ${MAX_TIMER_MS} ms, about 24 days)`
-    );
+  // Reject unsafe or negative values (e.g. a huge digit string overflowing to
+  // Infinity). Intervals are bounded separately by IntervalDurationSchema.
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) {
+    throw new Error(`Invalid duration format: ${duration}`);
   }
 
   return milliseconds;

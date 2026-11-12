@@ -222,9 +222,11 @@ decision:
       expect(() => parseDuration('')).toThrow('Invalid duration format');
     });
 
-    it('should reject durations Node timers cannot hold', () => {
+    it('should reject durations that are unsafe integers', () => {
       expect(parseDuration('24d')).toBe(24 * 86400000); // 2073600000 <= 2^31-1
-      for (const d of ['25d', '720h', '9000000000s', '700000000000000s', '9'.repeat(400) + 's']) {
+      // Lookbacks and decision durations may legitimately exceed a timer delay.
+      expect(parseDuration('30d')).toBe(30 * 86400000);
+      for (const d of ['700000000000000s', '9'.repeat(400) + 's']) {
         expect(() => parseDuration(d)).toThrow(/Invalid duration/);
       }
     });
@@ -264,8 +266,10 @@ decision:
 
     it('should reject an interval that exceeds the timer limit', () => {
       expect(() => parseAnalyzersGlobalConfig({ default_interval: '25d' })).toThrow();
-      expect(() => parseAnalyzersGlobalConfig({ default_lookback: '25d' })).toThrow();
+      expect(() => parseAnalyzersGlobalConfig({ default_interval: '9000000000s' })).toThrow();
       expect(parseAnalyzersGlobalConfig({ default_interval: '24d' }).default_interval).toBe('24d');
+      // A lookback is not a timer delay: a 30-day window stays valid.
+      expect(parseAnalyzersGlobalConfig({ default_lookback: '30d' }).default_lookback).toBe('30d');
     });
   });
 
