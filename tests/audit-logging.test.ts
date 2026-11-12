@@ -111,6 +111,15 @@ beforeAll(async () => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    if (u.includes('/v1/decisions?') && (init?.method ?? 'GET') === 'GET') {
+      return new Response(
+        JSON.stringify([{ id: 4242, scope: 'Ip', value: '203.0.113.9', type: 'ban' }]),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
     if (u.includes('/v1/decisions/') && init?.method === 'DELETE') {
       return new Response('{"nbDeleted":1}', {
         status: 200,
