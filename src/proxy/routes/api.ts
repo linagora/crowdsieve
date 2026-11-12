@@ -981,6 +981,54 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           });
         }
 
+        // Resolve the decision from LAPI before deleting it. The body `ip` is
+        // only a hint to narrow the lookup: the decision returned by LAPI is
+        // the source of truth for the audit row, so a client cannot attribute
+        // an unban to an unrelated IP. LAPI's bouncer endpoint only returns
+        // active decisions, so an already expired/removed one yields a 404.
+        const lookupUrl = `${lapiServer.url}/v1/decisions?value=${encodeURIComponent(parsed.value)}`;
+        const lookupResponse = await fetch(lookupUrl, {
+          headers: {
+            'X-Api-Key': lapiServer.api_key,
+            'User-Agent': `crowdsieve/${CROWDSIEVE_VERSION}`,
+          },
+          signal: AbortSignal.timeout(config.proxy.timeout_ms),
+        });
+
+        if (!lookupResponse.ok) {
+          const errorBody = await lookupResponse.text();
+          logger.error(
+            {
+              status: lookupResponse.status,
+              error: errorBody,
+              server: lapiServer.name,
+              decisionId,
+              actor,
+            },
+            'LAPI rejected decision lookup'
+          );
+          return reply.code(502).send({ error: 'Failed to look up decision from LAPI' });
+        }
+
+        const activeDecisions = (await lookupResponse.json()) as Array<{
+          id: number;
+          scope: string;
+          value: string;
+        }>;
+        const decision = Array.isArray(activeDecisions)
+          ? activeDecisions.find((candidate) => candidate.id === decisionId)
+          : undefined;
+
+        if (!decision) {
+          return reply.code(404).send({ error: 'Decision not found' });
+        }
+
+        // Never record the client-supplied value in the audit trail.
+        const decisionTarget = parseIpOrCidr(decision.value);
+        if (!decisionTarget.valid) {
+          return reply.code(400).send({ error: 'Decision is not an IP or range decision' });
+        }
+
         // Get machine token
         const token = await getMachineToken(lapiServer, config.proxy.timeout_ms, logger);
         if (!token) {
@@ -994,8 +1042,8 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             server: lapiServer.name,
             decisionId,
             url: deleteUrl,
-            target: parsed.value,
-            scope: parsed.scope,
+            target: decisionTarget.value,
+            scope: decisionTarget.scope,
             actor,
           },
           'Deleting decision from LAPI'
@@ -1046,8 +1094,8 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             actor,
             server: lapiServer.name,
             decisionId,
-            target: parsed.value,
-            scope: parsed.scope,
+            target: decisionTarget.value,
+            scope: decisionTarget.scope,
             reason: trimmedReason,
           },
           'Decision unbanned'
@@ -1057,8 +1105,8 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // Failures here must not bubble: the LAPI delete already succeeded.
         try {
           await storage.recordUnbanEvent({
-            ip: parsed.value,
-            scope: parsed.scope,
+            ip: decisionTarget.value,
+            scope: decisionTarget.scope,
             comment: trimmedReason,
             server: lapiServer.name,
             decisionId,
