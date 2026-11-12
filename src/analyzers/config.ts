@@ -43,6 +43,29 @@ function processEnvVars(obj: unknown): unknown {
 // Duration regex: matches patterns like "3h", "30m", "24h", "7d"
 const DurationRegex = /^\d+[smhd]$/;
 
+/** Largest delay a Node timer accepts: 2^31 - 1 ms (about 24 days). */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * A duration string that parseDuration accepts. Bound to the timer limit so an
+ * analyzer is rejected at load time instead of being scheduled every 1 ms by
+ * setInterval (Node clamps longer delays).
+ */
+const DurationStringSchema = z
+  .string()
+  .regex(DurationRegex, 'Invalid duration format (use: 30m, 3h, 1d)')
+  .refine(
+    (value) => {
+      try {
+        parseDuration(value);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: `Duration must be at most ${MAX_TIMER_MS} ms (about 24 days)` }
+  );
+
 // Source type schema - only Loki supported for now
 const LokiSourceSchema = z.object({
   type: z.literal('loki'),
@@ -59,14 +82,8 @@ export type Source = z.infer<typeof SourceSchema>;
 
 // Schedule schema for analyzers
 const ScheduleSchema = z.object({
-  interval: z
-    .string()
-    .regex(DurationRegex, 'Invalid duration format (use: 30m, 3h, 1d)')
-    .default('3h'),
-  lookback: z
-    .string()
-    .regex(DurationRegex, 'Invalid duration format (use: 30m, 3h, 1d)')
-    .default('3h'),
+  interval: DurationStringSchema.default('3h'),
+  lookback: DurationStringSchema.default('3h'),
 });
 
 export type Schedule = z.infer<typeof ScheduleSchema>;
@@ -103,7 +120,7 @@ export type Detection = z.infer<typeof DetectionSchema>;
 // Decision schema
 const DecisionSchema = z.object({
   type: z.enum(['ban', 'captcha']).default('ban'),
-  duration: z.string().regex(DurationRegex, 'Invalid duration format (use: 4h, 24h, 168h)'),
+  duration: DurationStringSchema,
   scope: z.enum(['ip', 'range']).default('ip'),
   scenario: z.string().min(1),
   reason: z.string().min(1),
@@ -134,8 +151,8 @@ export type AnalyzerConfig = z.infer<typeof AnalyzerConfigSchema>;
 const AnalyzersGlobalConfigSchema = z.object({
   enabled: z.boolean().default(false),
   config_dir: z.string().default('./config/analyzers.d'),
-  default_interval: z.string().regex(DurationRegex).default('3h'),
-  default_lookback: z.string().regex(DurationRegex).default('3h'),
+  default_interval: DurationStringSchema.default('3h'),
+  default_lookback: DurationStringSchema.default('3h'),
   // default_targets accepts 'all' or array, but normalizes to array for type consistency
   default_targets: z
     .union([z.literal('all'), z.array(z.string())])
@@ -157,21 +174,37 @@ export function parseDuration(duration: string): number {
     throw new Error(`Invalid duration format: ${duration}`);
   }
 
-  const value = parseInt(match[1], 10);
+  const value = Number(match[1]);
   const unit = match[2];
 
+  let milliseconds: number;
   switch (unit) {
     case 's':
-      return value * 1000;
+      milliseconds = value * 1000;
+      break;
     case 'm':
-      return value * 60 * 1000;
+      milliseconds = value * 60 * 1000;
+      break;
     case 'h':
-      return value * 60 * 60 * 1000;
+      milliseconds = value * 60 * 60 * 1000;
+      break;
     case 'd':
-      return value * 24 * 60 * 60 * 1000;
+      milliseconds = value * 24 * 60 * 60 * 1000;
+      break;
     default:
       throw new Error(`Unknown duration unit: ${unit}`);
   }
+
+  // Reject unsafe, negative or oversized values. Node's setInterval clamps any
+  // delay above 2^31-1 ms to 1 ms, which used to turn a monthly schedule into a
+  // busy loop.
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 0 || milliseconds > MAX_TIMER_MS) {
+    throw new Error(
+      `Invalid duration format: ${duration} (must be at most ${MAX_TIMER_MS} ms, about 24 days)`
+    );
+  }
+
+  return milliseconds;
 }
 
 /**
