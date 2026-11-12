@@ -27,14 +27,16 @@ function parseCIDR(cidr: string): { ip: string; prefixLength: number } | null {
   if (parts.length !== 2) return null;
 
   const ip = parts[0];
-  const prefixLength = parseInt(parts[1], 10);
+  if (!net.isIP(ip)) return null;
 
-  if (!net.isIP(ip) || isNaN(prefixLength)) return null;
+  // Reject "/0x10", "/-0", "/ 8", "/24abc" and leading zeros: parseInt would
+  // accept them, silently turning a mistyped prefix into a broader range.
+  if (!/^(0|[1-9]\d{0,2})$/.test(parts[1])) return null;
 
-  const isIPv6 = net.isIPv6(ip);
-  const maxPrefix = isIPv6 ? 128 : 32;
+  const prefixLength = Number(parts[1]);
+  const maxPrefix = net.isIPv6(ip) ? 128 : 32;
 
-  if (prefixLength < 0 || prefixLength > maxPrefix) return null;
+  if (prefixLength > maxPrefix) return null;
 
   return { ip, prefixLength };
 }

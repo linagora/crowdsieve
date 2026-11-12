@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import net from 'node:net';
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
@@ -42,6 +43,27 @@ function processEnvVars(obj: unknown): unknown {
 
 // Duration regex: matches patterns like "3h", "30m", "24h", "7d"
 const DurationRegex = /^\d+[smhd]$/;
+
+// CIDR prefix: a plain decimal integer without sign, whitespace or leading zero.
+const CIDRPrefixRegex = /^(0|[1-9]\d{0,2})$/;
+
+/**
+ * A whitelist entry is either a bare IP or a CIDR range whose prefix is a
+ * plain decimal integer in range for its address family.
+ */
+function isValidWhitelistEntry(entry: string): boolean {
+  const parts = entry.split('/');
+  if (parts.length > 2 || !net.isIP(parts[0])) {
+    return false;
+  }
+  if (parts.length === 1) {
+    return true;
+  }
+  if (!CIDRPrefixRegex.test(parts[1])) {
+    return false;
+  }
+  return Number(parts[1]) <= (net.isIPv6(parts[0]) ? 128 : 32);
+}
 
 // Source type schema - only Loki supported for now
 const LokiSourceSchema = z.object({
@@ -142,7 +164,12 @@ const AnalyzersGlobalConfigSchema = z.object({
     .default('all')
     .transform((val) => (val === 'all' ? ['all'] : val)),
   // Global whitelist: IPs and CIDR ranges to ignore in all analyzers
-  whitelist: z.array(z.string()).default([]),
+  whitelist: z
+    .array(z.string())
+    .refine((entries) => entries.every(isValidWhitelistEntry), {
+      message: 'Whitelist entries must be an IP address or a valid CIDR range',
+    })
+    .default([]),
   sources: z.record(z.string(), SourceSchema).default({}),
 });
 

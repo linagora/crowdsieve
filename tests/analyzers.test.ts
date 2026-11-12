@@ -222,6 +222,17 @@ decision:
       expect(config.whitelist).toEqual(['10.0.0.0/8', '192.168.1.1']);
       expect(config.sources['grafana-prod']).toBeDefined();
     });
+
+    it('should reject invalid whitelist entries', () => {
+      expect(() => parseAnalyzersGlobalConfig({ whitelist: ['10.0.0.0/0x10'] })).toThrow(
+        /Whitelist entries/
+      );
+      expect(() => parseAnalyzersGlobalConfig({ whitelist: ['not-an-ip'] })).toThrow();
+      expect(() => parseAnalyzersGlobalConfig({ whitelist: ['2001:db8::/129'] })).toThrow();
+      expect(() =>
+        parseAnalyzersGlobalConfig({ whitelist: ['10.0.0.0/8', '::1', 'fc00::/7'] })
+      ).not.toThrow();
+    });
   });
 
   describe('resolveSource', () => {
@@ -301,6 +312,23 @@ describe('Whitelist and CIDR matching', () => {
 
     it('should not match IPv4 against IPv6 CIDR', () => {
       expect(isWhitelisted('10.0.0.1', ['fc00::/7'])).toBe(false);
+    });
+
+    it('should not honour malformed CIDR prefixes', () => {
+      for (const entry of [
+        '10.0.0.0/0x10',
+        '10.0.0.0/-0',
+        '10.0.0.0/1e1',
+        '10.0.0.0/ 8',
+        '10.0.0.0/8abc',
+        '10.0.0.0/08',
+      ]) {
+        expect(isWhitelisted('10.1.2.3', [entry])).toBe(false);
+      }
+    });
+
+    it('should not turn "/-0" into /0', () => {
+      expect(isWhitelisted('2001:db8::1', ['::ffff:192.168.1.0/-0'])).toBe(false);
     });
 
     it('should not match IPv6 against IPv4 CIDR', () => {
