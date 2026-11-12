@@ -36,13 +36,17 @@ function extractSourceMachineId(alerts: SignalsRequest): string | undefined {
  * Manual decisions with origin 'crowdsieve' are allowed through
  */
 export function isCrowdsieveAlert(alert: Alert): boolean {
-  if (!alert.decisions || alert.decisions.length === 0) {
+  // The signals schema accepts any object: `decisions` may be a non-array
+  // value even though the Alert type declares an array.
+  const decisions = alert.decisions;
+  if (!Array.isArray(decisions) || decisions.length === 0) {
     return false;
   }
 
   // Check if any decision is from crowdsieve origins (prevent any crowdsieve decisions reaching CAPI)
-  return alert.decisions.some((decision) => {
-    const origin = decision.origin?.toLowerCase() || '';
+  return decisions.some((decision) => {
+    if (!decision || typeof decision !== 'object') return false;
+    const origin = typeof decision.origin === 'string' ? decision.origin.toLowerCase() : '';
     return CROWDSIEVE_ORIGINS.some((excluded) => origin.includes(excluded.toLowerCase()));
   });
 }
