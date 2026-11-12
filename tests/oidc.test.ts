@@ -773,3 +773,37 @@ describe('Open Redirect Prevention', () => {
     expect(isSafeRedirect('../evil')).toBe(false);
   });
 });
+
+describe('Post-login redirect (#74)', () => {
+  // Import the actual implementation to ensure tests match production behavior
+  let buildLoginHref: typeof import('../dashboard/lib/oidc/loginRedirect.js').buildLoginHref;
+  let resolvePostLoginPath: typeof import('../dashboard/lib/oidc/loginRedirect.js').resolvePostLoginPath;
+
+  beforeEach(async () => {
+    const mod = await import('../dashboard/lib/oidc/loginRedirect.js');
+    buildLoginHref = mod.buildLoginHref;
+    resolvePostLoginPath = mod.resolvePostLoginPath;
+  });
+
+  it('should forward the requested page, query string included', () => {
+    expect(buildLoginHref('/decisions?ip=203.0.113.7')).toBe(
+      '/api/auth/login?redirect=%2Fdecisions%3Fip%3D203.0.113.7'
+    );
+    expect(resolvePostLoginPath('/decisions?ip=203.0.113.7')).toBe('/decisions?ip=203.0.113.7');
+    expect(resolvePostLoginPath('/alerts?status=filtered&machine=qa-agent')).toBe(
+      '/alerts?status=filtered&machine=qa-agent'
+    );
+  });
+
+  it('should drop an unsafe redirect and fall back to the home page', () => {
+    const unsafe = ['https://evil.com', '//evil.com', 'javascript:alert(1)', '', undefined];
+    for (const value of unsafe) {
+      expect(buildLoginHref(value)).toBe('/api/auth/login');
+      expect(resolvePostLoginPath(value)).toBe('/');
+    }
+  });
+
+  it('should keep the default login link when no redirect is requested', () => {
+    expect(buildLoginHref(undefined)).toBe('/api/auth/login');
+  });
+});

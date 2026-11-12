@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -14,7 +15,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': '/src',
+      // Mirrors the dashboard's `@/*` path alias so tests can import its modules.
+      '@': fileURLToPath(new URL('./dashboard', import.meta.url)),
     },
   },
 });

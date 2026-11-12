@@ -3,6 +3,7 @@ import * as client from 'openid-client';
 import { getOidcClient } from '@/lib/oidc/client';
 import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
 import { getSession, SessionUser } from '@/lib/oidc/session';
+import { resolvePostLoginPath } from '@/lib/oidc/loginRedirect';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Return 404 if OIDC is not enabled
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const session = await getSession();
-    const { state, nonce, codeVerifier } = session;
+    const { state, nonce, codeVerifier, redirect: requestedRedirect } = session;
 
     if (!state || !nonce || !codeVerifier) {
       return NextResponse.redirect(new URL('/login?error=invalid_state', getBaseUrl()));
@@ -68,13 +69,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     session.state = undefined;
     session.nonce = undefined;
     session.codeVerifier = undefined;
+    session.redirect = undefined;
     await session.save();
 
-    // Redirect to home page
-    // SECURITY: We intentionally redirect to '/' and not to a user-supplied redirect
-    // parameter to avoid open redirect vulnerabilities. The login page handles
-    // redirect validation separately before initiating the auth flow.
-    return NextResponse.redirect(new URL('/', baseUrl));
+    // Send the user back to the page they originally requested (path + query
+    // string), after validating it again: the value was stored in the session
+    // from a user-controlled link.
+    return NextResponse.redirect(new URL(resolvePostLoginPath(requestedRedirect), baseUrl));
   } catch (error) {
     console.error('Callback error:', error);
     const baseUrl = getBaseUrl();

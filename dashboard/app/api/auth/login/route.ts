@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcClient } from '@/lib/oidc/client';
 import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
 import { getSession } from '@/lib/oidc/session';
+import { isSafeRedirect } from '@/lib/oidc/validation';
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   // Return 404 if OIDC is not enabled
   if (!isOidcEnabled()) {
     return new NextResponse('Not Found', { status: 404 });
@@ -30,6 +31,10 @@ export async function GET(): Promise<NextResponse> {
     session.state = state;
     session.nonce = nonce;
     session.codeVerifier = codeVerifier;
+    // Remember where to send the user after the callback. Validate it here and
+    // again in the callback: the value comes from a user-controlled link.
+    const requestedRedirect = request.nextUrl.searchParams.get('redirect') ?? undefined;
+    session.redirect = isSafeRedirect(requestedRedirect) ? requestedRedirect : undefined;
     await session.save();
 
     // Build authorization URL

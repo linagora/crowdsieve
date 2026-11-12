@@ -48,6 +48,8 @@ export interface SessionData {
   state?: string;
   nonce?: string;
   codeVerifier?: string;
+  /** Validated path (pathname + query string) to return to after sign-in */
+  redirect?: string;
 }
 
 // Determine if cookies should be secure (HTTPS only)
