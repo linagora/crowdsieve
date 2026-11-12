@@ -772,4 +772,13 @@ describe('Open Redirect Prevention', () => {
     expect(isSafeRedirect('evil.com')).toBe(false);
     expect(isSafeRedirect('../evil')).toBe(false);
   });
+
+  it('should reject backslash redirects, encoded or not', () => {
+    for (const p of ['/\\example.org', '/%5Cexample.org', '/%5cexample.org', '/\\\\example.org']) {
+      expect(isSafeRedirect(p)).toBe(false);
+    }
+    // The login page receives query parameters already percent-decoded.
+    expect(isSafeRedirect(decodeURIComponent('/%5Cexample.org'))).toBe(false);
+    expect(isSafeRedirect('/dashboard')).toBe(true);
+  });
 });
