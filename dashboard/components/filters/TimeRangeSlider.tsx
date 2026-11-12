@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { activeTimeRangePreset, type TimeRangePreset } from '@/lib/alertFilters';
 import type { DateRange } from 'react-day-picker';
 import {
   EMPTY_DAY_RANGE,
@@ -22,15 +23,16 @@ interface TimeRangeSliderProps {
   maxDate: Date;
   since: Date | null;
   until: Date | null;
-  onRangeChange: (since: Date | null, until: Date | null) => void;
+  range: TimeRangePreset | null;
+  onRangeChange: (since: Date | null, until: Date | null, range: TimeRangePreset | null) => void;
   isLoading?: boolean;
 }
 
 const PRESETS = [
-  { label: '24h', getValue: () => subHours(new Date(), 24) },
-  { label: '7d', getValue: () => subDays(new Date(), 7) },
-  { label: '30d', getValue: () => subDays(new Date(), 30) },
-  { label: 'All', getValue: () => null },
+  { id: '24h', label: '24h', getValue: () => subHours(new Date(), 24) },
+  { id: '7d', label: '7d', getValue: () => subDays(new Date(), 7) },
+  { id: '30d', label: '30d', getValue: () => subDays(new Date(), 30) },
+  { id: 'all', label: 'All', getValue: () => null },
 ] as const;
 
 export function TimeRangeSlider({
@@ -38,6 +40,7 @@ export function TimeRangeSlider({
   maxDate,
   since,
   until,
+  range,
   onRangeChange,
   isLoading = false,
 }: TimeRangeSliderProps) {
@@ -45,6 +48,10 @@ export function TimeRangeSlider({
   // Local draft while the popover is open: the filter is only applied once a
   // complete range is picked (two distinct days) or "Apply" is clicked.
   const [draftRange, setDraftRange] = useState<DayRangeDraft>(EMPTY_DAY_RANGE);
+
+  // A preset is identified by the stored choice, not by recomputing its date:
+  // `since` was computed at click time and would never match a new Date().
+  const activePreset = activeTimeRangePreset({ since, until, range });
 
   // Convert dates to slider values (0-100)
   const totalRange = maxDate.getTime() - minDate.getTime();
@@ -67,19 +74,19 @@ export function TimeRangeSlider({
   const handleSliderChange = (values: number[]) => {
     const newSince = values[0] > 0 ? sliderToDate(values[0]) : null;
     const newUntil = values[1] < 100 ? sliderToDate(values[1]) : null;
-    onRangeChange(newSince, newUntil);
+    onRangeChange(newSince, newUntil, null);
   };
 
-  const handlePresetClick = (getValue: () => Date | null) => {
-    const sinceDate = getValue();
-    onRangeChange(sinceDate, null);
+  const handlePresetClick = (preset: (typeof PRESETS)[number]) => {
+    const sinceDate = preset.getValue();
+    onRangeChange(sinceDate, null, preset.id === 'all' ? null : preset.id);
   };
 
   const handleCalendarSelect = (range: DateRange | undefined) => {
     const { draft, applied } = resolveDayRange(range);
     setDraftRange(draft);
     if (applied) {
-      onRangeChange(applied.since, applied.until);
+      onRangeChange(applied.since, applied.until, null);
       setCalendarOpen(false);
     }
   };
@@ -87,7 +94,7 @@ export function TimeRangeSlider({
   const handleCalendarApply = () => {
     const applied = draftToRange(draftRange);
     if (!applied) return;
-    onRangeChange(applied.since, applied.until);
+    onRangeChange(applied.since, applied.until, null);
     setCalendarOpen(false);
   };
 
@@ -109,18 +116,14 @@ export function TimeRangeSlider({
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1">
           {PRESETS.map((preset) => {
-            const presetDate = preset.getValue();
-            const isActive =
-              preset.label === 'All'
-                ? since === null && until === null
-                : since?.getTime() === presetDate?.getTime() && until === null;
+            const isActive = activePreset === preset.id;
 
             return (
               <Button
                 key={preset.label}
                 variant={isActive ? 'default' : 'secondary'}
                 size="sm"
-                onClick={() => handlePresetClick(preset.getValue)}
+                onClick={() => handlePresetClick(preset)}
               >
                 {preset.label}
               </Button>
