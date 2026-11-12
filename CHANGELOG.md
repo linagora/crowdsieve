@@ -9,38 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `scripts/qa-environment`: self-contained QA environment (build/start/stop scripts and a Docker Compose stack with CrowdSieve, a CrowdSec LAPI and Dex for OIDC) used to reproduce and check dashboard issues.
+- `scripts/qa-environment`: self-contained QA environment (CrowdSieve, CrowdSec LAPI and Dex) to reproduce and check dashboard issues.
 
 ### Changed
 
-- Dependencies refreshed from the lockfile (`@fastify/static` 10.1.10, `@fastify/send` 4.2.0, `eslint` 10.14.0, `typescript-eslint` 8.72.2). No manifest change.
-- Rebuilt with the current Alpine 3.21 base packages (`alpine-release`, `apk-tools`, `zlib`).
+- Dependencies and Alpine 3.21 base packages refreshed (`@fastify/static`, `@fastify/send`, `eslint`, `typescript-eslint`, `apk-tools`, `zlib`).
 
 ### Security
 
-- Dashboard: the post-login redirect now rejects backslashes, percent-encoded backslashes and control characters, which browsers normalize into a protocol-relative URL. This closes an open redirect on `/login?redirect=`.
-- Dashboard: unban audit rows now record the IP and scope of the deleted LAPI decision instead of the values supplied by the client.
-- Dashboard: a repeated `?redirect=` parameter no longer makes the login page fail with a 500.
+- Dashboard: `/login?redirect=` now rejects backslashes (including `%5C`) and control characters, closing an open redirect; repeated `redirect` parameters no longer cause a 500.
+- Dashboard: unban audit rows record the IP and scope of the deleted LAPI decision, not the client-supplied values.
 
 ### Fixed
 
-- Dashboard: the account menu button now has an accessible name and exposes its expanded state, so screen readers announce it when the display name is hidden on small screens.
-- Dashboard: the decision search form no longer overflows the card and the viewport on 390px-wide screens.
-- Dashboard: the selected time range preset (24h, 7d, 30d) is now highlighted; the choice is kept in the URL (`range`), so it survives reloads and shared links.
-- Dashboard: the alert calendar now applies ranges only once a complete selection is made, and a single day covers the whole day.
-- Dashboard: the alert detail Timing card renders dates in the browser's time zone.
-- Dashboard: selecting a scenario with a short search term (e.g. `ssh`) no longer lists unrelated scenarios.
-- Dashboard: non-numeric alert IDs now show the 404 page instead of a misleading "Cannot connect to API" error.
-- Dashboard: manual ban and unban audit rows are no longer labelled "Filtered" nor listed under the "Filtered" status.
-- Dashboard: alert history works for range (CIDR) alerts.
-- Dashboard: the page requested before signing in is preserved through OIDC, including its query string.
-- Dashboard: trusted-proxy entries accept any valid spelling of an IPv6 or IPv4-mapped address, and IPv4 octets with leading zeros are rejected.
-- SQLite/PostgreSQL: deleting an already deleted or unknown decision now returns 404 and records a single unban.
-- Signals: an alert without a `source` object no longer fails the whole batch with a 500.
-- Usage metrics: malformed components, non-string metadata, non-IP `@` suffixes and invalid timestamps no longer break persistence.
-- Analyzers: intervals longer than Node's timer limit (about 24 days) are rejected instead of running every millisecond; 30-day lookbacks remain valid.
-- Analyzers: whitelist entries are validated (CIDR prefix syntax), bare IPv6 entries are compared by value, and zone indexes or malformed groups never crash a run.
-- Config: numeric environment variables are validated instead of silently becoming `NaN`.
+- Dashboard: time range presets are highlighted, the calendar applies complete ranges only, alert dates use the browser time zone, and CIDR alert history works.
+- Dashboard: scenario search no longer returns unrelated scenarios; invalid alert IDs show the 404 page; audit rows are no longer labelled or filtered as "Filtered".
+- Dashboard: the page requested before OIDC sign-in is preserved with its query string; the account menu has an accessible name; the decision search form fits mobile screens.
+- Dashboard: trusted proxies accept any valid IPv6 or IPv4-mapped spelling, and IPv4 octets with leading zeros are rejected.
+- Proxy/API: deleting an unknown or already deleted decision returns 404 and records a single unban; alert lookups accept CIDR values; a signal without `source` no longer drops the whole batch.
+- Usage metrics, analyzers and config: malformed components no longer break persistence; whitelists, IPv6 groups and zone indexes are validated; intervals above Node's timer limit are rejected; numeric environment variables are validated.
 - IP info: WHOIS responses with lone-CR line endings and IANA `refer:` referrals are parsed correctly.
 
 ## [0.6.8] - 2026-10-27
