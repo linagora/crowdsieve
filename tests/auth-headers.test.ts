@@ -318,6 +318,15 @@ describe('isTrustedProxy', () => {
     expect(isTrustedProxy('::ffff:10.0.0.1')).toBe(true);
   });
 
+  it('rejects IPv4 client addresses with leading-zero octets', async () => {
+    process.env.TRUSTED_PROXY_IPS = '10.0.0.0/8';
+    const { isTrustedProxy } = await import('../dashboard/lib/auth/trust.js');
+    expect(isTrustedProxy('10.0.0.1')).toBe(true);
+    expect(isTrustedProxy('010.0.0.1')).toBe(false);
+    expect(isTrustedProxy('10.0.0.01')).toBe(false);
+    expect(isTrustedProxy('10.00.0.1')).toBe(false);
+  });
+
   it('drops empty entries from the comma-separated list', async () => {
     process.env.TRUSTED_PROXY_IPS = ',10.0.0.1,,, 10.0.0.2,';
     const { getTrustedProxyIps, isTrustedProxy } = await import(
