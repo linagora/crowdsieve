@@ -168,15 +168,15 @@ describe('Manual ban audit event recording', () => {
         'SELECT scenario, local_audit, actor, message, source_ip, filtered, forwarded_to_capi, raw_json FROM alerts WHERE id = ?'
       )
       .get(id) as {
-        scenario: string;
-        local_audit: number;
-        actor: string | null;
-        message: string;
-        source_ip: string | null;
-        filtered: number;
-        forwarded_to_capi: number;
-        raw_json: string;
-      };
+      scenario: string;
+      local_audit: number;
+      actor: string | null;
+      message: string;
+      source_ip: string | null;
+      filtered: number;
+      forwarded_to_capi: number;
+      raw_json: string;
+    };
 
     expect(row.scenario).toBe('crowdsieve/manual-audit');
     // SQLite stores booleans as 0/1
@@ -222,9 +222,9 @@ describe('Manual ban audit event recording', () => {
       actor: 'bob',
     });
 
-    const row = sqlite
-      .prepare('SELECT raw_json FROM alerts WHERE id = ?')
-      .get(id) as { raw_json: string };
+    const row = sqlite.prepare('SELECT raw_json FROM alerts WHERE id = ?').get(id) as {
+      raw_json: string;
+    };
     const parsed = JSON.parse(row.raw_json) as { decisionId: number | null; duration: string };
     expect(parsed.decisionId).toBeNull();
     expect(parsed.duration).toBe('1h');
@@ -273,9 +273,9 @@ describe('Manual ban audit event recording', () => {
       duration: '4h',
       actor: '  alice@example.com  ',
     });
-    const row = sqlite
-      .prepare('SELECT actor FROM alerts WHERE id = ?')
-      .get(id) as { actor: string | null };
+    const row = sqlite.prepare('SELECT actor FROM alerts WHERE id = ?').get(id) as {
+      actor: string | null;
+    };
     expect(row.actor).toBe('alice@example.com');
 
     const longActor = 'a'.repeat(500);
@@ -287,9 +287,9 @@ describe('Manual ban audit event recording', () => {
       duration: '4h',
       actor: longActor,
     });
-    const row2 = sqlite
-      .prepare('SELECT actor FROM alerts WHERE id = ?')
-      .get(id2) as { actor: string | null };
+    const row2 = sqlite.prepare('SELECT actor FROM alerts WHERE id = ?').get(id2) as {
+      actor: string | null;
+    };
     expect(row2.actor).toHaveLength(MAX_ACTOR_LENGTH);
   });
 
@@ -304,7 +304,9 @@ describe('Manual ban audit event recording', () => {
     });
 
     const row = sqlite
-      .prepare('SELECT source_scope, source_value, source_ip, source_range FROM alerts WHERE id = ?')
+      .prepare(
+        'SELECT source_scope, source_value, source_ip, source_range FROM alerts WHERE id = ?'
+      )
       .get(id) as {
       source_scope: string;
       source_value: string;
@@ -414,6 +416,58 @@ describe('Stats exclude manual-ban audit events; listings include them', () => {
 
     const all = await storage.queryAlerts({});
     expect(all).toHaveLength(3);
+  });
+
+  it('excludes audit rows from the filtered and forwarded status queries', async () => {
+    // Two real alerts: one rejected by the filters, one passed through.
+    const filteredAlert = createBanAlert({ uuid: 'real-filtered' });
+    const passedAlert = createBanAlert({ uuid: 'real-passed' });
+    await storage.storeAlerts(
+      [filteredAlert, passedAlert],
+      [
+        {
+          alertIndex: 0,
+          scenario: filteredAlert.scenario,
+          filtered: true,
+          matchedFilters: [{ matched: true, filterName: 'block', reason: 'blocked source' }],
+        },
+        {
+          alertIndex: 1,
+          scenario: passedAlert.scenario,
+          filtered: false,
+          matchedFilters: [],
+        },
+      ]
+    );
+
+    // Audit rows are stored with filtered=true / forwardedToCapi=false.
+    await storage.recordManualBanAuditEvent({
+      ip: '203.0.113.92',
+      scope: 'ip',
+      comment: 'manual ban',
+      server: 'lapi',
+      duration: '4h',
+      actor: 'alice',
+    });
+    await storage.recordUnbanEvent({
+      ip: '203.0.113.93',
+      scope: 'ip',
+      comment: 'unban',
+      server: 'lapi',
+      decisionId: 2,
+      actor: 'bob',
+    });
+
+    // Only the real filtered alert belongs to the "Filtered" status.
+    const filtered = await storage.queryAlerts({ filtered: true });
+    expect(filtered.map((row) => row.uuid)).toEqual(['real-filtered']);
+
+    // Audit rows are not "alerts that were not forwarded" either.
+    const notForwarded = await storage.queryAlerts({ forwardedToCapi: false });
+    expect(notForwarded.map((row) => row.uuid).sort()).toEqual(['real-filtered', 'real-passed']);
+
+    // The unfiltered listing still surfaces every row (timeline / history).
+    expect(await storage.queryAlerts({})).toHaveLength(4);
   });
 
   it('surfaces unban + manual ban audit rows in per-IP history (queryAlerts by sourceIp)', async () => {

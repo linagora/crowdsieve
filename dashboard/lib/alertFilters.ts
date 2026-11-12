@@ -69,8 +69,10 @@ export function writeFilterParams(params: URLSearchParams, filters: FilterState)
  * alerts while the filtered list is being fetched (e.g. after a "back" navigation).
  */
 export function alertMatchesFilters(alert: StoredAlert, filters: FilterState): boolean {
-  if (filters.status === 'filtered' && !alert.filtered) return false;
-  if (filters.status === 'forwarded' && !alert.forwardedToCapi) return false;
+  // Locally-recorded audit rows are operator actions, not alerts rejected by
+  // the filter rules, even though they are stored with filtered=true.
+  if (filters.status === 'filtered' && (!alert.filtered || alert.localAudit)) return false;
+  if (filters.status === 'forwarded' && (!alert.forwardedToCapi || alert.localAudit)) return false;
   if (filters.machineId && alert.machineId !== filters.machineId) return false;
   // The API uses a LIKE '%...%' match; stay case-insensitive so this never
   // hides an alert the API would return

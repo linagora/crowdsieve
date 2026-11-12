@@ -65,6 +65,33 @@ describe('alertMatchesFilters', () => {
     expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, scenario: 'http' })).toBe(false);
   });
 
+  it('should exclude locally-recorded audit rows from status filters', () => {
+    // Audit rows are stored with filtered=true defensively, but they are
+    // operator actions, not alerts rejected by the filter rules.
+    const manualAudit = makeAlert({
+      localAudit: true,
+      scenario: 'crowdsieve/manual-audit',
+      filtered: true,
+      forwardedToCapi: false,
+    });
+    expect(alertMatchesFilters(manualAudit, { ...DEFAULT_FILTERS, status: 'filtered' })).toBe(
+      false
+    );
+    expect(alertMatchesFilters(manualAudit, { ...DEFAULT_FILTERS, status: 'forwarded' })).toBe(
+      false
+    );
+    expect(alertMatchesFilters(manualAudit, DEFAULT_FILTERS)).toBe(true);
+
+    const unban = makeAlert({
+      localAudit: true,
+      scenario: 'crowdsieve/unban',
+      filtered: true,
+      forwardedToCapi: true,
+    });
+    expect(alertMatchesFilters(unban, { ...DEFAULT_FILTERS, status: 'filtered' })).toBe(false);
+    expect(alertMatchesFilters(unban, { ...DEFAULT_FILTERS, status: 'forwarded' })).toBe(false);
+  });
+
   it('should filter by time range', () => {
     const alert = makeAlert();
     const before = new Date('2026-10-19T00:00:00.000Z');

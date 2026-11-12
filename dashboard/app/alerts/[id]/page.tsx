@@ -7,6 +7,7 @@ import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { ApiError } from '@/components/ApiError';
 import { parseReturnPath } from '@/lib/alertFilters';
+import { getAlertKind, showsFilteredBadge, showsForwardedBadge } from '@/lib/alertStatus';
 
 // Read env vars inside functions to ensure they're evaluated at runtime (not build time)
 function getApiConfig() {
@@ -100,6 +101,7 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
   }
 
   const alert = result.data;
+  const alertKind = getAlertKind(alert);
 
   return (
     <div className="space-y-6">
@@ -128,12 +130,27 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
             )}
           </div>
           <div className="flex gap-2">
-            {alert.filtered && (
+            {alertKind === 'unban' && (
+              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                Unban
+              </span>
+            )}
+            {alertKind === 'manual-ban' && (
+              <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium">
+                Manual ban
+              </span>
+            )}
+            {alertKind === 'audit' && (
+              <span className="px-3 py-1 bg-slate-100 text-slate-800 rounded-full text-sm font-medium">
+                Audit
+              </span>
+            )}
+            {showsFilteredBadge(alert) && (
               <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">
                 Filtered
               </span>
             )}
-            {alert.forwardedToCapi && (
+            {showsForwardedBadge(alert) && (
               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                 Forwarded
               </span>

@@ -608,11 +608,17 @@ export function createStorage(): AlertStorage {
       const { db, schema, isPostgres } = getDatabaseContext();
       const conditions = [];
 
+      // Locally-recorded audit rows are stored with `filtered=true` so they can
+      // never be forwarded, but they are operator actions rather than alerts
+      // rejected by the filter rules. Keep them out of the filtered/forwarded
+      // conditions, like the stats queries do.
+      const notLocalAudit = sql`(${schema.alerts.localAudit} IS NULL OR ${schema.alerts.localAudit} = ${isPostgres ? sql`FALSE` : sql`0`})`;
+
       if (query.filtered !== undefined) {
-        conditions.push(eq(schema.alerts.filtered, query.filtered));
+        conditions.push(eq(schema.alerts.filtered, query.filtered), notLocalAudit);
       }
       if (query.forwardedToCapi !== undefined) {
-        conditions.push(eq(schema.alerts.forwardedToCapi, query.forwardedToCapi));
+        conditions.push(eq(schema.alerts.forwardedToCapi, query.forwardedToCapi), notLocalAudit);
       }
       if (query.scenario) {
         const escaped = escapeLikePattern(query.scenario);
