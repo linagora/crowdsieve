@@ -182,7 +182,8 @@ async function queryWhoisServer(server: string, query: string): Promise<string> 
  * Exported for testing
  */
 export function parseWhoisResponse(raw: string): WhoisSummary {
-  const lines = raw.split('\n');
+  // WHOIS lines end with CRLF (RFC 3912), but some servers emit bare LF or CR.
+  const lines = raw.split(/\r\n|\r|\n/);
   const summary: WhoisSummary = {};
 
   for (const line of lines) {

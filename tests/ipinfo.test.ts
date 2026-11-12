@@ -115,6 +115,19 @@ organization:   Second Org
       const result = parseWhoisResponse(response);
       expect(result.country).toBe('DE');
     });
+
+    it('should treat CRLF, LF and a lone CR as line endings', () => {
+      const response = 'netname: EXAMPLE-NET\r\ncountry: fr\rdescr: Example\n';
+
+      const result = parseWhoisResponse(response);
+
+      expect(result.netName).toBe('EXAMPLE-NET');
+      expect(result.country).toBe('FR');
+      expect(result.descr).toBe('Example');
+      for (const value of Object.values(result)) {
+        expect(value).not.toMatch(/[\r\n]/);
+      }
+    });
   });
 
   describe('detectRir', () => {
