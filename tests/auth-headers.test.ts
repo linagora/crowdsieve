@@ -318,6 +318,18 @@ describe('isTrustedProxy', () => {
     expect(isTrustedProxy('::ffff:10.0.0.1')).toBe(true);
   });
 
+  it('matches an exact IPv6 / IPv4-mapped entry whatever its spelling', async () => {
+    process.env.TRUSTED_PROXY_IPS = '0:0:0:0:0:0:0:1, [0:0:0:0:0:ffff:10.0.0.1], ::ffff:c0a8:10a';
+    const { isTrustedProxy } = await import('../dashboard/lib/auth/trust.js');
+    expect(isTrustedProxy('::1')).toBe(true);
+    expect(isTrustedProxy('::0001')).toBe(true);
+    expect(isTrustedProxy('10.0.0.1')).toBe(true);
+    expect(isTrustedProxy('::ffff:10.0.0.1')).toBe(true);
+    expect(isTrustedProxy('192.168.1.10')).toBe(true);
+    expect(isTrustedProxy('::2')).toBe(false);
+    expect(isTrustedProxy('10.0.0.2')).toBe(false);
+  });
+
   it('drops empty entries from the comma-separated list', async () => {
     process.env.TRUSTED_PROXY_IPS = ',10.0.0.1,,, 10.0.0.2,';
     const { getTrustedProxyIps, isTrustedProxy } = await import(
