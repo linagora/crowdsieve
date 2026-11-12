@@ -11,6 +11,7 @@
  * index makes retransmitted blocks no-ops via ON CONFLICT DO NOTHING.
  */
 
+import net from 'node:net';
 import type { NewBouncerMetric } from '../storage/index.js';
 
 export type ComponentKind = 'remediation' | 'log_processor';
@@ -141,7 +142,18 @@ function sumItemsByName(items: MetricsItem[]): Record<HotCounterKey, number> {
  * accumulate consistently across reboots.
  */
 function canonicalizeBouncerName(name: string): string {
-  return name.replace(/@(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]|[0-9a-f:]+)$/i, '');
+  const match = /@(\[[^\]]+\]|[^@]+)$/.exec(name);
+  if (!match) return name;
+
+  const captured = match[1];
+  const address =
+    captured.startsWith('[') && captured.endsWith(']') ? captured.slice(1, -1) : captured;
+  // Only strip a suffix that really is an IP address, not any hex word.
+  if (net.isIP(address) === 0) return name;
+
+  const stripped = name.slice(0, match.index);
+  // An IP-only name would otherwise become empty: keep the raw name.
+  return stripped || name;
 }
 
 /**

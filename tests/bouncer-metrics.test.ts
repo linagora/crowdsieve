@@ -837,6 +837,26 @@ describe('buildRowsFromPayload (parser)', () => {
   });
 });
 
+describe('buildRowsFromPayload bouncer name canonicalization', () => {
+  const nameOf = (name: string) =>
+    buildRowsFromPayload('lapi-1', { remediation_components: [{ name }] }, 1762862400000).map(
+      (r) => r.bouncerName
+    );
+
+  it('never yields an empty bouncer name', () => {
+    for (const n of ['@1.2.3.4', '@[::1]', '@cafe', '@::']) {
+      for (const b of nameOf(n)) expect(b).not.toBe('');
+    }
+  });
+
+  it('only strips an IP address suffix', () => {
+    expect(nameOf('fw@172.17.0.2')).toEqual(['fw']);
+    expect(nameOf('nginx@[2001:db8::1]')).toEqual(['nginx']);
+    expect(nameOf('bouncer@cafe')).toEqual(['bouncer@cafe']);
+    expect(nameOf('fw@12')).toEqual(['fw@12']);
+  });
+});
+
 describe('Bouncer metrics storage', () => {
   let storage: AlertStorage;
 
