@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { StoredAlert } from '@/lib/types';
+import { getAlertKind, showsFilteredBadge, showsForwardedBadge } from '@/lib/alertStatus';
 import { clsx } from 'clsx';
 
 interface AlertCardProps {
@@ -27,19 +28,21 @@ export function AlertCard({ alert, onClick }: AlertCardProps) {
   // distinguishes them; both use a distinct border color and replace the
   // regular filtered/forwarded/replicated badge stack with a single audit
   // badge so the timeline reads unambiguously.
-  const isUnban = !!alert.localAudit && alert.scenario === 'crowdsieve/unban';
-  const isManualAudit = !!alert.localAudit && alert.scenario === 'crowdsieve/manual-audit';
+  const kind = getAlertKind(alert);
 
   // Border color reflects the alert's primary state. Audit events take
   // priority over filtered/forwarded so they're visually distinct in the
   // global timeline.
-  const borderClass = isUnban
-    ? 'border-l-purple-500'
-    : isManualAudit
-      ? 'border-l-orange-500'
-      : alert.filtered
-        ? 'border-l-yellow-500'
-        : 'border-l-green-500';
+  const borderClass =
+    kind === 'unban'
+      ? 'border-l-purple-500'
+      : kind === 'manual-ban'
+        ? 'border-l-orange-500'
+        : kind === 'audit'
+          ? 'border-l-slate-400'
+          : alert.filtered
+            ? 'border-l-yellow-500'
+            : 'border-l-green-500';
 
   return (
     <div
@@ -97,25 +100,30 @@ export function AlertCard({ alert, onClick }: AlertCardProps) {
             replicated badges since the row is an audit entry, not a real
             CrowdSec alert. */}
         <div className="flex flex-col items-end gap-2">
-          {isUnban ? (
+          {kind === 'unban' ? (
             <span className="badge bg-purple-100 text-purple-800">
               <ShieldOff className="w-3 h-3 mr-1" />
               Unban
             </span>
-          ) : isManualAudit ? (
+          ) : kind === 'manual-ban' ? (
             <span className="badge bg-orange-100 text-orange-800">
               <ShieldPlus className="w-3 h-3 mr-1" />
               Manual ban
             </span>
+          ) : kind === 'audit' ? (
+            <span className="badge bg-slate-100 text-slate-800">
+              <User className="w-3 h-3 mr-1" />
+              Audit
+            </span>
           ) : (
             <>
-              {alert.filtered && (
+              {showsFilteredBadge(alert) && (
                 <span className="badge bg-yellow-100 text-yellow-800">
                   <Filter className="w-3 h-3 mr-1" />
                   Filtered
                 </span>
               )}
-              {alert.forwardedToCapi && (
+              {showsForwardedBadge(alert) && (
                 <span className="badge bg-green-100 text-green-800">
                   <Send className="w-3 h-3 mr-1" />
                   Forwarded
