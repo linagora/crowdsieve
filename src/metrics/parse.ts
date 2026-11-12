@@ -163,7 +163,9 @@ function buildRowsForComponent(
   kind: ComponentKind,
   fallbackCollectedAt: number
 ): NewBouncerMetric[] {
-  const rawName = component.name?.trim();
+  // The usage-metrics body schema is open: entries may be null or primitives.
+  if (!component || typeof component !== 'object') return [];
+  const rawName = typeof component.name === 'string' ? component.name.trim() : '';
   if (!rawName) return [];
   const bouncerName = canonicalizeBouncerName(rawName);
 
@@ -277,11 +279,16 @@ export function buildRowsFromPayload(
   payload: UsageMetricsPayload,
   collectedAt: number
 ): NewBouncerMetric[] {
+  if (!payload || typeof payload !== 'object') return [];
   const rows: NewBouncerMetric[] = [];
-  for (const component of payload.remediation_components ?? []) {
+  const remediation = Array.isArray(payload.remediation_components)
+    ? payload.remediation_components
+    : [];
+  const logProcessors = Array.isArray(payload.log_processors) ? payload.log_processors : [];
+  for (const component of remediation) {
     rows.push(...buildRowsForComponent(lapiServerName, component, 'remediation', collectedAt));
   }
-  for (const component of payload.log_processors ?? []) {
+  for (const component of logProcessors) {
     rows.push(...buildRowsForComponent(lapiServerName, component, 'log_processor', collectedAt));
   }
   return rows;
