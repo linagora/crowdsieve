@@ -3,6 +3,7 @@ import {
   DEFAULT_FILTERS,
   alertDetailHref,
   alertMatchesFilters,
+  isValidAlertId,
   parseFilterParams,
   parseReturnPath,
   writeFilterParams,
@@ -105,5 +106,20 @@ describe('alertDetailHref', () => {
       '/alerts/42?from=%2Falerts%3Fmachine%3Dsrv-01%26status%3Dfiltered'
     );
     expect(alertDetailHref(42, undefined)).toBe('/alerts/42');
+  });
+});
+
+describe('isValidAlertId', () => {
+  it('should accept positive integer ids', () => {
+    for (const id of ['1', '42', '999999']) {
+      expect(isValidAlertId(id)).toBe(true);
+    }
+  });
+
+  it('should reject ids the proxy would answer with a 400', () => {
+    // Regression for #72: these rendered "Cannot Connect to API" instead of 404.
+    for (const id of ['abc', '-1', '1.5', '0', '01', ' 1', '1 ', '+1', '1e3', '']) {
+      expect(isValidAlertId(id)).toBe(false);
+    }
   });
 });
