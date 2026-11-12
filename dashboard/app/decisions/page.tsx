@@ -227,7 +227,7 @@ function DecisionSearchContent() {
             value={ip}
             onChange={(e) => setIp(e.target.value)}
             placeholder="Enter IP address (e.g., 192.168.1.1)"
-            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary font-mono"
+            className="flex-1 min-w-0 px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crowdsec-primary font-mono"
           />
           <Button type="submit" disabled={searching || !ip.trim()}>
             {searching ? (
