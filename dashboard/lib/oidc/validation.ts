@@ -24,8 +24,8 @@ const UNSAFE_REDIRECT_CHARS = /[\\\u0000-\u001f\u007f]|%5c/i;
  * @param path - The path to validate
  * @returns true if the path is safe for redirect, false otherwise
  */
-export function isSafeRedirect(path: string | undefined): path is string {
-  if (!path) return false;
+export function isSafeRedirect(path: unknown): path is string {
+  if (typeof path !== 'string' || !path) return false;
   // Reject any path that starts with a URL scheme
   if (UNSAFE_URL_SCHEME.test(path)) return false;
   // Reject characters the WHATWG parser rewrites or drops before parsing

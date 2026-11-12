@@ -799,4 +799,9 @@ describe('Open Redirect Prevention', () => {
       expect(new URL(p, 'https://dashboard.example/').origin).toBe('https://dashboard.example');
     }
   });
+
+  it('should reject non-string values (repeated query parameter)', () => {
+    expect(() => isSafeRedirect(['/a', '/b'] as unknown as string)).not.toThrow();
+    expect(isSafeRedirect(['/a', '/b'] as unknown as string)).toBe(false);
+  });
 });
