@@ -63,6 +63,35 @@ const HOT_COUNTER_NAMES = {
 type HotCounterKey = (typeof HOT_COUNTER_NAMES)[keyof typeof HOT_COUNTER_NAMES];
 
 /**
+ * Largest timestamp (ms) a JavaScript Date can represent. `utc_now_timestamp`
+ * values beyond it are unusable and fall back to the synthetic stamp.
+ */
+const MAX_COLLECTED_AT_MS = 8_640_000_000_000_000;
+
+/**
+ * Convert a block's `meta.utc_now_timestamp` (Unix seconds) to the row's
+ * `collectedAt` (Unix ms).
+ *
+ * Only a finite, positive, safe integer within the Date range is accepted;
+ * fractions are rounded. Anything else falls back to the unique synthetic
+ * stamp derived from the caller's fallback and the block index.
+ */
+function blockCollectedAt(
+  meta: MetricsBlock['meta'],
+  fallbackCollectedAt: number,
+  blockIndex: number
+): number {
+  const raw = meta?.utc_now_timestamp;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const ms = Math.round(raw * 1000);
+    if (Number.isSafeInteger(ms) && ms > 0 && ms <= MAX_COLLECTED_AT_MS) {
+      return ms;
+    }
+  }
+  return fallbackCollectedAt + blockIndex;
+}
+
+/**
  * Determine whether the `metrics` array uses the block form
  * (`Array<{ items?: [], meta?: {...} }>`) or the flat item form
  * (`Array<{ name, value, ... }>`).
@@ -210,10 +239,7 @@ function buildRowsForComponent(
       // Each block needs a UNIQUE collectedAt (the unique index requires it).
       // Prefer meta.utc_now_timestamp; otherwise synthesize a unique stamp by
       // offsetting the fallback by the block index to keep all rows insertable.
-      const ts =
-        typeof block.meta?.utc_now_timestamp === 'number'
-          ? block.meta.utc_now_timestamp * 1000
-          : fallbackCollectedAt + blockIndex;
+      const ts = blockCollectedAt(block.meta, fallbackCollectedAt, blockIndex);
 
       rows.push({
         lapiServerName,
