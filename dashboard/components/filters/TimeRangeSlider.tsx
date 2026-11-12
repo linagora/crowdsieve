@@ -9,6 +9,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
+import {
+  EMPTY_DAY_RANGE,
+  draftFromFilter,
+  draftToRange,
+  resolveDayRange,
+  type DayRangeDraft,
+} from '@/lib/timeRange';
 
 interface TimeRangeSliderProps {
   minDate: Date;
@@ -35,6 +42,9 @@ export function TimeRangeSlider({
   isLoading = false,
 }: TimeRangeSliderProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // Local draft while the popover is open: the filter is only applied once a
+  // complete range is picked (two distinct days) or "Apply" is clicked.
+  const [draftRange, setDraftRange] = useState<DayRangeDraft>(EMPTY_DAY_RANGE);
 
   // Convert dates to slider values (0-100)
   const totalRange = maxDate.getTime() - minDate.getTime();
@@ -66,12 +76,24 @@ export function TimeRangeSlider({
   };
 
   const handleCalendarSelect = (range: DateRange | undefined) => {
-    if (range) {
-      onRangeChange(range.from || null, range.to || null);
-    }
-    if (range?.from && range?.to) {
+    const { draft, applied } = resolveDayRange(range);
+    setDraftRange(draft);
+    if (applied) {
+      onRangeChange(applied.since, applied.until);
       setCalendarOpen(false);
     }
+  };
+
+  const handleCalendarApply = () => {
+    const applied = draftToRange(draftRange);
+    if (!applied) return;
+    onRangeChange(applied.since, applied.until);
+    setCalendarOpen(false);
+  };
+
+  const handleCalendarOpenChange = (open: boolean) => {
+    if (open) setDraftRange(draftFromFilter(since, until));
+    setCalendarOpen(open);
   };
 
   const formatDateDisplay = (date: Date | null, fallback: string): string => {
@@ -106,7 +128,7 @@ export function TimeRangeSlider({
           })}
         </div>
 
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+        <Popover open={calendarOpen} onOpenChange={handleCalendarOpenChange}>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm">
               <CalendarIcon className="h-4 w-4 mr-2" />
@@ -116,11 +138,23 @@ export function TimeRangeSlider({
           <PopoverContent className="w-auto p-0" align="end">
             <Calendar
               mode="range"
-              selected={{ from: since || undefined, to: until || undefined }}
+              selected={{
+                from: draftRange.from || undefined,
+                to: draftRange.to || undefined,
+              }}
               onSelect={handleCalendarSelect}
+              resetOnSelect
               numberOfMonths={2}
               defaultMonth={since || subDays(new Date(), 30)}
             />
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 p-2">
+              <Button variant="ghost" size="sm" onClick={() => setCalendarOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleCalendarApply} disabled={!draftRange.from}>
+                Apply
+              </Button>
+            </div>
           </PopoverContent>
         </Popover>
       </div>

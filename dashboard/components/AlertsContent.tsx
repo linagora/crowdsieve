@@ -71,7 +71,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
           </div>
           <div className="text-right">
             <span className="text-sm text-slate-500">
-              {alerts.length} result{alerts.length > 1 ? 's' : ''}
+              {alerts.length} result{alerts.length === 1 ? '' : 's'}
             </span>
             <div className="text-xs text-slate-400">
               Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}

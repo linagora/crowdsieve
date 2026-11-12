@@ -110,7 +110,7 @@ export function DashboardContent({ initialAlerts, stats }: DashboardContentProps
             </div>
             <div className="text-right">
               <span className="text-sm text-slate-500">
-                {displayedAlerts.length} result{displayedAlerts.length > 1 ? 's' : ''}
+                {displayedAlerts.length} result{displayedAlerts.length === 1 ? '' : 's'}
               </span>
               <div className="text-xs text-slate-400">
                 Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
