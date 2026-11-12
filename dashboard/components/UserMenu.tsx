@@ -78,6 +78,8 @@ export function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-label={`Account menu (${displayName})`}
+        aria-expanded={isOpen}
         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
       >
         {isValidPictureUrl(session.user.picture) ? (
