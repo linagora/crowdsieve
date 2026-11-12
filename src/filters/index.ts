@@ -3,6 +3,21 @@ import type { FilterRule } from '../config/index.js';
 import type { Filter, FilterContext, FilterResult, FilterEngineResult } from './types.js';
 import { ExpressionFilter } from './implementations/expression.js';
 
+/**
+ * Extract the source IP from an alert.
+ *
+ * The signals schema accepts any object, so `source` may be missing or hold a
+ * non-object value. Only a string is usable as an IP; anything else is
+ * reported as undefined.
+ */
+function extractSourceIp(alert: Alert): string | undefined {
+  const source = alert.source as unknown;
+  if (!source || typeof source !== 'object') return undefined;
+  const { ip, value } = source as { ip?: unknown; value?: unknown };
+  const candidate = ip || value;
+  return typeof candidate === 'string' ? candidate : undefined;
+}
+
 export class FilterEngine {
   private filters: Filter[] = [];
   private mode: 'block' | 'allow';
@@ -57,7 +72,7 @@ export class FilterEngine {
       result.filterDetails.push({
         alertIndex: i,
         scenario: alert.scenario,
-        sourceIp: alert.source.ip || alert.source.value,
+        sourceIp: extractSourceIp(alert),
         filtered: shouldFilter,
         matchedFilters,
       });
