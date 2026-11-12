@@ -235,6 +235,44 @@ export function loadConfig(configPath: string): Config {
   }
 }
 
+interface IntegerEnvBounds {
+  min?: number;
+  max?: number;
+}
+
+const PORT_BOUNDS: IntegerEnvBounds = { min: 1, max: 65535 };
+const POSITIVE_BOUNDS: IntegerEnvBounds = { min: 1 };
+const NON_NEGATIVE_BOUNDS: IntegerEnvBounds = { min: 0 };
+
+/**
+ * Read an integer environment variable.
+ *
+ * Unlike a bare parseInt, this rejects empty, non-numeric and partially numeric
+ * values ("abc", "30s", "1.5") instead of yielding NaN or silently truncating
+ * them, and enforces explicit bounds.
+ */
+function readIntegerEnv(name: string, defaultValue: string, bounds: IntegerEnvBounds = {}): number {
+  const raw = process.env[name] ?? defaultValue;
+
+  if (!/^[+-]?\d+$/.test(raw)) {
+    throw new Error(`Invalid ${name} value "${raw}": expected an integer`);
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`Invalid ${name} value "${raw}": expected a safe integer`);
+  }
+
+  if (bounds.min !== undefined && value < bounds.min) {
+    throw new Error(`Invalid ${name} value "${raw}": must be at least ${bounds.min}`);
+  }
+  if (bounds.max !== undefined && value > bounds.max) {
+    throw new Error(`Invalid ${name} value "${raw}": must be at most ${bounds.max}`);
+  }
+
+  return value;
+}
+
 export function loadConfigFromEnv(): Partial<Config> {
   // Build PostgreSQL config only if any POSTGRES_* env vars are set
   const hasPostgresConfig =
@@ -246,27 +284,27 @@ export function loadConfigFromEnv(): Partial<Config> {
   const postgresConfig = hasPostgresConfig
     ? {
         host: process.env.POSTGRES_HOST || 'localhost',
-        port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
+        port: readIntegerEnv('POSTGRES_PORT', '5432', PORT_BOUNDS),
         database: process.env.POSTGRES_DATABASE,
         user: process.env.POSTGRES_USER,
         password: process.env.POSTGRES_PASSWORD,
         ssl: process.env.POSTGRES_SSL === 'true',
         ssl_reject_unauthorized: process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED !== 'false', // default true
-        pool_size: parseInt(process.env.POSTGRES_POOL_SIZE || '10', 10),
+        pool_size: readIntegerEnv('POSTGRES_POOL_SIZE', '10', POSITIVE_BOUNDS),
       }
     : undefined;
 
   return {
     proxy: {
-      listen_port: parseInt(process.env.PROXY_PORT || '8080', 10),
+      listen_port: readIntegerEnv('PROXY_PORT', '8080', PORT_BOUNDS),
       capi_url: process.env.CAPI_URL || 'https://api.crowdsec.net',
-      timeout_ms: parseInt(process.env.PROXY_TIMEOUT_MS || '30000', 10),
+      timeout_ms: readIntegerEnv('PROXY_TIMEOUT_MS', '30000', POSITIVE_BOUNDS),
       forward_enabled: process.env.FORWARD_ENABLED !== 'false',
     },
     storage: {
       type: (process.env.STORAGE_TYPE as 'sqlite' | 'postgres') || 'sqlite',
       path: process.env.DATABASE_PATH || './data/crowdsieve.db',
-      retention_days: parseInt(process.env.RETENTION_DAYS || '30', 10),
+      retention_days: readIntegerEnv('RETENTION_DAYS', '30', NON_NEGATIVE_BOUNDS),
       postgres: postgresConfig,
     },
     logging: {
@@ -275,13 +313,22 @@ export function loadConfigFromEnv(): Partial<Config> {
     },
     client_validation: {
       enabled: process.env.CLIENT_VALIDATION_ENABLED === 'true',
-      cache_ttl_seconds: parseInt(process.env.CLIENT_VALIDATION_CACHE_TTL || '604800', 10),
-      cache_ttl_error_seconds: parseInt(
-        process.env.CLIENT_VALIDATION_CACHE_TTL_ERROR || '3600',
-        10
+      cache_ttl_seconds: readIntegerEnv('CLIENT_VALIDATION_CACHE_TTL', '604800', POSITIVE_BOUNDS),
+      cache_ttl_error_seconds: readIntegerEnv(
+        'CLIENT_VALIDATION_CACHE_TTL_ERROR',
+        '3600',
+        POSITIVE_BOUNDS
       ),
-      validation_timeout_ms: parseInt(process.env.CLIENT_VALIDATION_TIMEOUT_MS || '5000', 10),
-      max_memory_entries: parseInt(process.env.CLIENT_VALIDATION_MAX_MEMORY_ENTRIES || '1000', 10),
+      validation_timeout_ms: readIntegerEnv(
+        'CLIENT_VALIDATION_TIMEOUT_MS',
+        '5000',
+        POSITIVE_BOUNDS
+      ),
+      max_memory_entries: readIntegerEnv(
+        'CLIENT_VALIDATION_MAX_MEMORY_ENTRIES',
+        '1000',
+        POSITIVE_BOUNDS
+      ),
       fail_closed: process.env.CLIENT_VALIDATION_FAIL_CLOSED === 'true',
     },
   };

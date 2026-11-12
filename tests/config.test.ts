@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
-import { loadFiltersFromDirectory, loadConfig } from '../src/config/index.js';
+import { loadFiltersFromDirectory, loadConfig, loadConfigFromEnv } from '../src/config/index.js';
 
 const TEST_DIR = join(process.cwd(), 'tests', 'fixtures', 'filters.d');
 
@@ -434,5 +434,111 @@ storage:
     const config = loadConfig(configPath);
     // With default syntax, should use fallback value
     expect(config.storage.path).toBe('./data/fallback.db');
+  });
+});
+
+describe('loadConfigFromEnv numeric validation', () => {
+  // POSTGRES_HOST enables the PostgreSQL block, which holds two of the nine variables.
+  const ENV_VARS = [
+    'PROXY_PORT',
+    'PROXY_TIMEOUT_MS',
+    'POSTGRES_HOST',
+    'POSTGRES_PORT',
+    'POSTGRES_POOL_SIZE',
+    'RETENTION_DAYS',
+    'CLIENT_VALIDATION_CACHE_TTL',
+    'CLIENT_VALIDATION_CACHE_TTL_ERROR',
+    'CLIENT_VALIDATION_TIMEOUT_MS',
+    'CLIENT_VALIDATION_MAX_MEMORY_ENTRIES',
+  ];
+  const savedEnv = new Map<string, string | undefined>();
+
+  beforeEach(() => {
+    for (const name of ENV_VARS) {
+      savedEnv.set(name, process.env[name]);
+      delete process.env[name];
+    }
+  });
+
+  afterEach(() => {
+    for (const [name, value] of savedEnv) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+    savedEnv.clear();
+  });
+
+  it('should keep the defaults when the variables are unset', () => {
+    const config = loadConfigFromEnv();
+
+    expect(config.proxy?.listen_port).toBe(8080);
+    expect(config.proxy?.timeout_ms).toBe(30000);
+    expect(config.storage?.retention_days).toBe(30);
+    expect(config.storage?.postgres).toBeUndefined();
+    expect(config.client_validation).toEqual({
+      enabled: false,
+      cache_ttl_seconds: 604800,
+      cache_ttl_error_seconds: 3600,
+      validation_timeout_ms: 5000,
+      max_memory_entries: 1000,
+      fail_closed: false,
+    });
+  });
+
+  it('should parse valid numeric values', () => {
+    process.env.PROXY_PORT = '9090';
+    process.env.PROXY_TIMEOUT_MS = '1500';
+    process.env.POSTGRES_HOST = 'localhost';
+    process.env.POSTGRES_PORT = '6543';
+    process.env.POSTGRES_POOL_SIZE = '20';
+    process.env.RETENTION_DAYS = '0';
+    process.env.CLIENT_VALIDATION_CACHE_TTL = '60';
+    process.env.CLIENT_VALIDATION_CACHE_TTL_ERROR = '30';
+    process.env.CLIENT_VALIDATION_TIMEOUT_MS = '250';
+    process.env.CLIENT_VALIDATION_MAX_MEMORY_ENTRIES = '500';
+
+    const config = loadConfigFromEnv();
+
+    expect(config.proxy?.listen_port).toBe(9090);
+    expect(config.proxy?.timeout_ms).toBe(1500);
+    expect(config.storage?.postgres?.port).toBe(6543);
+    expect(config.storage?.postgres?.pool_size).toBe(20);
+    expect(config.storage?.retention_days).toBe(0);
+    expect(config.client_validation?.cache_ttl_seconds).toBe(60);
+    expect(config.client_validation?.cache_ttl_error_seconds).toBe(30);
+    expect(config.client_validation?.validation_timeout_ms).toBe(250);
+    expect(config.client_validation?.max_memory_entries).toBe(500);
+  });
+
+  it.each([
+    ['PROXY_PORT', 'abc'],
+    ['PROXY_PORT', '30s'],
+    ['PROXY_PORT', ''],
+    ['PROXY_PORT', '-1'],
+    ['PROXY_PORT', '0'],
+    ['PROXY_PORT', '65536'],
+    ['PROXY_PORT', '1.5'],
+    ['PROXY_TIMEOUT_MS', 'abc'],
+    ['PROXY_TIMEOUT_MS', '0'],
+    ['POSTGRES_PORT', 'abc'],
+    ['POSTGRES_PORT', '65536'],
+    ['POSTGRES_POOL_SIZE', '0'],
+    ['RETENTION_DAYS', 'abc'],
+    ['RETENTION_DAYS', '-1'],
+    ['CLIENT_VALIDATION_CACHE_TTL', '30s'],
+    ['CLIENT_VALIDATION_CACHE_TTL', '0'],
+    ['CLIENT_VALIDATION_CACHE_TTL_ERROR', ''],
+    ['CLIENT_VALIDATION_TIMEOUT_MS', 'abc'],
+    ['CLIENT_VALIDATION_MAX_MEMORY_ENTRIES', '0'],
+  ])('should reject %s=%j with an explicit error', (name, value) => {
+    if (name.startsWith('POSTGRES_')) {
+      process.env.POSTGRES_HOST = 'localhost';
+    }
+    process.env[name] = value;
+
+    expect(() => loadConfigFromEnv()).toThrowError(new RegExp(`${name}.*"${value}"`));
   });
 });
