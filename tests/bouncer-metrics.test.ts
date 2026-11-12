@@ -916,6 +916,51 @@ describe('buildRowsFromPayload bouncer name canonicalization', () => {
   });
 });
 
+describe('buildRowsFromPayload metadata columns', () => {
+  it('keeps only strings in the metadata fields', () => {
+    const rows = buildRowsFromPayload(
+      'lapi-1',
+      {
+        log_processors: [
+          { name: 'x', type: 1, version: { v: 1 }, os: { name: [null], version: true } },
+        ],
+      } as never,
+      1762862400000
+    );
+    for (const r of rows)
+      for (const k of ['bouncerType', 'osName', 'osVersion', 'version'] as const)
+        expect(r[k] === null || typeof r[k] === 'string').toBe(true);
+  });
+
+  it('keeps valid string metadata', () => {
+    const rows = buildRowsFromPayload(
+      'lapi-1',
+      {
+        remediation_components: [
+          { name: 'fw', type: 'firewall', version: '0.1.0', os: { name: 'linux', version: '12' } },
+        ],
+      },
+      1762862400000
+    );
+    expect(rows[0]).toMatchObject({
+      bouncerType: 'firewall',
+      osName: 'linux',
+      osVersion: '12',
+      version: '0.1.0',
+    });
+  });
+
+  it('ignores a non-object os', () => {
+    const rows = buildRowsFromPayload(
+      'lapi-1',
+      { remediation_components: [{ name: 'fw', os: 'linux' }] } as never,
+      1762862400000
+    );
+    expect(rows[0].osName).toBeNull();
+    expect(rows[0].osVersion).toBeNull();
+  });
+});
+
 describe('Bouncer metrics storage', () => {
   let storage: AlertStorage;
 
