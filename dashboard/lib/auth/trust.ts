@@ -29,8 +29,9 @@ function parseIPv4(ip: string): number | null {
   if (parts.length !== 4) return null;
   let result = 0;
   for (const part of parts) {
-    if (part.length === 0 || part.length > 3) return null;
-    if (!/^\d+$/.test(part)) return null;
+    // Reject leading zeros: "010" is ambiguous (octal in some parsers, 10 in
+    // others), so it must not be accepted as an IPv4 octet.
+    if (!/^(0|[1-9]\d{0,2})$/.test(part)) return null;
     const n = Number(part);
     if (n < 0 || n > 255) return null;
     // Use unsigned shift to keep a 32-bit semantic.
