@@ -380,15 +380,24 @@ describe('Whitelist and CIDR matching', () => {
       expect(isWhitelisted('2001:db8::1', ['::ffff:192.168.1.0/-0'])).toBe(false);
     });
 
+    it('should not throw on a zone index right after "::" in the address', () => {
+      expect(() => isWhitelisted('fe80::%eth0', ['fc00::/7'])).not.toThrow();
+      expect(isWhitelisted('fe80::%eth0', ['fe80::/10'])).toBe(true);
+    });
+
+    it('should not throw on a zone index right after "::" in a CIDR base', () => {
+      expect(() => isWhitelisted('2001:db8::1', ['fe80::%eth0/64'])).not.toThrow();
+    });
+
     it('should not match IPv6 against IPv4 CIDR', () => {
       expect(isWhitelisted('::1', ['10.0.0.0/8'])).toBe(false);
     });
 
     it('should reject a malformed IPv6 group instead of throwing', () => {
-      // net.isIPv6 accepts a zone index after "::"; the resulting group is not
-      // hexadecimal, and parseInt used to turn it into NaN and throw.
+      // net.isIPv6 accepts a zone index after "::"; the zone is not part of the
+      // address, so it must not reach the group parser (and must not throw).
       expect(() => isWhitelisted('fe80::%eth0', ['fe80::/10'])).not.toThrow();
-      expect(isWhitelisted('fe80::%eth0', ['fe80::/10'])).toBe(false);
+      expect(isWhitelisted('fe80::%eth0', ['fe80::/10'])).toBe(true);
     });
 
     it('should ignore a malformed whitelist entry instead of throwing', () => {
@@ -571,6 +580,25 @@ describe('Detection Logic', () => {
 
       expect(result.totalLogsAnalyzed).toBe(3);
       expect(result.totalGroups).toBe(1);
+    });
+
+    it('should keep analyzing the other groups when one has a zone index', () => {
+      const logs: LogEntry[] = [
+        { raw: '{}', timestamp: '2026-01-01T00:00:00Z', fields: { source_ip: 'fe80::%eth0' } },
+        ...Array.from({ length: 5 }, () => ({
+          raw: '{}',
+          timestamp: '2026-01-01T00:00:00Z',
+          fields: { source_ip: '2001:db8::66' },
+        })),
+      ];
+
+      const result = analyze(
+        logs,
+        { groupby: 'source_ip', threshold: 5, operator: '>=' },
+        ['fc00::/7']
+      );
+
+      expect(result.alerts.map((a) => a.groupValue)).toEqual(['2001:db8::66']);
     });
 
     it('should return empty alerts when no threshold exceeded', () => {
