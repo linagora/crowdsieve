@@ -5,6 +5,7 @@ import type { StoredAlert } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
 import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
+import { LocalDateTime } from '@/components/LocalDateTime';
 import { ApiError } from '@/components/ApiError';
 import { parseReturnPath } from '@/lib/alertFilters';
 
@@ -244,20 +245,28 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
           <dl className="space-y-3">
             <div className="flex justify-between">
               <dt className="text-slate-600">Start</dt>
-              <dd>{alert.startAt ? new Date(alert.startAt).toLocaleString() : 'N/A'}</dd>
+              <dd>
+                <LocalDateTime value={alert.startAt} />
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-600">Stop</dt>
-              <dd>{alert.stopAt ? new Date(alert.stopAt).toLocaleString() : 'N/A'}</dd>
+              <dd>
+                <LocalDateTime value={alert.stopAt} />
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-600">Received</dt>
-              <dd>{alert.receivedAt ? new Date(alert.receivedAt).toLocaleString() : 'N/A'}</dd>
+              <dd>
+                <LocalDateTime value={alert.receivedAt} />
+              </dd>
             </div>
             {alert.createdAt && (
               <div className="flex justify-between">
                 <dt className="text-slate-600">Created</dt>
-                <dd>{new Date(alert.createdAt).toLocaleString()}</dd>
+                <dd>
+                  <LocalDateTime value={alert.createdAt} />
+                </dd>
               </div>
             )}
           </dl>
