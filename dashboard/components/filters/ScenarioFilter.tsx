@@ -13,6 +13,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { scenarioFilter } from '@/lib/scenarioFilter';
 
 interface ScenarioFilterProps {
   scenarios: Array<{ scenario: string; count: number }>;
@@ -52,7 +53,7 @@ export function ScenarioFilter({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0">
-        <Command>
+        <Command filter={scenarioFilter}>
           <CommandInput placeholder="Search scenario..." />
           <CommandList>
             <CommandEmpty>No scenario found.</CommandEmpty>
