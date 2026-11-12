@@ -5,6 +5,23 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.9] - 2026-11-12
+
+### Added
+
+- `scripts/qa-environment`: self-contained QA environment (build/start/stop scripts and a Docker Compose stack with CrowdSieve, a CrowdSec LAPI and Dex for OIDC) used to reproduce and check dashboard issues.
+
+### Changed
+
+- Dependencies refreshed from the lockfile (`@fastify/static` 10.1.10, `@fastify/send` 4.2.0, `eslint` 10.14.0, `typescript-eslint` 8.72.2). No manifest change.
+- Rebuilt with the current Alpine 3.21 base packages (`alpine-release`, `apk-tools`, `zlib`).
+
+### Fixed
+
+- Dashboard: the account menu button now has an accessible name and exposes its expanded state, so screen readers announce it when the display name is hidden on small screens.
+- Dashboard: the decision search form no longer overflows the card and the viewport on 390px-wide screens.
+- Dashboard: the selected time range preset (24h, 7d, 30d) is now highlighted; the choice is kept in the URL (`range`), so it survives reloads and shared links.
+
 ## [0.6.8] - 2026-10-27
 
 ### Fixed
