@@ -40,9 +40,11 @@ function parseCIDR(cidr: string): { ip: string; prefixLength: number } | null {
 }
 
 /**
- * Convert an IP address to a BigInt for comparison
+ * Convert an IP address to a BigInt for comparison.
+ * Returns null when the address is not valid, so callers can reject it
+ * instead of comparing a bogus value (or throwing on BigInt(NaN)).
  */
-function ipToBigInt(ip: string): bigint {
+function ipToBigInt(ip: string): bigint | null {
   if (net.isIPv4(ip)) {
     const parts = ip.split('.').map(Number);
     // Use BigInt arithmetic to avoid signed 32-bit integer overflow issues
@@ -59,11 +61,16 @@ function ipToBigInt(ip: string): bigint {
     const parts = expanded.split(':');
     let result = BigInt(0);
     for (const part of parts) {
-      result = (result << BigInt(16)) + BigInt(parseInt(part, 16));
+      // parseInt would silently decode a malformed group such as "0gg0" as 0,
+      // and BigInt(NaN) throws for a group with no hex digit at all.
+      if (!/^[0-9a-f]{1,4}$/i.test(part)) {
+        return null;
+      }
+      result = (result << BigInt(16)) + BigInt(Number.parseInt(part, 16));
     }
     return result;
   }
-  return BigInt(0);
+  return null;
 }
 
 /**
@@ -116,6 +123,7 @@ function isIPInCIDR(ip: string, cidr: string): boolean {
 
   const ipNum = ipToBigInt(ip);
   const cidrNum = ipToBigInt(parsed.ip);
+  if (ipNum === null || cidrNum === null) return false;
 
   const bits = isIPv4 ? 32 : 128;
   const shift = BigInt(bits - parsed.prefixLength);
