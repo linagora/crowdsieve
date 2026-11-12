@@ -28,8 +28,12 @@ export function FilterBar({
   hasActiveFilters,
   isLoading = false,
 }: FilterBarProps) {
-  const handleTimeRangeChange = (since: Date | null, until: Date | null) => {
-    onFiltersChange({ since, until });
+  const handleTimeRangeChange = (
+    since: Date | null,
+    until: Date | null,
+    range: FilterState['range']
+  ) => {
+    onFiltersChange({ since, until, range });
   };
 
   const handleScenarioChange = (scenario: string | null) => {
@@ -73,6 +77,7 @@ export function FilterBar({
           maxDate={timeBounds.max}
           since={filters.since}
           until={filters.until}
+          range={filters.range}
           onRangeChange={handleTimeRangeChange}
           isLoading={isLoading}
         />
