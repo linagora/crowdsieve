@@ -191,9 +191,16 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           newerThan: newerThanStr,
         } = request.query;
 
-        // Schema can't validate IP semantics — net.isIP handles v4 and v6.
-        if (ip && !net.isIP(ip)) {
-          return reply.code(400).send({ error: 'Invalid IP address format' });
+        // Schema can't validate IP semantics — accept a single address or a
+        // CIDR so that range-scoped alerts (stored as `sourceValue`) can be
+        // looked up too. `parseIpOrCidr` handles v4 and v6.
+        let sourceIp: string | undefined;
+        if (ip) {
+          const parsed = parseIpOrCidr(ip);
+          if (!parsed.valid) {
+            return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
+          }
+          sourceIp = parsed.value;
         }
 
         // Schema validates date parseability via format; we still need
@@ -246,7 +253,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           forwardedToCapi,
           scenario,
           sourceCountry: country,
-          sourceIp: ip,
+          sourceIp,
           machineId,
           since,
           until,
