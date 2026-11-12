@@ -108,3 +108,12 @@ export function parseReturnPath(
 export function alertDetailHref(alertId: number, from: string | null | undefined): string {
   return from ? `/alerts/${alertId}?from=${encodeURIComponent(from)}` : `/alerts/${alertId}`;
 }
+
+/**
+ * Alert ids are positive integers. Anything else (`abc`, `-1`, `1.5`) must be
+ * treated as a missing alert: the proxy rejects such ids with a 400, which
+ * would otherwise be rendered as a misleading "Cannot Connect to API" error.
+ */
+export function isValidAlertId(id: string): boolean {
+  return /^[1-9]\d*$/.test(id);
+}

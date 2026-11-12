@@ -7,7 +7,7 @@ import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { LocalDateTime } from '@/components/LocalDateTime';
 import { ApiError } from '@/components/ApiError';
-import { parseReturnPath } from '@/lib/alertFilters';
+import { parseReturnPath, isValidAlertId } from '@/lib/alertFilters';
 
 // Read env vars inside functions to ensure they're evaluated at runtime (not build time)
 function getApiConfig() {
@@ -47,7 +47,7 @@ async function getAlert(id: string): Promise<ApiResult<StoredAlert>> {
       headers: getApiHeaders(),
     });
 
-    if (res.status === 404) {
+    if (res.status === 400 || res.status === 404) {
       return { success: false, error: 'not_found' };
     }
 
@@ -84,6 +84,11 @@ interface AlertDetailPageProps {
 
 export default async function AlertDetailPage({ params, searchParams }: AlertDetailPageProps) {
   const [{ id }, { from }] = await Promise.all([params, searchParams]);
+  // Reject non-numeric ids before hitting the API: the proxy answers 400 for
+  // them, which would be displayed as a connection/configuration error.
+  if (!isValidAlertId(id)) {
+    notFound();
+  }
   // Alert list (with its filters) the user came from
   const returnPath = parseReturnPath(typeof from === 'string' ? from : null);
   const result = await getAlert(id);
