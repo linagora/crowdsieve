@@ -91,7 +91,12 @@ function parseIPv6(ip: string): bigint | null {
 
   let value = 0n;
   for (const group of groups) {
-    value = (value << 16n) | BigInt(parseInt(group, 16));
+    // parseInt would read the leading hex digits and ignore the rest ("0gg0"
+    // became 0), which could make a malformed address match a range.
+    if (!/^[0-9a-f]{1,4}$/i.test(group)) {
+      return null;
+    }
+    value = (value << 16n) | BigInt(Number.parseInt(group, 16));
   }
   return value;
 }

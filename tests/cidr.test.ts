@@ -155,6 +155,14 @@ describe('cidrContains - rejects ambiguous and malformed input', () => {
     expect(() => cidrContains('192.168.1.0/024', '192.168.1.5')).toThrow();
   });
 
+  it('should reject groups that are not hexadecimal rather than decoding a prefix', () => {
+    // parseInt("0gg0", 16) is 0, so a malformed group used to be accepted.
+    expect(() => cidrContains('2001:db8:0gg0::/64', '2001:db8::1')).toThrow();
+    expect(() => cidrContains('2001:db8::/64', '2001:db8:0gg0::1')).toThrow();
+    expect(() => cidrContains('::/0', '0gg0::')).toThrow();
+    expect(() => cidrContains('::/0', '::1%eth0')).not.toThrow();
+  });
+
   it('should reject an invalid target IP', () => {
     expect(() => cidrContains('192.168.0.0/16', 'not-an-ip')).toThrow();
     expect(() => cidrContains('192.168.0.0/16', '')).toThrow();

@@ -306,6 +306,18 @@ describe('Whitelist and CIDR matching', () => {
     it('should not match IPv6 against IPv4 CIDR', () => {
       expect(isWhitelisted('::1', ['10.0.0.0/8'])).toBe(false);
     });
+
+    it('should reject a malformed IPv6 group instead of throwing', () => {
+      // net.isIPv6 accepts a zone index after "::"; the resulting group is not
+      // hexadecimal, and parseInt used to turn it into NaN and throw.
+      expect(() => isWhitelisted('fe80::%eth0', ['fe80::/10'])).not.toThrow();
+      expect(isWhitelisted('fe80::%eth0', ['fe80::/10'])).toBe(false);
+    });
+
+    it('should ignore a malformed whitelist entry instead of throwing', () => {
+      expect(() => isWhitelisted('10.0.0.1', ['2001:db8:0gg0::/64'])).not.toThrow();
+      expect(isWhitelisted('10.0.0.1', ['2001:db8:0gg0::/64'])).toBe(false);
+    });
   });
 });
 
