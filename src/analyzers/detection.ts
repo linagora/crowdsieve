@@ -1,6 +1,7 @@
 import net from 'net';
 import type { Detection } from './config.js';
 import type { LogEntry } from './sources/loki.js';
+import { cidrContains } from '../filters/cidr.js';
 
 export interface DetectionResult {
   groupValue: string; // e.g., the IP address
@@ -159,9 +160,15 @@ export function isWhitelisted(ip: string, whitelist: string[]): boolean {
         return true;
       }
     } else {
-      // Direct IP comparison
-      if (ip === entry) {
-        return true;
+      // A bare entry is a host route (/32 or /128). Compare canonical values so
+      // that case, compression and zone indexes do not matter:
+      // "2001:DB8::1" and "2001:db8:0:0:0:0:0:1" denote the same address.
+      try {
+        if (cidrContains(entry, ip)) {
+          return true;
+        }
+      } catch {
+        // Invalid whitelist entry: ignore it rather than failing the analyzer run.
       }
     }
   }

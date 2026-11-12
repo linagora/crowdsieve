@@ -389,6 +389,14 @@ describe('Whitelist and CIDR matching', () => {
       expect(() => isWhitelisted('2001:db8::1', ['fe80::%eth0/64'])).not.toThrow();
     });
 
+    it('should match other spellings of the same bare IPv6 address', () => {
+      expect(isWhitelisted('0:0:0:0:0:0:0:1', ['::1'])).toBe(true);
+      expect(isWhitelisted('2001:db8::1', ['2001:DB8::1'])).toBe(true);
+      expect(isWhitelisted('fe80::1%eth0', ['FE80::1'])).toBe(true);
+      expect(isWhitelisted('::ffff:c0a8:101', ['::ffff:192.168.1.1'])).toBe(true);
+      expect(isWhitelisted('2001:db8::2', ['2001:db8::1'])).toBe(false);
+    });
+
     it('should not match IPv6 against IPv4 CIDR', () => {
       expect(isWhitelisted('::1', ['10.0.0.0/8'])).toBe(false);
     });
