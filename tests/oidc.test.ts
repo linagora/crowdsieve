@@ -772,4 +772,9 @@ describe('Open Redirect Prevention', () => {
     expect(isSafeRedirect('evil.com')).toBe(false);
     expect(isSafeRedirect('../evil')).toBe(false);
   });
+
+  it('should reject non-string values (repeated query parameter)', () => {
+    expect(() => isSafeRedirect(['/a', '/b'] as unknown as string)).not.toThrow();
+    expect(isSafeRedirect(['/a', '/b'] as unknown as string)).toBe(false);
+  });
 });

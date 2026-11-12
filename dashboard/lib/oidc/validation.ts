@@ -16,8 +16,8 @@ const UNSAFE_URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
  * @param path - The path to validate
  * @returns true if the path is safe for redirect, false otherwise
  */
-export function isSafeRedirect(path: string | undefined): path is string {
-  if (!path) return false;
+export function isSafeRedirect(path: unknown): path is string {
+  if (typeof path !== 'string' || !path) return false;
   // Reject any path that starts with a URL scheme
   if (UNSAFE_URL_SCHEME.test(path)) return false;
   // Must start with / (relative path) and not // (protocol-relative URL)
