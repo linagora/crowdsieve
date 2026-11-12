@@ -837,6 +837,41 @@ describe('buildRowsFromPayload (parser)', () => {
   });
 });
 
+describe('buildRowsFromPayload timestamp validation', () => {
+  const now = 1762862400000;
+
+  const rowsFor = (ts: number) =>
+    buildRowsFromPayload(
+      'lapi-1',
+      {
+        remediation_components: [
+          {
+            name: 'fw',
+            metrics: [{ items: [{ name: 'dropped', value: 1 }], meta: { utc_now_timestamp: ts } }],
+          },
+        ],
+      },
+      now
+    );
+
+  it.each([-1e306, 1e306, 1e300, -1])(
+    'falls back to a safe collectedAt for utc_now_timestamp %s',
+    (ts) => {
+      const rows = rowsFor(ts);
+      expect(rows).toHaveLength(1);
+      expect(Number.isSafeInteger(rows[0].collectedAt)).toBe(true);
+      expect(rows[0].collectedAt).toBe(now);
+    }
+  );
+
+  it('rounds a fractional utc_now_timestamp', () => {
+    const rows = rowsFor(1730123456.7891);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].collectedAt).toBe(1730123456789);
+    expect(Number.isSafeInteger(rows[0].collectedAt)).toBe(true);
+  });
+});
+
 describe('Bouncer metrics storage', () => {
   let storage: AlertStorage;
 
