@@ -1,5 +1,5 @@
 # Build stage for proxy
-FROM node:24-alpine AS proxy-builder
+FROM node:24-alpine3.24 AS proxy-builder
 
 RUN apk add --no-cache python3 make g++
 
@@ -15,7 +15,7 @@ COPY src ./src
 RUN npx tsc --outDir dist
 
 # Build stage for dashboard
-FROM node:24-alpine AS dashboard-builder
+FROM node:24-alpine3.24 AS dashboard-builder
 
 WORKDIR /app/dashboard
 
@@ -34,7 +34,7 @@ ENV API_URL=http://localhost:8080
 RUN npm run build
 
 # Production dependencies stage (separate to leverage --chown)
-FROM node:24-alpine AS deps
+FROM node:24-alpine3.24 AS deps
 
 # Build tools needed when no native prebuild matches the runtime
 # (better-sqlite3, etc.). Removed in the runner stage anyway.
@@ -65,7 +65,7 @@ RUN npm ci --omit=dev && \
     \) -exec rm -rf {} + 2>/dev/null || true
 
 # Production stage
-FROM alpine:3.21 AS runner
+FROM alpine:3.24 AS runner
 
 RUN apk update && \
     apk upgrade --no-cache && \
@@ -73,7 +73,7 @@ RUN apk update && \
     rm -rf /var/cache/apk/*
 
 # Copy Node 24 binary from the official image (no npm/npx)
-COPY --from=node:24-alpine /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:24-alpine3.24 /usr/local/bin/node /usr/local/bin/node
 
 # Create non-root user first
 RUN addgroup --system --gid 1001 nodejs && \
