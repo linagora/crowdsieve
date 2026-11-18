@@ -1,0 +1,11 @@
+version: 2
+
+# GitHub Actions are pinned to full commit SHAs in the workflows. Dependabot
+# keeps those pins up to date and rewrites both the SHA and the trailing
+# version comment.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
