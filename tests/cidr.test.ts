@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cidrContains } from '../src/filters/cidr.js';
+import { cidrContains, cidrMatches, parseCidr, parseIp } from '../src/filters/cidr.js';
 
 describe('cidrContains - IPv4', () => {
   it('should match an address inside the range', () => {
@@ -84,6 +84,20 @@ describe('cidrContains - IPv6', () => {
     expect(cidrContains('2001:db8::/33', '2001:db8:7fff::1')).toBe(true);
     expect(cidrContains('2001:db8::/33', '2001:db8:8000::1')).toBe(false);
   });
+
+  it('should handle prefixes inside the last 32-bit word', () => {
+    expect(cidrContains('::ffff:0:0/96', '::ffff:128.0.0.1')).toBe(true);
+    expect(cidrContains('::ffff:0:0/96', '::fffe:128.0.0.1')).toBe(false);
+    expect(cidrContains('::ffff:0:0/100', '::ffff:fff:ffff')).toBe(true);
+    expect(cidrContains('::ffff:0:0/100', '::ffff:1000:0')).toBe(false);
+    expect(cidrContains('::1:0:0/127', '::1:0:1')).toBe(true);
+    expect(cidrContains('::1:0:0/127', '::1:0:2')).toBe(false);
+  });
+
+  it('should expand :: when the moved groups overlap the gap', () => {
+    expect(parseIp('1::3:4:5:6:7:8')).toEqual(parseIp('1:0:3:4:5:6:7:8'));
+    expect(cidrContains('1::3:4:5:6:7:8/128', '1:0:3:4:5:6:7:8')).toBe(true);
+  });
 });
 
 describe('cidrContains - address families do not cross', () => {
@@ -167,5 +181,133 @@ describe('cidrContains - rejects ambiguous and malformed input', () => {
     expect(() => cidrContains('192.168.0.0/16', 'not-an-ip')).toThrow();
     expect(() => cidrContains('192.168.0.0/16', '')).toThrow();
     expect(() => cidrContains('192.168.0.0/16', '192.168.1')).toThrow();
+  });
+});
+
+describe('parseIp', () => {
+  it('should parse both families into 32-bit words', () => {
+    expect(parseIp('192.168.1.5')).toEqual({ bits: 32, w0: 0xc0a80105, w1: 0, w2: 0, w3: 0 });
+    expect(parseIp('255.255.255.255')).toEqual({ bits: 32, w0: 0xffffffff, w1: 0, w2: 0, w3: 0 });
+    expect(parseIp('2001:DB8::ffff:1')).toEqual({
+      bits: 128,
+      w0: 0x20010db8,
+      w1: 0,
+      w2: 0,
+      w3: 0xffff0001,
+    });
+  });
+
+  it('should expand embedded IPv4, strip the zone index and keep mapped addresses IPv6', () => {
+    expect(parseIp('::ffff:192.168.1.1')).toEqual({
+      bits: 128,
+      w0: 0,
+      w1: 0,
+      w2: 0xffff,
+      w3: 0xc0a80101,
+    });
+    expect(parseIp('0:0:0:0:0:ffff:192.168.1.1')).toEqual(parseIp('::ffff:c0a8:101'));
+    expect(parseIp('fe80::1%eth0')).toEqual(parseIp('fe80::1'));
+  });
+
+  it('should return null for invalid or ambiguous addresses', () => {
+    for (const bad of [
+      '',
+      'not-an-ip',
+      '192.168.1',
+      '256.0.0.1',
+      '010.0.0.1',
+      '0177.0.0.1',
+      ' 10.0.0.1',
+      '10.0.0.1 ',
+      '10.0.0.0/8',
+      '0gg0::',
+      '2001:db8:0gg0::1',
+      '1::2::3',
+      '1:2:3:4:5:6:7',
+      '12345::',
+      '::ffff:010.0.0.1',
+    ]) {
+      expect(parseIp(bad)).toBeNull();
+    }
+  });
+});
+
+describe('non-string input', () => {
+  it('should not coerce objects with a toString method', () => {
+    const fake = { toString: () => '1.2.3.4' } as unknown as string;
+    expect(parseIp(fake)).toBeNull();
+    expect(() => cidrContains('1.2.3.4/32', fake)).toThrow('Invalid IP address');
+    expect(() => parseCidr(fake)).toThrow('Invalid CIDR notation');
+    expect(() => cidrContains(fake, '1.2.3.4')).toThrow('Invalid CIDR notation');
+  });
+});
+
+describe('parseCidr', () => {
+  it('should store the base with its host bits cleared', () => {
+    expect(parseCidr('192.168.1.77/24')).toMatchObject({
+      bits: 32,
+      prefix: 24,
+      w0: 0xc0a80100,
+      m0: 0xffffff00,
+    });
+    expect(parseCidr('2001:db8:ffff::/33')).toMatchObject({
+      bits: 128,
+      prefix: 33,
+      w0: 0x20010db8,
+      w1: 0x80000000,
+      m1: 0x80000000,
+      m2: 0,
+    });
+  });
+
+  it('should trim whitespace and treat a bare address as a host route', () => {
+    expect(parseCidr('  10.0.0.1  ')).toMatchObject({ bits: 32, prefix: 32 });
+    expect(parseCidr('::1')).toMatchObject({ bits: 128, prefix: 128, w3: 1, m3: 0xffffffff });
+  });
+
+  it('should throw the same messages as cidrContains', () => {
+    expect(() => parseCidr('not-an-ip/24')).toThrow('Invalid CIDR notation: "not-an-ip/24"');
+    expect(() => parseCidr('192.168.1.0/24/8')).toThrow(
+      'Invalid CIDR notation: "192.168.1.0/24/8"'
+    );
+    expect(() => parseCidr('010.0.0.0/8')).toThrow('Invalid CIDR notation: "010.0.0.0/8"');
+    expect(() => parseCidr('2001:db8:0gg0::/64')).toThrow('Invalid CIDR notation');
+    expect(() => parseCidr('192.168.1.0/')).toThrow('Invalid CIDR prefix length: "192.168.1.0/"');
+    expect(() => parseCidr('192.168.1.0/33')).toThrow('Invalid CIDR prefix length');
+    expect(() => parseCidr('2001:db8::/129')).toThrow('Invalid CIDR prefix length');
+    expect(() => parseCidr('192.168.1.0/024')).toThrow('Invalid CIDR prefix length');
+    expect(() => parseCidr('192.168.1.0/0x10')).toThrow('Invalid CIDR prefix length');
+    expect(() => cidrContains('10.0.0.0/8', 'nope')).toThrow('Invalid IP address: "nope"');
+  });
+});
+
+describe('cidrMatches', () => {
+  const ip = (s: string) => {
+    const parsed = parseIp(s);
+    if (parsed === null) throw new Error(`bad test address ${s}`);
+    return parsed;
+  };
+
+  it('should match /0 against every address of the same family only', () => {
+    expect(cidrMatches(parseCidr('0.0.0.0/0'), ip('255.255.255.255'))).toBe(true);
+    expect(cidrMatches(parseCidr('::/0'), ip('ffff::1'))).toBe(true);
+    expect(cidrMatches(parseCidr('0.0.0.0/0'), ip('::'))).toBe(false);
+    expect(cidrMatches(parseCidr('::/0'), ip('0.0.0.0'))).toBe(false);
+  });
+
+  it('should never cross families, even with identical numeric values', () => {
+    expect(cidrMatches(parseCidr('10.0.0.0/8'), ip('a00::'))).toBe(false);
+    expect(cidrMatches(parseCidr('::ffff:192.168.0.0/112'), ip('192.168.1.1'))).toBe(false);
+    expect(cidrMatches(parseCidr('192.168.0.0/16'), ip('::ffff:192.168.1.1'))).toBe(false);
+  });
+
+  it('should compare every word under the prefix mask', () => {
+    const range = parseCidr('2001:db8:0:0:8000::/65');
+    expect(cidrMatches(range, ip('2001:db8::8000:0:0:1'))).toBe(true);
+    expect(cidrMatches(range, ip('2001:db8::7fff:0:0:1'))).toBe(false);
+    expect(cidrMatches(parseCidr('::1/128'), ip('::1'))).toBe(true);
+    expect(cidrMatches(parseCidr('::1/128'), ip('::2'))).toBe(false);
+    expect(cidrMatches(parseCidr('128.0.0.0/1'), ip('255.0.0.1'))).toBe(true);
+    expect(cidrMatches(parseCidr('128.0.0.0/1'), ip('127.255.255.255'))).toBe(false);
   });
 });
