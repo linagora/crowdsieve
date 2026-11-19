@@ -412,16 +412,94 @@ describe('Whitelist and CIDR matching', () => {
       expect(() => isWhitelisted('10.0.0.1', ['2001:db8:0gg0::/64'])).not.toThrow();
       expect(isWhitelisted('10.0.0.1', ['2001:db8:0gg0::/64'])).toBe(false);
     });
+
+    it('should match a bare IPv6 entry against a compressed or full group IP', () => {
+      expect(isWhitelisted('2001:db8::1', ['2001:0db8:0000:0000:0000:0000:0000:0001'])).toBe(true);
+      expect(isWhitelisted('2001:0DB8:0:0:0:0:0:1', ['2001:db8::1'])).toBe(true);
+      expect(isWhitelisted('2001:db8::1:0', ['2001:db8::1'])).toBe(false);
+    });
+
+    it('should skip invalid entries and still honour the valid ones', () => {
+      const whitelist = [
+        'not-an-ip',
+        '10.0.0.0/33',
+        '2001:db8:0gg0::/64',
+        '010.0.0.1',
+        '10.0.0.0/8/8',
+        '',
+        '192.168.0.0/16',
+        '2001:db8::/32',
+        '::/129',
+        '203.0.113.7',
+      ];
+      expect(() => isWhitelisted('10.0.0.1', whitelist)).not.toThrow();
+      expect(isWhitelisted('10.0.0.1', whitelist)).toBe(false);
+      expect(isWhitelisted('192.168.3.4', whitelist)).toBe(true);
+      expect(isWhitelisted('2001:db8:ffff::1', whitelist)).toBe(true);
+      expect(isWhitelisted('203.0.113.7', whitelist)).toBe(true);
+      expect(isWhitelisted('203.0.113.8', whitelist)).toBe(false);
+    });
+
+    it('should match IPv6 ranges whose base has an embedded IPv4 tail', () => {
+      expect(isWhitelisted('::ffff:10.1.2.3', ['::ffff:10.0.0.0/104'])).toBe(true);
+      expect(isWhitelisted('::ffff:a01:203', ['0:0:0:0:0:ffff:10.0.0.0/104'])).toBe(true);
+      expect(isWhitelisted('::ffff:11.1.2.3', ['::ffff:10.0.0.0/104'])).toBe(false);
+      // An IPv4 address never matches the IPv4-mapped range, nor the reverse.
+      expect(isWhitelisted('10.1.2.3', ['::ffff:10.0.0.0/104'])).toBe(false);
+      expect(isWhitelisted('::ffff:10.1.2.3', ['10.0.0.0/8', '10.1.2.3'])).toBe(false);
+    });
+
+    it('should apply /0 to its own address family only', () => {
+      expect(isWhitelisted('203.0.113.7', ['0.0.0.0/0'])).toBe(true);
+      expect(isWhitelisted('::1', ['0.0.0.0/0'])).toBe(false);
+      expect(isWhitelisted('2001:db8::1', ['::/0'])).toBe(true);
+      expect(isWhitelisted('203.0.113.7', ['::/0'])).toBe(false);
+    });
+
+    it('should refuse group IPs that are not strictly valid', () => {
+      const whitelist = ['10.0.0.0/8', '::/0'];
+      for (const ip of ['010.0.0.1', '10.0.0.1 ', ' 10.0.0.1', '2001:db8::0gg0', '10.0.0.1/8']) {
+        expect(isWhitelisted(ip, whitelist)).toBe(false);
+      }
+    });
+
+    it('should trim bare entries but not entries with a prefix, as before', () => {
+      // Config validation rejects both; this only documents direct callers.
+      expect(isWhitelisted('10.0.0.1', [' 10.0.0.1 '])).toBe(true);
+      expect(isWhitelisted('10.0.0.1', [' 10.0.0.0/8'])).toBe(false);
+      expect(isWhitelisted('10.0.0.1', ['10.0.0.0/8 '])).toBe(false);
+    });
+
+    it('should skip whitelist entries that are not strings', () => {
+      // Config validation rejects them; this only covers direct callers.
+      const whitelist = [null, 42, { cidr: '10.0.0.0/8' }, ['1.2.3.4'], '1.2.3.4'] as never[];
+      expect(() => isWhitelisted('5.6.7.8', whitelist)).not.toThrow();
+      expect(isWhitelisted('5.6.7.8', whitelist)).toBe(false);
+      expect(isWhitelisted('1.2.3.4', whitelist)).toBe(true);
+      expect(isWhitelisted('1.2.3.4', ['1.2.3.4', null] as never[])).toBe(true);
+      expect(isWhitelisted('nope', [null] as never[])).toBe(false);
+      const logs: LogEntry[] = [
+        { raw: '', timestamp: '', fields: { source_ip: '1.2.3.4', username: 'a' } },
+        { raw: '', timestamp: '', fields: { source_ip: '5.6.7.8', username: 'b' } },
+      ];
+      const result = analyze(
+        logs,
+        { groupby: 'source_ip', distinct: 'username', threshold: 1, operator: '>=' },
+        whitelist
+      );
+      expect(result.whitelistedCount).toBe(1);
+      expect(result.alerts.map((a) => a.groupValue)).toEqual(['5.6.7.8']);
+      expect(
+        analyze([], { groupby: 'source_ip', distinct: 'username', threshold: 1 }, whitelist)
+          .alertCount
+      ).toBe(0);
+    });
   });
 });
 
 describe('Detection Logic', () => {
   describe('analyze', () => {
-    const createLogEntry = (
-      sourceIp: string,
-      username: string,
-      timestamp?: string
-    ): LogEntry => ({
+    const createLogEntry = (sourceIp: string, username: string, timestamp?: string): LogEntry => ({
       raw: JSON.stringify({ source_ip: sourceIp, username }),
       timestamp: timestamp || new Date().toISOString(),
       fields: { source_ip: sourceIp, username },
@@ -498,6 +576,33 @@ describe('Detection Logic', () => {
       expect(result.alertCount).toBe(1);
       expect(result.whitelistedCount).toBe(1);
       expect(result.alerts[0].groupValue).toBe('8.8.8.8');
+    });
+    it('should count every whitelisted group across a mixed whitelist', () => {
+      const logs: LogEntry[] = [
+        createLogEntry('10.0.0.1', 'user1'),
+        createLogEntry('10.0.0.2', 'user1'),
+        createLogEntry('2001:db8::1', 'user1'),
+        createLogEntry('2001:0db8:0:0:0:0:0:1', 'user2'),
+        createLogEntry('::ffff:10.0.0.3', 'user1'),
+        createLogEntry('8.8.8.8', 'user1'),
+        createLogEntry('not-an-ip', 'user1'),
+      ];
+
+      const result = analyze(
+        logs,
+        { groupby: 'source_ip', distinct: 'username', threshold: 1, operator: '>=' },
+        ['bogus', '10.0.0.0/8', '10.0.0.0/99', '2001:DB8::1']
+      );
+
+      // Groups are keyed by the raw value: the two spellings of 2001:db8::1
+      // are two groups, both whitelisted.
+      expect(result.totalGroups).toBe(7);
+      expect(result.whitelistedCount).toBe(4);
+      expect(result.alerts.map((a) => a.groupValue).sort()).toEqual([
+        '8.8.8.8',
+        '::ffff:10.0.0.3',
+        'not-an-ip',
+      ]);
     });
 
     it('should count total entries when distinct is not specified', () => {

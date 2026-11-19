@@ -1,7 +1,6 @@
-import net from 'net';
 import type { Detection } from './config.js';
 import type { LogEntry } from './sources/loki.js';
-import { cidrContains } from '../filters/cidr.js';
+import { cidrMatches, parseCidr, parseIp, type ParsedCidr } from '../filters/cidr.js';
 
 export interface DetectionResult {
   groupValue: string; // e.g., the IP address
@@ -21,159 +20,62 @@ export interface AnalysisResult {
 }
 
 /**
- * Parse a CIDR notation string and return network address and prefix length
+ * Parse whitelist entries (bare IPs or CIDR ranges) into ranges for
+ * {@link isWhitelistedIn}. A bare address is a host route (/32 or /128).
+ *
+ * Invalid entries are dropped rather than failing the analyzer run, and so
+ * are entries that are not strings. An entry with a prefix and surrounding
+ * whitespace is dropped too, as it always was (only bare entries used to be
+ * trimmed); config validation rejects all of these.
  */
-function parseCIDR(cidr: string): { ip: string; prefixLength: number } | null {
-  const parts = cidr.split('/');
-  if (parts.length !== 2) return null;
-
-  const ip = parts[0];
-  if (!net.isIP(ip)) return null;
-
-  // Reject "/0x10", "/-0", "/ 8", "/24abc" and leading zeros: parseInt would
-  // accept them, silently turning a mistyped prefix into a broader range.
-  if (!/^(0|[1-9]\d{0,2})$/.test(parts[1])) return null;
-
-  const prefixLength = Number(parts[1]);
-  const maxPrefix = net.isIPv6(ip) ? 128 : 32;
-
-  if (prefixLength > maxPrefix) return null;
-
-  return { ip, prefixLength };
-}
-
-/**
- * Convert an IP address to a BigInt for comparison.
- * Returns null when the address is not valid, so callers can reject it
- * instead of comparing a bogus value (or throwing on BigInt(NaN)).
- */
-function ipToBigInt(ip: string): bigint | null {
-  if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    // Use BigInt arithmetic to avoid signed 32-bit integer overflow issues
-    // (e.g., 192.168.1.1 would produce negative number with bitwise ops)
-    return (
-      (BigInt(parts[0]) << BigInt(24)) +
-      (BigInt(parts[1]) << BigInt(16)) +
-      (BigInt(parts[2]) << BigInt(8)) +
-      BigInt(parts[3])
-    );
-  } else if (net.isIPv6(ip)) {
-    // Expand IPv6 to full form
-    const expanded = expandIPv6(ip);
-    const parts = expanded.split(':');
-    let result = BigInt(0);
-    for (const part of parts) {
-      // parseInt would silently decode a malformed group such as "0gg0" as 0,
-      // and BigInt(NaN) throws for a group with no hex digit at all.
-      if (!/^[0-9a-f]{1,4}$/i.test(part)) {
-        return null;
-      }
-      result = (result << BigInt(16)) + BigInt(Number.parseInt(part, 16));
+function parseWhitelist(whitelist: readonly unknown[]): ParsedCidr[] {
+  const ranges: ParsedCidr[] = [];
+  for (const entry of whitelist) {
+    if (typeof entry !== 'string') {
+      continue;
     }
-    return result;
-  }
-  return null;
-}
-
-/**
- * Expand an IPv6 address to full form (8 groups of 4 hex digits)
- */
-function expandIPv6(ip: string): string {
-  // A zone index ("fe80::1%eth0", "fe80::%eth0") is not part of the address.
-  // It must be removed before splitting on ':', otherwise a zone placed right
-  // after "::" becomes a group ("%eth0"), parseInt yields NaN and
-  // BigInt(NaN) throws a RangeError.
-  ip = ip.split('%')[0];
-
-  // Handle IPv4-mapped IPv6 (e.g., ::ffff:192.168.1.1)
-  const colonParts = ip.split(':');
-  const lastPart = colonParts[colonParts.length - 1];
-  if (lastPart && lastPart.includes('.')) {
-    const ipv4Parts = lastPart.split('.').map(Number);
-    if (ipv4Parts.length === 4 && ipv4Parts.every((p) => p >= 0 && p <= 255)) {
-      colonParts.pop();
-      const hex1 = ((ipv4Parts[0] << 8) | ipv4Parts[1]).toString(16).padStart(4, '0');
-      const hex2 = ((ipv4Parts[2] << 8) | ipv4Parts[3]).toString(16).padStart(4, '0');
-      // Handle edge case where prefix is empty (e.g., just an IPv4 address passed incorrectly)
-      const prefix = colonParts.join(':');
-      ip = (prefix || ':') + ':' + hex1 + ':' + hex2;
+    if (entry.includes('/') && entry !== entry.trim()) {
+      continue;
+    }
+    try {
+      ranges.push(parseCidr(entry));
+    } catch {
+      // Invalid whitelist entry: ignore it.
     }
   }
-
-  const parts = ip.split('::');
-  if (parts.length === 2) {
-    const left = parts[0] ? parts[0].split(':') : [];
-    const right = parts[1] ? parts[1].split(':') : [];
-    const missing = 8 - left.length - right.length;
-    const middle = Array(missing).fill('0000');
-    const full = [...left, ...middle, ...right];
-    return full.map((p) => p.padStart(4, '0')).join(':');
-  }
-
-  return ip
-    .split(':')
-    .map((p) => p.padStart(4, '0'))
-    .join(':');
+  return ranges;
 }
 
 /**
- * Check if an IP is in a CIDR range
+ * Check a group value against parsed whitelist ranges. A value that is not an
+ * IP is never whitelisted. Families never cross: an IPv4-mapped address such
+ * as "::ffff:10.0.0.1" stays IPv6 and does not match "10.0.0.0/8".
  */
-function isIPInCIDR(ip: string, cidr: string): boolean {
-  const parsed = parseCIDR(cidr);
-  if (!parsed) return false;
-
-  const isIPv4 = net.isIPv4(ip);
-  const isCIDRv4 = net.isIPv4(parsed.ip);
-
-  // IP version must match CIDR version
-  if (isIPv4 !== isCIDRv4) return false;
-
-  const ipNum = ipToBigInt(ip);
-  const cidrNum = ipToBigInt(parsed.ip);
-  if (ipNum === null || cidrNum === null) return false;
-
-  const bits = isIPv4 ? 32 : 128;
-  const shift = BigInt(bits - parsed.prefixLength);
-  const mask =
-    shift >= BigInt(bits)
-      ? BigInt(0)
-      : ((BigInt(1) << BigInt(bits)) - BigInt(1)) ^ ((BigInt(1) << shift) - BigInt(1));
-
-  return (ipNum & mask) === (cidrNum & mask);
+function isWhitelistedIn(ip: string, ranges: readonly ParsedCidr[]): boolean {
+  if (ranges.length === 0) {
+    return false;
+  }
+  const parsed = parseIp(ip);
+  if (parsed === null) {
+    return false;
+  }
+  for (const range of ranges) {
+    if (cidrMatches(range, parsed)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
  * Check if an IP matches any entry in the whitelist
  * Whitelist can contain individual IPs or CIDR ranges
+ *
+ * This parses the whole whitelist on every call; {@link analyze} parses it
+ * once per run instead.
  */
 export function isWhitelisted(ip: string, whitelist: string[]): boolean {
-  if (!net.isIP(ip) || whitelist.length === 0) {
-    return false;
-  }
-
-  for (const entry of whitelist) {
-    // Check if it's a CIDR range
-    if (entry.includes('/')) {
-      if (isIPInCIDR(ip, entry)) {
-        return true;
-      }
-    } else {
-      // A bare entry is a host route (/32 or /128). Compare canonical values so
-      // that case, compression and zone indexes do not matter:
-      // "2001:DB8::1" and "2001:db8:0:0:0:0:0:1" denote the same address.
-      try {
-        if (cidrContains(entry, ip)) {
-          return true;
-        }
-      } catch {
-        // Invalid whitelist entry: ignore it rather than failing the analyzer run.
-      }
-    }
-  }
-
-  return false;
+  return isWhitelistedIn(ip, parseWhitelist(whitelist));
 }
 
 /**
@@ -270,10 +172,12 @@ export function analyze(
   // Build results for groups that exceed the threshold
   const alerts: DetectionResult[] = [];
   let whitelistedCount = 0;
+  // The whitelist is constant for the run: parse it once, not once per group.
+  const whitelistRanges = parseWhitelist(whitelist);
 
   for (const [groupValue, group] of groups) {
     // Skip whitelisted IPs/ranges
-    if (isWhitelisted(groupValue, whitelist)) {
+    if (isWhitelistedIn(groupValue, whitelistRanges)) {
       whitelistedCount++;
       continue;
     }

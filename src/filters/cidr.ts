@@ -309,8 +309,7 @@ export function cidrMatches(range: ParsedCidr, ip: ParsedIp): boolean {
  *
  * Both arguments must belong to the same address family; an IPv4 address never
  * matches an IPv6 range (and vice versa). An IPv4-mapped address such as
- * "::ffff:192.168.1.1" stays IPv6 and so does not match "192.168.0.0/16",
- * consistent with how `expandIPv6` in ../analyzers/detection.ts treats it.
+ * "::ffff:192.168.1.1" stays IPv6 and so does not match "192.168.0.0/16".
  *
  * A bare address without a prefix is treated as a host route (/32 or /128).
  *
