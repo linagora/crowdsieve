@@ -116,6 +116,26 @@ organization:   Second Org
       expect(result.country).toBe('DE');
     });
 
+    it('should match abuse in the key and mail in the value, in any case', () => {
+      expect(parseWhoisResponse('Abuse-Contact: Help@MAIL.Example.NET').abuse).toBe(
+        'Help@MAIL.Example.NET'
+      );
+      expect(parseWhoisResponse('Contact-EMAIL: ABUSE@example.net').abuse).toBe(
+        'ABUSE@example.net'
+      );
+      expect(parseWhoisResponse('remarks: abuse only').abuse).toBeUndefined();
+    });
+
+    it('should keep the first abuse match, but let orgabuseemail override it', () => {
+      const first = parseWhoisResponse('remarks: send abuse mail here\nabuse-c: other mail abuse');
+      expect(first.abuse).toBe('send abuse mail here');
+
+      const overridden = parseWhoisResponse(
+        'remarks: send abuse mail here\nOrgAbuseEmail: abuse@level3.com'
+      );
+      expect(overridden.abuse).toBe('abuse@level3.com');
+    });
+
     it('should treat CRLF, LF and a lone CR as line endings', () => {
       const response = 'netname: EXAMPLE-NET\r\ncountry: fr\rdescr: Example\n';
 

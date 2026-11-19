@@ -187,7 +187,6 @@ export function parseWhoisResponse(raw: string): WhoisSummary {
   const summary: WhoisSummary = {};
 
   for (const line of lines) {
-    const lower = line.toLowerCase();
     const colonIndex = line.indexOf(':');
     if (colonIndex === -1) continue;
 
@@ -224,7 +223,12 @@ export function parseWhoisResponse(raw: string): WhoisSummary {
       summary.descr = value;
     }
     // Abuse contact
-    else if (lower.includes('abuse') && lower.includes('mail') && !summary.abuse) {
+    // Equivalent to scanning the lower-cased whole line: 'abuse' and 'mail'
+    // contain no ':' or whitespace, so they cannot span the key/value
+    // boundary, and key + value covers the line minus the colon and the
+    // trimmed blanks. `key` is already lower-cased; `value` only is when
+    // this branch is reached with no abuse contact yet.
+    else if (!summary.abuse && containsAbuseMail(key, value)) {
       summary.abuse = value;
     } else if (key === 'orgabuseemail' || key === 'abuse-mailbox') {
       summary.abuse = value;
@@ -232,6 +236,13 @@ export function parseWhoisResponse(raw: string): WhoisSummary {
   }
 
   return summary;
+}
+
+function containsAbuseMail(key: string, value: string): boolean {
+  const v = value.toLowerCase();
+  return (
+    (key.includes('abuse') || v.includes('abuse')) && (key.includes('mail') || v.includes('mail'))
+  );
 }
 
 /**
