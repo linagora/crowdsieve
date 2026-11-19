@@ -17,14 +17,17 @@ RUN npx tsc --outDir dist
 # Build stage for dashboard
 FROM node:24-alpine3.24 AS dashboard-builder
 
-WORKDIR /app/dashboard
+WORKDIR /app
 
-# Install dashboard dependencies
-COPY dashboard/package.json ./
-RUN npm install
+# Install the dashboard dependencies from the root lockfile (the dashboard is
+# a workspace of the root package), so the image gets the same versions as CI
+COPY package*.json ./
+COPY dashboard/package.json ./dashboard/
+RUN npm ci -w dashboard --include-workspace-root=false
 
 # Copy dashboard source
-COPY dashboard ./
+COPY dashboard ./dashboard
+WORKDIR /app/dashboard
 
 # Set API URL for build time
 ENV PROXY_URL=http://localhost:8080
@@ -32,6 +35,12 @@ ENV API_URL=http://localhost:8080
 
 # Build dashboard
 RUN npm run build
+
+# With the workspace root as tracing root, Next.js nests the standalone server
+# under dashboard/. Flatten it so server.js, .next and node_modules sit at the
+# top of .next/standalone, as the runner stage and start.sh expect.
+RUN cp -a .next/standalone/dashboard/. .next/standalone/ && \
+    rm -rf .next/standalone/dashboard
 
 # Production dependencies stage (separate to leverage --chown)
 FROM node:24-alpine3.24 AS deps
