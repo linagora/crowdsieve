@@ -5,6 +5,18 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.10] - 2026-11-19
+
+### Changed
+
+- Filters: CIDR ranges, regexes, globs and field paths are compiled once at startup; the CIDR parser no longer uses BigInt (about 15x faster on the shipped rules). An invalid CIDR range is now logged once at startup instead of on every alert.
+- Analyzers: the whitelist is parsed once per run (about 10x faster); WHOIS parsing does less work per line.
+- Runtime image moved to Alpine 3.24; GitHub Actions pinned to commit SHAs with per-job permissions.
+
+### Security
+
+- `minimatch` 11 (CVE-2026-118764) and `next` 16.4.6 (CVE-2026-119351, CVE-2026-119790); Alpine 3.21 is end of life.
+
 ## [0.6.9] - 2026-11-12
 
 ### Added
