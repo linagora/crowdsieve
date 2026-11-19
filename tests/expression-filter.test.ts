@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ExpressionFilter } from '../src/filters/implementations/expression.js';
 import type { Alert } from '../src/models/alert.js';
 
@@ -556,5 +556,226 @@ describe('ExpressionFilter - undefined and null handling', () => {
     });
     const result = filter.matches({ alert, timestamp: new Date() });
     expect(result.matched).toBe(true);
+  });
+});
+
+describe('ExpressionFilter - precompiled conditions', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function withIp(ip: unknown): Alert {
+    return createMockAlert({ source: { scope: 'ip', value: String(ip), ip } as never });
+  }
+
+  it('warns about an invalid CIDR range once, naming the filter and the range', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const filter = new ExpressionFilter('internal', true, {
+      field: 'source.ip',
+      op: 'cidr',
+      value: ['not-a-range', '192.168.0.0/16'],
+    });
+    // Reported by the constructor, before any alert is seen.
+    expect(warn).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 50; i++) {
+      const result = filter.matches({ alert: withIp(`192.168.1.${i}`), timestamp: new Date() });
+      expect(result).toEqual({
+        matched: true,
+        filterName: 'internal',
+        reason: 'source.ip in CIDR 192.168.0.0/16',
+      });
+      expect(filter.matches({ alert: withIp('8.8.8.8'), timestamp: new Date() }).matched).toBe(
+        false
+      );
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('"internal"');
+    expect(warn.mock.calls[0][0]).toContain('"not-a-range"');
+  });
+
+  it('warns at construction about an invalid range nested under not/or', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const filter = new ExpressionFilter('nested', true, {
+      op: 'not',
+      condition: {
+        op: 'or',
+        conditions: [
+          { field: 'scenario', op: 'eq', value: 'custom/none' },
+          { field: 'source.ip', op: 'cidr', value: ['10.0.0.0/8', '10.0.0.0/33'] },
+        ],
+      },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('"nested"');
+    expect(warn.mock.calls[0][0]).toContain('"10.0.0.0/33"');
+    for (let i = 0; i < 10; i++) {
+      expect(filter.matches({ alert: withIp('10.1.2.3'), timestamp: new Date() }).matched).toBe(
+        false
+      );
+      expect(filter.matches({ alert: withIp('8.8.8.8'), timestamp: new Date() }).matched).toBe(
+        true
+      );
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns at construction for a disabled rule and a branch never evaluated', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    new ExpressionFilter('disabled', false, {
+      field: 'source.ip',
+      op: 'cidr',
+      value: 'bad-range',
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('"disabled"');
+
+    const filter = new ExpressionFilter('unreached', true, {
+      op: 'and',
+      conditions: [
+        { field: 'scenario', op: 'eq', value: 'custom/none' },
+        { field: 'source.ip', op: 'cidr', value: '1.2.3.4/99' },
+      ],
+    });
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[1][0]).toContain('"1.2.3.4/99"');
+    // The and short-circuits on the first condition, so the cidr one is never
+    // evaluated: it was only ever reported by the constructor.
+    expect(filter.matches({ alert: withIp('1.2.3.4'), timestamp: new Date() }).matched).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives no match and no warning for an alert value that is not an IP', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const filter = new ExpressionFilter('internal', true, {
+      field: 'source.ip',
+      op: 'cidr',
+      value: ['10.0.0.0/8', '0.0.0.0/0', '::/0'],
+    });
+    for (const ip of ['not-an-ip', '010.0.0.1', '10.0.0', '', ' 10.0.0.1', 42, null]) {
+      expect(filter.matches({ alert: withIp(ip), timestamp: new Date() }).matched).toBe(false);
+    }
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the first matching range and quotes it as written', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'source.ip',
+      op: 'cidr',
+      value: ['2001:db8::/32', ' 10.0.0.0/8 ', '10.1.0.0/16', '::ffff:0:0/96'],
+    });
+    const v4 = filter.matches({ alert: withIp('10.1.2.3'), timestamp: new Date() });
+    expect(v4.reason).toBe('source.ip in CIDR  10.0.0.0/8 ');
+    const v6 = filter.matches({ alert: withIp('2001:db8::1'), timestamp: new Date() });
+    expect(v6.reason).toBe('source.ip in CIDR 2001:db8::/32');
+    const mapped = filter.matches({ alert: withIp('::ffff:10.1.2.3'), timestamp: new Date() });
+    expect(mapped.reason).toBe('source.ip in CIDR ::ffff:0:0/96');
+  });
+
+  it('reuses compiled regexes with the same results and reasons', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'regex',
+      value: ['[invalid', 'a'.repeat(501), 42 as never, '-bf$', 'ssh'],
+    });
+    for (let i = 0; i < 20; i++) {
+      const hit = filter.matches({ alert: createMockAlert(), timestamp: new Date() });
+      expect(hit.reason).toBe('scenario matches regex "-bf$"');
+      const miss = filter.matches({
+        alert: createMockAlert({ scenario: 'crowdsecurity/http-probing' }),
+        timestamp: new Date(),
+      });
+      expect(miss.matched).toBe(false);
+    }
+  });
+
+  it('reuses compiled globs with the same results and reasons', () => {
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'glob',
+      value: ['#crowdsecurity/*', 'crowdsecurity/http-*', 'crowdsecurity/*', 'crowdsecurity/ssh-*'],
+    });
+    for (let i = 0; i < 20; i++) {
+      const hit = filter.matches({ alert: createMockAlert(), timestamp: new Date() });
+      expect(hit.reason).toBe('scenario matches glob "crowdsecurity/*"');
+      const miss = filter.matches({
+        alert: createMockAlert({ scenario: 'custom/ssh-bf' }),
+        timestamp: new Date(),
+      });
+      expect(miss.matched).toBe(false);
+    }
+
+    const negated = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'glob',
+      value: '!crowdsecurity/*',
+    });
+    const alert = createMockAlert({ scenario: 'custom/ssh-bf' });
+    expect(negated.matches({ alert, timestamp: new Date() }).reason).toBe(
+      'scenario matches glob "!crowdsecurity/*"'
+    );
+  });
+
+  it('still throws at evaluation, not construction, for a glob minimatch refuses', () => {
+    const tooLong = 'a'.repeat(70000);
+    const filter = new ExpressionFilter('test', true, {
+      field: 'scenario',
+      op: 'glob',
+      value: ['crowdsecurity/*', tooLong],
+    });
+    // An earlier match short-circuits before the refused pattern...
+    expect(filter.matches({ alert: createMockAlert(), timestamp: new Date() }).matched).toBe(true);
+    // ...otherwise minimatch() throws, as it did, and FilterEngine skips the rule.
+    const other = createMockAlert({ scenario: 'custom/ssh-bf' });
+    expect(() => filter.matches({ alert: other, timestamp: new Date() })).toThrow(
+      'pattern is too long'
+    );
+  });
+
+  it('does not keep a glob minimatch would not cache, and still matches it', () => {
+    // 1024 expansions of ~30 characters: well over minimatch's per-entry
+    // cache weight (4096), while staying fast to compile.
+    const heavy = 'crowdsecurity/' + '{a,b}'.repeat(10) + '-*';
+    const condition = {
+      field: 'scenario',
+      op: 'glob' as const,
+      value: ['custom/*', heavy],
+    };
+    const filter = new ExpressionFilter('test', true, condition);
+    const globs = (
+      filter as unknown as {
+        compiled: WeakMap<object, { globs: { pattern: string; matcher: unknown }[] }>;
+      }
+    ).compiled.get(condition)!.globs;
+    expect(globs[0].matcher).not.toBeNull();
+    expect(globs[1].pattern).toBe(heavy);
+    expect(globs[1].matcher).toBeNull();
+
+    const check = (scenario: string) =>
+      filter.matches({ alert: createMockAlert({ scenario }), timestamp: new Date() });
+    for (let i = 0; i < 3; i++) {
+      expect(check('crowdsecurity/' + 'ab'.repeat(5) + '-bf')).toEqual({
+        matched: true,
+        filterName: 'test',
+        reason: `scenario matches glob "${heavy}"`,
+      });
+      expect(check('crowdsecurity/' + 'ab'.repeat(5) + 'c-bf').matched).toBe(false);
+      expect(check('crowdsecurity/ssh-bf').matched).toBe(false);
+      expect(check('custom/ssh-bf').reason).toBe('scenario matches glob "custom/*"');
+    }
+  });
+
+  it('resolves pre-split field paths like before', () => {
+    const empty = (field: string, alert: Alert) =>
+      new ExpressionFilter('test', true, { field, op: 'empty' }).matches({
+        alert,
+        timestamp: new Date(),
+      }).matched;
+    const alert = createMockAlert();
+    expect(empty('source.ip.length', alert)).toBe(true); // a string is not walked into
+    expect(empty('missing.deep.path', alert)).toBe(true);
+    expect(empty('source.ip', alert)).toBe(false);
+    expect(empty('scenario', alert)).toBe(false);
+    expect(empty('source', createMockAlert({ source: null as never }))).toBe(true);
+    expect(empty('source.ip', createMockAlert({ source: null as never }))).toBe(true);
   });
 });
