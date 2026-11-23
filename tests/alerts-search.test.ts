@@ -274,6 +274,25 @@ describe('queryAlerts — IP and CIDR search', () => {
   });
 });
 
+describe('queryAlerts — scenario search', () => {
+  const storage = createStorage();
+
+  it('treats _ and % literally (escaped LIKE)', async () => {
+    seed([
+      { receivedAt: at(1), scenario: 'crowdsecurity/ssh_bf' },
+      { receivedAt: at(2), scenario: 'crowdsecurity/sshXbf' },
+      { receivedAt: at(3), scenario: 'acme/100%_rate' },
+      { receivedAt: at(4), scenario: 'acme/100Xrate' },
+    ]);
+
+    const underscore = await storage.queryAlerts({ scenario: 'ssh_bf' });
+    const percent = await storage.queryAlerts({ scenario: '0%_r' });
+
+    expect(underscore.map((a) => a.scenario)).toEqual(['crowdsecurity/ssh_bf']);
+    expect(percent.map((a) => a.scenario)).toEqual(['acme/100%_rate']);
+  });
+});
+
 describe('queryAlerts — country', () => {
   const storage = createStorage();
 

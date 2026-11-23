@@ -1,4 +1,18 @@
-import { eq, desc, and, or, gt, gte, lt, lte, like, inArray, sql } from 'drizzle-orm';
+import {
+  eq,
+  desc,
+  and,
+  or,
+  gt,
+  gte,
+  lt,
+  lte,
+  like,
+  inArray,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from 'drizzle-orm';
 import net from 'net';
 import { cidrMatches, parseCidr, type ParsedCidr } from '../filters/cidr.js';
 import type { Alert } from '../models/alert.js';
@@ -7,6 +21,19 @@ import { getDatabaseContext } from '../db/index.js';
 import type { GeoIPInfo } from '../models/alert.js';
 import { extractIpFromValue } from '../ipinfo/index.js';
 import { CROWDSIEVE_VERSION } from '../auth/machineToken.js';
+
+/** Escape character declared with `ESCAPE` by every LIKE using escapeLikePattern. */
+const LIKE_ESCAPE = '\\';
+
+/**
+ * `column LIKE pattern ESCAPE '\'`. SQLite has no default escape character,
+ * so without the clause the backslashes added by escapeLikePattern would be
+ * matched literally. Bound as a parameter so the quoting is the same on
+ * SQLite and PostgreSQL.
+ */
+function likeEscaped(column: AnyColumn, pattern: string): SQL {
+  return sql`${column} LIKE ${pattern} ESCAPE ${LIKE_ESCAPE}`;
+}
 
 /**
  * Escape SQL LIKE wildcards to prevent injection.
@@ -890,7 +917,7 @@ export function createStorage(): AlertStorage {
       }
       if (query.scenario) {
         const escaped = escapeLikePattern(query.scenario);
-        conditions.push(like(schema.alerts.scenario, `%${escaped}%`));
+        conditions.push(likeEscaped(schema.alerts.scenario, `%${escaped}%`));
       }
       if (query.sourceCountry) {
         conditions.push(eq(schema.alerts.geoCountryCode, query.sourceCountry));
