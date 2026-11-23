@@ -1,5 +1,6 @@
-import { eq, desc, and, or, gt, gte, lte, like, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, or, gt, gte, lt, lte, like, inArray, sql } from 'drizzle-orm';
 import net from 'net';
+import { cidrMatches, parseCidr, type ParsedCidr } from '../filters/cidr.js';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
 import { getDatabaseContext } from '../db/index.js';
@@ -75,12 +76,93 @@ export interface AlertQuery {
   forwardedToCapi?: boolean;
   scenario?: string;
   sourceCountry?: string;
+  /**
+   * A single address, matched exactly against `source_ip` or `source_value`,
+   * or a CIDR range ("203.0.113.0/24", "2001:db8::/32"), which matches the
+   * alerts whose source address or source range lies inside it (see
+   * {@link alertSourceInRange}). Callers must validate it first: an invalid
+   * CIDR throws.
+   */
   sourceIp?: string;
   machineId?: string;
   since?: Date;
   until?: Date;
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Upper bound on the candidate rows a CIDR alert search examines. The SQL
+ * prefilter keeps the candidates close to the actual matches for IPv4 ranges,
+ * but an IPv6 range can only be prefiltered by address family, so the scan is
+ * capped: past this many candidates, the search returns what it found.
+ */
+export const MAX_CIDR_SCAN_ROWS = 100_000;
+
+/** Rows read per round trip while scanning the candidates of a CIDR search. */
+const CIDR_SCAN_BATCH_SIZE = 1000;
+
+/**
+ * SQL LIKE pattern that every textual source of an alert inside `range` must
+ * match (a prefilter, not an exact test).
+ *
+ * CrowdSec sends IPv4 addresses as canonical dotted quads, and the row test
+ * (`parseCidr`) refuses leading-zero octets anyway, so the octets fixed by the
+ * prefix give a literal text prefix: "203.0.113.0/24" -> "203.0.113.%". This
+ * also holds for a stored range inside `range`, whose address shares those
+ * octets. IPv6 has several textual forms for one address, so only the family
+ * can be checked ("%:%"). The pattern only contains digits, dots, colons and
+ * `%`, so it needs no escaping.
+ */
+export function cidrLikePattern(range: ParsedCidr): string {
+  if (range.bits === 128) return '%:%';
+  const fixedOctets = Math.floor(range.prefix / 8);
+  if (fixedOctets === 0) return '%.%.%.%';
+  const octets = [
+    range.w0 >>> 24,
+    (range.w0 >>> 16) & 0xff,
+    (range.w0 >>> 8) & 0xff,
+    range.w0 & 0xff,
+  ];
+  const head = octets.slice(0, fixedOctets).join('.');
+  // A /32 still needs the trailing wildcard: a stored range "1.2.3.4/32"
+  // lies inside it.
+  return fixedOctets === 4 ? `${head}%` : `${head}.%`;
+}
+
+/** Whether an address or CIDR stored in an alert column lies inside `range`. */
+function sourceValueInRange(range: ParsedCidr, value: string | null | undefined): boolean {
+  if (!value) return false;
+  let parsed: ParsedCidr;
+  try {
+    // A bare address parses as a host route (/32 or /128).
+    parsed = parseCidr(value);
+  } catch {
+    return false;
+  }
+  // `parsed` holds its masked base address: it is inside `range` when that
+  // base is and the stored range is not wider than the searched one.
+  return parsed.prefix >= range.prefix && cidrMatches(range, parsed);
+}
+
+/**
+ * Whether an alert belongs to a searched CIDR range: its `source_ip` or
+ * `source_value` is an address inside the range, or its `source_range` /
+ * `source_value` is a range equal to or inside it.
+ */
+export function alertSourceInRange(
+  range: ParsedCidr,
+  alert: {
+    sourceIp?: string | null;
+    sourceValue?: string | null;
+    sourceRange?: string | null;
+  }
+): boolean {
+  return (
+    sourceValueInRange(range, alert.sourceIp) ||
+    sourceValueInRange(range, alert.sourceValue) ||
+    sourceValueInRange(range, alert.sourceRange)
+  );
 }
 
 export interface AlertStats {
@@ -111,6 +193,12 @@ export interface AlertStats {
    */
   allScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
+  /**
+   * Distinct source countries (ISO code, GeoIP name when known, row count),
+   * including locally-recorded audit rows like `allScenarios`. Used to
+   * populate the country filter dropdown.
+   */
+  allCountries: Array<{ country: string; countryName: string | null; count: number }>;
   timeBounds: { min: string | null; max: string | null };
 }
 
@@ -718,7 +806,10 @@ export function createStorage(): AlertStorage {
       if (query.sourceCountry) {
         conditions.push(eq(schema.alerts.geoCountryCode, query.sourceCountry));
       }
-      if (query.sourceIp) {
+      // A CIDR cannot be matched by SQL text comparison: it is prefiltered in
+      // SQL, then tested row by row below.
+      const range = query.sourceIp?.includes('/') ? parseCidr(query.sourceIp) : null;
+      if (query.sourceIp && !range) {
         // Search in both sourceIp and sourceValue (IP can be in either field)
         conditions.push(
           or(
@@ -737,14 +828,95 @@ export function createStorage(): AlertStorage {
         conditions.push(lte(schema.alerts.receivedAt, query.until.toISOString()));
       }
 
-      const baseQuery = db.select().from(schema.alerts);
-      const withConditions =
-        conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
+      const limit = query.limit || 100;
+      const offset = query.offset || 0;
 
-      const finalQuery = withConditions
-        .orderBy(desc(schema.alerts.receivedAt))
-        .limit(query.limit || 100)
-        .offset(query.offset || 0);
+      // Same order everywhere, with the id as a tie-breaker so that pages
+      // fetched with limit/offset neither overlap nor skip alerts received in
+      // the same millisecond.
+      const order = [desc(schema.alerts.receivedAt), desc(schema.alerts.id)];
+
+      let pageIds: number[] | null = null;
+      if (range) {
+        const pattern = cidrLikePattern(range);
+        conditions.push(
+          or(
+            like(schema.alerts.sourceIp, pattern),
+            like(schema.alerts.sourceValue, pattern),
+            like(schema.alerts.sourceRange, pattern)
+          )
+        );
+
+        // Walk the candidates newest first with keyset pagination, keeping
+        // the ids of the rows really inside the range, until the requested
+        // page is covered. limit/offset then apply to the matching alerts,
+        // not to the candidates.
+        const wanted = offset + limit;
+        const matchedIds: number[] = [];
+        let scanned = 0;
+        let cursor: { receivedAt: string; id: number } | null = null;
+        while (matchedIds.length < wanted && scanned < MAX_CIDR_SCAN_ROWS) {
+          const batchConditions = [...conditions];
+          if (cursor) {
+            batchConditions.push(
+              or(
+                lt(schema.alerts.receivedAt, cursor.receivedAt),
+                and(
+                  eq(schema.alerts.receivedAt, cursor.receivedAt),
+                  lt(schema.alerts.id, cursor.id)
+                )
+              )
+            );
+          }
+          const batchQuery = db
+            .select({
+              id: schema.alerts.id,
+              receivedAt: schema.alerts.receivedAt,
+              sourceIp: schema.alerts.sourceIp,
+              sourceValue: schema.alerts.sourceValue,
+              sourceRange: schema.alerts.sourceRange,
+            })
+            .from(schema.alerts)
+            .where(and(...batchConditions))
+            .orderBy(...order)
+            .limit(Math.min(CIDR_SCAN_BATCH_SIZE, MAX_CIDR_SCAN_ROWS - scanned));
+
+          type CandidateRow = {
+            id: number;
+            receivedAt: string;
+            sourceIp: string | null;
+            sourceValue: string | null;
+            sourceRange: string | null;
+          };
+          const rows: CandidateRow[] = isPostgres
+            ? await batchQuery
+            : (batchQuery as unknown as { all(): CandidateRow[] }).all();
+
+          for (const row of rows) {
+            if (alertSourceInRange(range, row)) matchedIds.push(row.id);
+          }
+          scanned += rows.length;
+          if (rows.length < CIDR_SCAN_BATCH_SIZE) break;
+          const last = rows[rows.length - 1];
+          cursor = { receivedAt: last.receivedAt, id: last.id };
+        }
+
+        pageIds = matchedIds.slice(offset, wanted);
+        if (pageIds.length === 0) return [];
+      }
+
+      const baseQuery = db.select().from(schema.alerts);
+      let finalQuery;
+      if (pageIds) {
+        finalQuery = baseQuery.where(inArray(schema.alerts.id, pageIds)).orderBy(...order);
+      } else {
+        const withConditions =
+          conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
+        finalQuery = withConditions
+          .orderBy(...order)
+          .limit(limit)
+          .offset(offset);
+      }
 
       if (isPostgres) {
         return (await finalQuery) as SelectAlert[];
@@ -898,6 +1070,28 @@ export function createStorage(): AlertStorage {
         ).all();
       }
 
+      // All distinct source countries — populates the country filter
+      // dropdown. Like `allScenarios`, audit rows are included, so the counts
+      // match what the alert list returns for each country. One row per code;
+      // the name comes from GeoIP and is the same for every row of a code.
+      // Capped well above the number of ISO 3166 codes.
+      const allCountriesQuery = db
+        .select({
+          country: schema.alerts.geoCountryCode,
+          countryName: sql<string | null>`max(${schema.alerts.geoCountryName})`,
+          count: sql<number>`count(*) as count`,
+        })
+        .from(schema.alerts)
+        .where(and(sinceCondition, sql`${schema.alerts.geoCountryCode} is not null`))
+        .groupBy(schema.alerts.geoCountryCode)
+        .orderBy(sql`count desc`)
+        .limit(300);
+
+      type CountryRow = { country: string | null; countryName: string | null; count: number };
+      const allCountries: CountryRow[] = isPostgres
+        ? await allCountriesQuery
+        : (allCountriesQuery as unknown as { all(): CountryRow[] }).all();
+
       // Blocked requests: straight sum of `dropped_items` across every
       // remediation snapshot in the retention window. CrowdSec's
       // `usage-metrics` payload reports `dropped`/`processed`/`bytes` as
@@ -962,6 +1156,13 @@ export function createStorage(): AlertStorage {
           country: c.country || 'Unknown',
           count: Number(c.count),
         })),
+        allCountries: allCountries
+          .filter((c) => c.country)
+          .map((c) => ({
+            country: c.country as string,
+            countryName: c.countryName || null,
+            count: Number(c.count),
+          })),
         timeBounds: {
           min: totalResult?.minTime || null,
           max: totalResult?.maxTime || null,

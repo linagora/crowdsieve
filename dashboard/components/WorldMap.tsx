@@ -5,21 +5,23 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { StoredAlert } from '@/lib/types';
 import { buildMapPopup } from '@/lib/mapPopup';
+import { clusterCountry } from '@/lib/mapCluster';
 
 interface WorldMapProps {
   alerts: StoredAlert[];
   height?: string;
-  onLocationSelect?: (location: { lat: number; lng: number } | null) => void;
+  /** Called with the country of a cluster when it is clicked. */
+  onCountrySelect?: (countryCode: string) => void;
 }
 
-export function WorldMap({ alerts, height = '400px', onLocationSelect }: WorldMapProps) {
+export function WorldMap({ alerts, height = '400px', onCountrySelect }: WorldMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
 
   // Use ref for callback to avoid re-creating markers when callback changes
-  const onLocationSelectRef = useRef(onLocationSelect);
-  onLocationSelectRef.current = onLocationSelect;
+  const onCountrySelectRef = useRef(onCountrySelect);
+  onCountrySelectRef.current = onCountrySelect;
 
   // Group alerts by location
   const alertsByLocation = useMemo(() => {
@@ -105,13 +107,13 @@ export function WorldMap({ alerts, height = '400px', onLocationSelect }: WorldMa
 
       marker.bindPopup(popupContent);
 
-      // Emit location selection on popup open/close
-      marker.on('popupopen', () => {
-        onLocationSelectRef.current?.({ lat, lng });
-      });
-      marker.on('popupclose', () => {
-        onLocationSelectRef.current?.(null);
-      });
+      // Clicking a cluster filters the alerts on its country
+      const country = clusterCountry(locationAlerts);
+      if (country) {
+        marker.on('click', () => {
+          onCountrySelectRef.current?.(country);
+        });
+      }
 
       marker.addTo(markersRef.current!);
     });

@@ -41,6 +41,7 @@ export interface StoredAlert {
   sourceScope?: string;
   sourceValue?: string;
   sourceIp?: string;
+  sourceRange?: string;
   sourceCn?: string;
   geoCountryCode?: string;
   geoCountryName?: string;
@@ -80,6 +81,11 @@ export interface AlertStats {
    */
   allScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
+  /**
+   * Distinct source countries for the country filter dropdown (ISO code,
+   * GeoIP name when known), including audit-only rows.
+   */
+  allCountries: Array<{ country: string; countryName: string | null; count: number }>;
   timeBounds: { min: string | null; max: string | null };
 }
 

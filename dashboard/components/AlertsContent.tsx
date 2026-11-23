@@ -7,7 +7,9 @@ import { formatDistanceToNow } from 'date-fns';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { useAlertFilters } from '@/components/hooks/useAlertFilters';
 import { AlertCard } from '@/components/AlertCard';
+import { LoadMoreAlerts } from '@/components/LoadMoreAlerts';
 import { alertDetailHref } from '@/lib/alertFilters';
+import { alertCountLabel } from '@/lib/alertPaging';
 import { Button } from '@/components/ui/button';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 
@@ -24,12 +26,17 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
     resetFilters,
     alerts,
     isLoading,
+    error,
     hasActiveFilters,
     timeBounds,
     machines,
     lastUpdated,
     refresh,
     persistFilters,
+    hasMore,
+    isLoadingMore,
+    loadMoreError,
+    loadMore,
   } = useAlertFilters({ initialAlerts, limit: 200, statsTimeBounds: stats.timeBounds });
 
   // Force re-render every minute to update relative times
@@ -48,6 +55,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
         onReset={resetFilters}
         scenarios={stats.allScenarios}
         machines={machines}
+        countries={stats.allCountries ?? []}
         timeBounds={timeBounds}
         hasActiveFilters={hasActiveFilters}
         isLoading={isLoading}
@@ -71,7 +79,7 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
           </div>
           <div className="text-right">
             <span className="text-sm text-slate-500">
-              {alerts.length} result{alerts.length === 1 ? '' : 's'}
+              {alertCountLabel(alerts.length, hasMore)}
             </span>
             <div className="text-xs text-slate-400">
               Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
@@ -88,11 +96,29 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
             />
           ))}
 
-          {alerts.length === 0 && (
+          {alerts.length === 0 && !error && (
             <div className="text-center text-slate-400 py-8">
-              No alerts match the current filters
+              <p>No alerts match the current filters</p>
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="mt-2">
+                  Reset
+                </Button>
+              )}
             </div>
           )}
+
+          {error && (
+            <div className="text-center text-red-600 py-4" role="alert">
+              {error}
+            </div>
+          )}
+
+          <LoadMoreAlerts
+            hasMore={hasMore && alerts.length > 0}
+            isLoadingMore={isLoadingMore}
+            error={loadMoreError}
+            onLoadMore={loadMore}
+          />
         </div>
       </div>
     </div>

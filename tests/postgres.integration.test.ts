@@ -304,6 +304,58 @@ describePostgres('PostgreSQL Integration', () => {
     });
   });
 
+  describe('Alert search by range and country', () => {
+    const storage = createStorage();
+    const suffix = Date.now();
+
+    beforeAll(async () => {
+      const sources = [
+        { scope: 'ip', value: '172.31.16.1', ip: '172.31.16.1', cn: 'FR' },
+        { scope: 'ip', value: '172.31.17.2', ip: '172.31.17.2', cn: 'FR' },
+        { scope: 'ip', value: '172.31.200.3', ip: '172.31.200.3', cn: 'DE' },
+        { scope: 'range', value: '172.31.18.0/24', range: '172.31.18.0/24', cn: 'FR' },
+        { scope: 'ip', value: '2001:db8:42::1', ip: '2001:db8:42::1', cn: 'DE' },
+      ];
+      for (const [i, source] of sources.entries()) {
+        await storage.storeAlerts(
+          [createTestAlert({ uuid: `test-range-${suffix}-${i}`, source })],
+          [{ filtered: false, matchedFilters: [] }],
+          undefined
+        );
+      }
+    });
+
+    it('lists the alerts whose source address or range lies inside a CIDR', async () => {
+      const results = await storage.queryAlerts({ sourceIp: '172.31.16.0/20' });
+      expect(results.map((a) => a.sourceValue).sort()).toEqual([
+        '172.31.16.1',
+        '172.31.17.2',
+        '172.31.18.0/24',
+      ]);
+    });
+
+    it('applies limit and offset to the matching alerts', async () => {
+      const all = await storage.queryAlerts({ sourceIp: '172.31.16.0/20' });
+      const page = await storage.queryAlerts({ sourceIp: '172.31.16.0/20', limit: 1, offset: 1 });
+      expect(page.map((a) => a.id)).toEqual([all[1].id]);
+    });
+
+    it('matches IPv6 ranges and combines with the country', async () => {
+      const v6 = await storage.queryAlerts({ sourceIp: '2001:db8:42::/48' });
+      expect(v6.map((a) => a.sourceIp)).toEqual(['2001:db8:42::1']);
+
+      const fr = await storage.queryAlerts({ sourceIp: '172.31.0.0/16', sourceCountry: 'FR' });
+      expect(fr).toHaveLength(3);
+    });
+
+    it('lists the source countries for the filter dropdown', async () => {
+      const stats = await storage.getStats();
+      const codes = stats.allCountries.map((c) => c.country);
+      expect(codes).toEqual(expect.arrayContaining(['FR', 'DE']));
+      expect(stats.allCountries.every((c) => typeof c.count === 'number')).toBe(true);
+    });
+  });
+
   describe('Date Range Queries', () => {
     const storage = createStorage();
 

@@ -14,6 +14,8 @@ export async function fetchAlerts(params?: {
   since?: string;
   until?: string;
   machineId?: string;
+  /** IP address or CIDR range. */
+  ip?: string;
   newerThan?: string; // Optimization: return [] if no alerts newer than this timestamp
 }): Promise<StoredAlert[]> {
   const searchParams = new URLSearchParams();
@@ -28,6 +30,7 @@ export async function fetchAlerts(params?: {
   if (params?.since) searchParams.set('since', params.since);
   if (params?.until) searchParams.set('until', params.until);
   if (params?.machineId) searchParams.set('machineId', params.machineId);
+  if (params?.ip) searchParams.set('ip', params.ip);
   if (params?.newerThan) searchParams.set('newerThan', params.newerThan);
 
   // Calls Next.js API route which proxies to backend
@@ -36,7 +39,7 @@ export async function fetchAlerts(params?: {
   });
 
   if (!res.ok) {
-    throw new Error('Failed to fetch alerts');
+    throw new Error(`Failed to fetch alerts (HTTP ${res.status})`);
   }
 
   return res.json();

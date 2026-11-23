@@ -17,6 +17,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Bouncer Metrics**: Transparent capture of CrowdSec `usage-metrics` as LAPI relays them to CAPI (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard with no extra LAPI configuration
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
+  - Search alerts by IP address or CIDR range and by country, and page through the whole history
 - **Dashboard Authentication**: Two modes, both documented in [docs/oidc-authentication.md](./docs/oidc-authentication.md)
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
@@ -324,6 +325,25 @@ AUTH_LOGOUT_URL=https://portal.example.com/logout
 ```
 
 > **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [docs/oidc-authentication.md](./docs/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
+
+### Alert Search
+
+The filter bar of the **Alerts** page and of the home page's recent alerts combines:
+
+- **Search IP**: an IPv4 or IPv6 address (alerts whose source is that address) or a CIDR
+  range such as `203.0.113.0/24` or `2001:db8::/32` (alerts whose source address lies inside
+  the range, and range-scoped alerts whose range is inside it). The search applies on Enter or
+  half a second after you stop typing.
+- **Country**: the source countries found by GeoIP, with their alert counts. On the home page,
+  clicking a map cluster selects its country.
+- Time range, scenario, server and status, as before.
+
+Every filter is kept in the URL (`ip=`, `country=`, `scenario=`, …), so a filtered list can be
+reloaded or shared. The lists show the newest alerts first; **Load more alerts** at the end of
+the list fetches the next 100.
+
+In the REST API, `GET /api/alerts` accepts the same filters: `ip` takes an address or a CIDR,
+`country` an ISO 3166-1 alpha-2 code, and `limit` / `offset` page through the results.
 
 ### Decision Search
 

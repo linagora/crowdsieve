@@ -4,6 +4,10 @@ import {
   activeTimeRangePreset,
   alertDetailHref,
   alertMatchesFilters,
+  alertsHref,
+  filtersToAlertQuery,
+  hasActiveFilters,
+  normalizeCountryCode,
   isValidAlertId,
   parseFilterParams,
   parseReturnPath,
@@ -36,6 +40,8 @@ describe('filter query string', () => {
       scenario: 'crowdsecurity/ssh-bf',
       machineId: 'srv-01',
       status: 'filtered',
+      ip: '203.0.113.0/24',
+      country: 'FR',
     };
     const params = new URLSearchParams();
     writeFilterParams(params, filters);
@@ -72,8 +78,20 @@ describe('filter query string', () => {
   });
 
   it('should ignore invalid values', () => {
-    const filters = parseFilterParams(new URLSearchParams('since=garbage&status=bogus&machine='));
+    const filters = parseFilterParams(
+      new URLSearchParams('since=garbage&status=bogus&machine=&ip=not-an-ip&country=France')
+    );
     expect(filters).toEqual(DEFAULT_FILTERS);
+  });
+
+  it('should read the IP search and country, normalised', () => {
+    const filters = parseFilterParams(new URLSearchParams('ip=%202001:DB8::1%20&country=cn'));
+    expect(filters.ip).toBe('2001:db8::1');
+    expect(filters.country).toBe('CN');
+
+    const params = new URLSearchParams();
+    writeFilterParams(params, { ...DEFAULT_FILTERS, ip: '203.0.113.7', country: 'FR' });
+    expect(params.toString()).toBe('ip=203.0.113.7&country=FR');
   });
 
   it('should ignore an unknown or inconsistent range', () => {
@@ -153,6 +171,21 @@ describe('alertMatchesFilters', () => {
     expect(alertMatchesFilters(unban, { ...DEFAULT_FILTERS, status: 'forwarded' })).toBe(false);
   });
 
+  it('should filter by country', () => {
+    const alert = makeAlert({ geoCountryCode: 'FR' });
+    expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, country: 'FR' })).toBe(true);
+    expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, country: 'CN' })).toBe(false);
+    expect(alertMatchesFilters(makeAlert(), { ...DEFAULT_FILTERS, country: 'FR' })).toBe(false);
+  });
+
+  it('should filter by IP address or range', () => {
+    const alert = makeAlert({ sourceIp: '203.0.113.7', sourceValue: '203.0.113.7' });
+    expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, ip: '203.0.113.7' })).toBe(true);
+    expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, ip: '203.0.113.8' })).toBe(false);
+    expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, ip: '203.0.113.0/24' })).toBe(true);
+    expect(alertMatchesFilters(alert, { ...DEFAULT_FILTERS, ip: '203.0.114.0/24' })).toBe(false);
+  });
+
   it('should filter by time range', () => {
     const alert = makeAlert();
     const before = new Date('2026-10-19T00:00:00.000Z');
@@ -208,5 +241,71 @@ describe('isValidAlertId', () => {
     for (const id of ['abc', '-1', '1.5', '0', '01', ' 1', '1 ', '+1', '1e3', '']) {
       expect(isValidAlertId(id)).toBe(false);
     }
+  });
+});
+
+describe('hasActiveFilters', () => {
+  it('should be false for the defaults only', () => {
+    expect(hasActiveFilters(DEFAULT_FILTERS)).toBe(false);
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, ip: '203.0.113.7' })).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, country: 'FR' })).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, status: 'filtered' })).toBe(true);
+  });
+});
+
+describe('filtersToAlertQuery', () => {
+  it('should map every filter to its API parameter', () => {
+    expect(
+      filtersToAlertQuery({
+        since: new Date('2026-10-01T00:00:00.000Z'),
+        until: null,
+        range: null,
+        scenario: 'ssh-bf',
+        machineId: 'srv-01',
+        status: 'filtered',
+        ip: '203.0.113.0/24',
+        country: 'FR',
+      })
+    ).toEqual({
+      since: '2026-10-01T00:00:00.000Z',
+      until: undefined,
+      scenario: 'ssh-bf',
+      machineId: 'srv-01',
+      filtered: true,
+      forwardedToCapi: undefined,
+      ip: '203.0.113.0/24',
+      country: 'FR',
+    });
+    expect(filtersToAlertQuery({ ...DEFAULT_FILTERS, status: 'forwarded' })).toMatchObject({
+      filtered: undefined,
+      forwardedToCapi: true,
+    });
+  });
+});
+
+describe('alertsHref', () => {
+  it('should link to the alerts of a country or scenario', () => {
+    expect(alertsHref({ country: 'CN' })).toBe('/alerts?country=CN');
+    expect(alertsHref({ scenario: 'crowdsecurity/ssh-bf' })).toBe(
+      '/alerts?scenario=crowdsecurity%2Fssh-bf'
+    );
+    expect(alertsHref({})).toBe('/alerts');
+  });
+
+  it('should carry a time range preset', () => {
+    const since = new Date('2026-10-01T00:00:00.000Z');
+    const href = alertsHref({ country: 'CN', since, range: '7d' });
+    const filters = parseFilterParams(new URLSearchParams(href.split('?')[1]));
+    expect(filters).toEqual({ ...DEFAULT_FILTERS, country: 'CN', since, range: '7d' });
+  });
+});
+
+describe('normalizeCountryCode', () => {
+  it('should accept ISO alpha-2 codes only', () => {
+    expect(normalizeCountryCode('fr')).toBe('FR');
+    expect(normalizeCountryCode(' CN ')).toBe('CN');
+    expect(normalizeCountryCode('FRA')).toBeNull();
+    expect(normalizeCountryCode('Unknown')).toBeNull();
+    expect(normalizeCountryCode(null)).toBeNull();
   });
 });
