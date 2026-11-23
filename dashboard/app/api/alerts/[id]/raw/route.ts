@@ -19,7 +19,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   const { apiBase } = getApiConfig();
   try {
-    const res = await fetch(`${apiBase}/api/alerts/${id}/raw`, {
+    const res = await fetch(`${apiBase}/api/alerts/${encodeURIComponent(id)}/raw`, {
       cache: 'no-store',
       headers: getApiHeaders(),
     });

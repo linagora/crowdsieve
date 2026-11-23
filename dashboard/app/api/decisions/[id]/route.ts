@@ -12,6 +12,12 @@ export async function DELETE(
 
   const { apiBase } = getApiConfig();
   const { id } = await params;
+
+  // The id is interpolated into a proxy path: only a numeric decision id may
+  // pass, never `..`, `?` or `#` smuggled in through percent-encoding.
+  if (!/^\d+$/.test(id)) {
+    return NextResponse.json({ error: 'Invalid decision id' }, { status: 400 });
+  }
   const server = request.nextUrl.searchParams.get('server');
 
   if (!server) {
@@ -37,11 +43,14 @@ export async function DELETE(
   }
 
   try {
-    const res = await fetch(`${apiBase}/api/decisions/${id}?server=${encodeURIComponent(server)}`, {
-      method: 'DELETE',
-      headers,
-      body,
-    });
+    const res = await fetch(
+      `${apiBase}/api/decisions/${encodeURIComponent(id)}?server=${encodeURIComponent(server)}`,
+      {
+        method: 'DELETE',
+        headers,
+        body,
+      }
+    );
 
     const data = await res.json();
 

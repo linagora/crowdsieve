@@ -196,6 +196,9 @@ export async function createProxyServer(deps: ProxyServerDeps): Promise<FastifyI
         'te',
         'trailer',
         'upgrade',
+        // Dashboard credentials / audit identity must never reach CAPI
+        'x-api-key',
+        'x-crowdsieve-actor',
       ]);
 
       const headers: Record<string, string> = {};
