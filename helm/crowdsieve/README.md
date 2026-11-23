@@ -127,7 +127,7 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.dashboard.oidc.clientId`                | OIDC Client ID                                        | `""`                       |
 | `crowdsieve.dashboard.oidc.clientSecret`            | OIDC Client Secret                                    | `""`                       |
 | `crowdsieve.dashboard.oidc.existingSecret`          | Use existing secret for OIDC                          | `""`                       |
-| `crowdsieve.dashboard.oidc.session.secret`          | Session secret (auto-generated if empty)              | `""`                       |
+| `crowdsieve.dashboard.oidc.session.secret`          | Session secret, 32+ chars (auto-generated if empty)   | `""`                       |
 | `crowdsieve.dashboard.oidc.session.cookieSecure`    | Session cookie secure flag                            | `true`                     |
 | `crowdsieve.dashboard.oidc.keys.jwsEnabled`         | Enable private_key_jwt auth (replaces client_secret)  | `false`                    |
 | `crowdsieve.dashboard.oidc.keys.jwsAlgorithm`       | JWS signing algorithm                                 | `RS256`                    |
@@ -829,7 +829,7 @@ Replace `https://crowdsieve.example.com` with your actual dashboard URL:
 | Google        | `https://accounts.google.com`                     |
 | Azure AD      | `https://login.microsoftonline.com/{tenant}/v2.0` |
 
-> **Warning:** Auto-generated session secrets change on each Helm upgrade, invalidating all user sessions. For production, always set `session.secret` or use `session.existingSecret`.
+> **Note:** When `session.secret` is empty, a random session secret is generated on install and reused from the existing `<release>-oidc` Secret on upgrade, so sessions survive upgrades. It is regenerated only if that Secret is deleted, or when rendering without cluster access (`helm template`, `--dry-run=client`), where `lookup` returns nothing. A `session.secret` shorter than 32 characters makes the chart fail to render, and the dashboard refuses OIDC sign-in without a valid secret. For GitOps workflows, set `session.secret` or use `session.existingSecret`.
 
 ## Accessing the Dashboard
 

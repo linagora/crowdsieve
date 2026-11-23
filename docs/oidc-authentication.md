@@ -65,7 +65,7 @@ The session is stored in the encrypted `crowdsieve-session` cookie (iron-session
 | `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required for OIDC unless JWS is enabled).                                                                                                     |
 | `AUTH_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor. Any non-empty string (e.g. `sub`, `email`, `name`, `preferredUsername`, `familyName`). Wins over `OIDC_ACTOR_CLAIM` when both are set. |
 | `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Legacy alias for `AUTH_ACTOR_CLAIM`. Kept for back-compat.                                                                                                            |
-| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode.                                                                                             |
+| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode: without it, sign-in is refused in production (see below).                                   |
 | `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development.                                                                                                                             |
 | `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set).                                                                                                                    |
 | `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges. Empty = no IP check.                                                          |
@@ -81,6 +81,8 @@ trail. If the configured claim is missing on the user, the code falls back to
 `sub`. Any non-empty string is accepted, which makes this work seamlessly with
 claims forwarded by [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler)
 such as `familyName` or `preferredUsername`.
+
+`SESSION_SECRET` seals the session cookie, so anyone who knows it can forge a session for any user. There is no built-in default: when it is missing or shorter than 32 characters, the dashboard logs an error at startup and, in production (`NODE_ENV=production`, as in the Docker image), refuses OIDC sign-in: `/api/auth/login`, `/api/auth/callback` and the API routes answer HTTP 500 and `/login` shows a configuration error. Outside production, a random secret is generated for the process (with a warning), so sessions do not survive a restart.
 
 Generate secrets with:
 
@@ -432,6 +434,10 @@ crowdsieve:
 
 - Ensure `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `SESSION_SECRET` are set
 - Check that the issuer URL is reachable
+
+**"SESSION_SECRET must be set to a random value of at least 32 characters"**
+
+- Set `SESSION_SECRET` to the output of `openssl rand -hex 32` and restart the dashboard. All existing sessions are invalidated when the secret changes.
 
 **"Invalid redirect URI"**
 

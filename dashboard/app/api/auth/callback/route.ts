@@ -4,12 +4,17 @@ import { getOidcClient } from '@/lib/oidc/client';
 import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
 import { getSession, SessionUser } from '@/lib/oidc/session';
 import { resolvePostLoginPath } from '@/lib/oidc/loginRedirect';
+import { checkSessionSecret } from '@/lib/auth/guard';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Return 404 if OIDC is not enabled
   if (!isOidcEnabled()) {
     return new NextResponse('Not Found', { status: 404 });
   }
+
+  // Fail closed: never seal a session with a missing or weak secret.
+  const misconfigured = checkSessionSecret();
+  if (misconfigured) return misconfigured;
 
   try {
     const oidcClient = await getOidcClient();

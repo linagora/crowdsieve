@@ -6,7 +6,7 @@
  * - In OIDC mode the session cookie must be unsealed and hold a signed-in,
  *   unexpired session: its mere presence is not enough (GHSA-w3hg-mhhx-fp6w).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { sealData } from 'iron-session';
 import { middleware } from '../dashboard/middleware.js';
@@ -148,5 +148,33 @@ describe('middleware OIDC session validation', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('x-middleware-next')).toBe('1');
+  });
+});
+
+describe('middleware without a usable SESSION_SECRET (GHSA-8hgc-3vpr-6r43)', () => {
+  it('rejects a session forged with the former public fallback secret', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.SESSION_SECRET;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const seal = await sealSession(
+      { user: { sub: 'admin' }, expiresAt: Date.now() + 3600_000 },
+      'crowdsieve-dev-secret-32-chars!!'
+    );
+
+    const page = await runMiddleware('/', `crowdsieve-session=${seal}`);
+    expect(page.status).toBe(307);
+    const api = await runMiddleware('/api/decisions/ban', `crowdsieve-session=${seal}`);
+    expect(api.status).toBe(401);
+    errorSpy.mockRestore();
+  });
+
+  it('fails closed with a too short SESSION_SECRET in production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = 'too-short';
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await runMiddleware('/api/alerts', await liveSessionCookie());
+    expect(res.status).toBe(401);
+    errorSpy.mockRestore();
   });
 });

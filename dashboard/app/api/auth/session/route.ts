@@ -4,6 +4,7 @@ import { getAuthMode } from '@/lib/auth/mode';
 import { parseAuthHeaders } from '@/lib/auth/headers';
 import { getLogoutUrl } from '@/lib/auth/logout';
 import { getSession, isSessionValid, SessionUser } from '@/lib/oidc/session';
+import { SessionSecretError } from '@/lib/oidc/config';
 
 export interface SessionResponse {
   authenticated: boolean;
@@ -72,7 +73,10 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
       logoutUrl,
     });
   } catch (error) {
-    console.error('Session check error:', error);
+    // A missing SESSION_SECRET is logged once by getSessionSecret().
+    if (!(error instanceof SessionSecretError)) {
+      console.error('Session check error:', error);
+    }
     return NextResponse.json({
       authenticated: false,
       user: null,

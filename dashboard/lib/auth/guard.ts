@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
 import { getAuthMode } from './mode';
 import { isSessionValid } from '../oidc/session';
+import { getSessionSecret, SessionSecretError } from '../oidc/config';
 
 /**
  * Check the session of the current request for the configured auth mode:
@@ -21,7 +22,8 @@ import { isSessionValid } from '../oidc/session';
  *   - 'oidc'    : signed-in, unexpired, non-revoked iron-session cookie.
  *
  * Returns null when the request may proceed, or the response to send back
- * (401 JSON) otherwise. Usage:
+ * otherwise: 401 JSON, or 500 JSON when SESSION_SECRET is not usable in OIDC
+ * mode. Usage:
  *
  *   const denied = await requireAuth();
  *   if (denied) return denied;
@@ -32,9 +34,33 @@ export async function requireAuth(): Promise<NextResponse | null> {
   try {
     if (await isSessionValid()) return null;
   } catch (error) {
+    if (error instanceof SessionSecretError) {
+      // Already logged by getSessionSecret().
+      return NextResponse.json(
+        { error: `Server misconfiguration: ${error.message}` },
+        { status: 500 }
+      );
+    }
     console.error('Session validation error:', error);
   }
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
+
+/**
+ * For the OIDC auth routes (login, callback): return a plain-text 500 when
+ * SESSION_SECRET is missing or too short in production, null otherwise.
+ */
+export function checkSessionSecret(): NextResponse | null {
+  try {
+    getSessionSecret();
+    return null;
+  } catch (error) {
+    if (!(error instanceof SessionSecretError)) throw error;
+    return new NextResponse(`Server misconfiguration: ${error.message}`, {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
 }
 
 /**
@@ -48,7 +74,10 @@ export async function requirePageAuth(): Promise<void> {
   try {
     valid = await isSessionValid();
   } catch (error) {
-    console.error('Session validation error:', error);
+    // A SessionSecretError is already logged; /login explains it.
+    if (!(error instanceof SessionSecretError)) {
+      console.error('Session validation error:', error);
+    }
   }
   // redirect() throws: keep it outside the try block.
   if (!valid) {

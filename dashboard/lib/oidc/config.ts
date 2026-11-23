@@ -49,14 +49,80 @@ export function getActorClaim(): ActorClaim {
   return 'sub';
 }
 
+/** Minimum length of SESSION_SECRET (iron-session requirement). */
+export const MIN_SESSION_SECRET_LENGTH = 32;
+
+/**
+ * Thrown by getSessionSecret() when SESSION_SECRET is missing or too short in
+ * production. Callers turn it into a 500 response or a configuration error
+ * page: OIDC sign-in must fail closed rather than fall back to a known key.
+ */
+export class SessionSecretError extends Error {
+  constructor() {
+    super(
+      `SESSION_SECRET must be set to a random value of at least ${MIN_SESSION_SECRET_LENGTH} characters ` +
+        '(generate one with: openssl rand -hex 32).'
+    );
+    this.name = 'SessionSecretError';
+  }
+}
+
+let devSessionSecret: string | null = null;
+let sessionSecretErrorLogged = false;
+
+function generateRandomSecret(): string {
+  // WebCrypto: available in Node.js >= 19 and in the Edge Runtime.
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Return the secret used to seal the OIDC session cookie.
+ *
+ * SECURITY: there is no built-in fallback secret. When SESSION_SECRET is
+ * missing or shorter than 32 characters:
+ *   - in production (NODE_ENV=production), log an error once and throw a
+ *     SessionSecretError, so OIDC sign-in fails closed;
+ *   - otherwise (development, tests), use a random secret generated once per
+ *     process, with a warning. It is also written to process.env so that the
+ *     Edge middleware sandbox, created after the server starts, sees it.
+ */
 export function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
-  if (secret && secret.length >= 32) {
+  if (secret && secret.length >= MIN_SESSION_SECRET_LENGTH) {
     return secret;
   }
-  // Default secret for development only (exactly 32 characters)
-  // WARNING: In production, SESSION_SECRET must be set explicitly
-  return 'crowdsieve-dev-secret-32-chars!!';
+
+  if (process.env.NODE_ENV === 'production') {
+    const error = new SessionSecretError();
+    if (!sessionSecretErrorLogged) {
+      sessionSecretErrorLogged = true;
+      console.error(`[auth] ${error.message} OIDC sign-in is disabled until it is set.`);
+    }
+    throw error;
+  }
+
+  if (!devSessionSecret) {
+    devSessionSecret = generateRandomSecret();
+    console.warn(
+      `[auth] SESSION_SECRET is missing or shorter than ${MIN_SESSION_SECRET_LENGTH} characters: ` +
+        'using a random secret for this process (allowed because NODE_ENV is not "production"). ' +
+        'Sessions will not survive a restart.'
+    );
+  }
+  process.env.SESSION_SECRET = devSessionSecret;
+  return devSessionSecret;
+}
+
+/** Whether getSessionSecret() can return a secret (never throws). */
+export function isSessionSecretUsable(): boolean {
+  try {
+    getSessionSecret();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getBaseUrl(): string {

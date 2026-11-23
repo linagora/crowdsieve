@@ -273,6 +273,8 @@ OIDC_CLIENT_SECRET=your-client-secret
 SESSION_SECRET=$(openssl rand -hex 32)
 ```
 
+`SESSION_SECRET` (at least 32 characters) is mandatory in OIDC mode: without it the dashboard refuses OIDC sign-in in production.
+
 **HTTP Headers mode** — a trusted upstream proxy authenticates the user and forwards their identity via `Auth-*` headers (e.g. LemonLDAP-NG handler):
 
 ```bash

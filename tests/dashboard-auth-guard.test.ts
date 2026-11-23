@@ -26,6 +26,8 @@ vi.mock('next/headers', () => ({
 
 import { POST as banPost } from '../dashboard/app/api/decisions/ban/route.js';
 import { GET as alertsGet } from '../dashboard/app/api/alerts/route.js';
+import { GET as loginGet } from '../dashboard/app/api/auth/login/route.js';
+import { GET as callbackGet } from '../dashboard/app/api/auth/callback/route.js';
 import { revokeSession } from '../dashboard/lib/oidc/revocation.js';
 
 const originalEnv = { ...process.env };
@@ -177,5 +179,48 @@ describe('API route guard in other modes', () => {
     const res = await alertsGet(alertsRequest());
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('OIDC mode without a usable SESSION_SECRET (GHSA-8hgc-3vpr-6r43)', () => {
+  beforeEach(() => {
+    process.env.NODE_ENV = 'production';
+    process.env.OIDC_ISSUER = 'https://sso.example.com';
+    process.env.OIDC_CLIENT_ID = 'crowdsieve';
+    delete process.env.SESSION_SECRET;
+  });
+
+  it('API routes answer 500 with a clear message', async () => {
+    await setSessionCookie(liveSession());
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toMatch(/SESSION_SECRET/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/auth/login answers 500 and starts no login flow', async () => {
+    const res = await loginGet(new NextRequest('http://localhost:3000/api/auth/login'));
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).toMatch(/SESSION_SECRET must be set/);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/auth/callback answers 500', async () => {
+    const res = await callbackGet(
+      new NextRequest('http://localhost:3000/api/auth/callback?code=c&state=s')
+    );
+
+    expect(res.status).toBe(500);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a too short SESSION_SECRET is rejected as well', async () => {
+    process.env.SESSION_SECRET = 'x'.repeat(31);
+    const res = await loginGet(new NextRequest('http://localhost:3000/api/auth/login'));
+
+    expect(res.status).toBe(500);
   });
 });

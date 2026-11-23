@@ -170,8 +170,9 @@ crowdsieve:
 
       # Session configuration
       session:
-        # -- Session secret (auto-generated if empty, 32+ chars recommended)
-        # WARNING: Auto-generated secrets change on each Helm upgrade, invalidating sessions
+        # -- Session secret (at least 32 characters). When empty, a random
+        # secret is generated on install and reused from the existing Secret
+        # on upgrade. The dashboard refuses OIDC sign-in without a valid one.
         secret: ""
         # -- Use existing secret for session secret
         existingSecret: ""
