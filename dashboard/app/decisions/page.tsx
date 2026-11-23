@@ -6,16 +6,26 @@ import { Search, Loader2, Shield, ShieldAlert, Globe, Server, Trash2 } from 'luc
 import { Button } from '@/components/ui/button';
 import type { DecisionSearchResponse, Decision } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { ActiveDecisions } from '@/components/ActiveDecisions';
+import { decisionExpiry, expiryRemainingMs, formatExpiry } from '@/lib/decisionExpiry';
+
+// Write controls (delete, bulk delete). Read-only users will get false once
+// roles exist.
+const CAN_WRITE_DECISIONS = true;
 
 interface DecisionCardProps {
   decision: Decision;
   server?: string;
   onDelete?: (decisionId: number, server: string, ip: string, reason: string) => Promise<void>;
   canDelete?: boolean;
+  /** Time the search answer was received (base of the LAPI durations). */
+  answeredAt: number;
 }
 
-function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardProps) {
-  const isExpired = decision.until && new Date(decision.until) < new Date();
+function DecisionCard({ decision, server, onDelete, canDelete, answeredAt }: DecisionCardProps) {
+  const expiry = decisionExpiry(decision, answeredAt);
+  const now = Date.now();
+  const isExpired = expiryRemainingMs(expiry, now) <= 0;
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -86,12 +96,9 @@ function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardPro
           <span className="font-mono">{decision.value}</span>
         </div>
         <div className="flex gap-4">
-          <span>Duration: {decision.duration}</span>
-          {decision.until && (
-            <span>
-              {isExpired ? 'Expired' : 'Until'}: {new Date(decision.until).toLocaleString()}
-            </span>
-          )}
+          <span title={`Duration: ${decision.duration || 'none'}`}>
+            Expires: {formatExpiry(expiry, now)}
+          </span>
         </div>
       </div>
       {confirmOpen && (
@@ -138,6 +145,7 @@ function DecisionSearchContent() {
   const [ip, setIp] = useState(initialIp);
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<DecisionSearchResponse | null>(null);
+  const [answeredAt, setAnsweredAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -159,6 +167,7 @@ function DecisionSearchContent() {
         if (!res.ok) {
           setError(data.error || 'Failed to search decisions');
         } else {
+          setAnsweredAt(Date.now());
           setResults(data);
         }
       } catch (err) {
@@ -256,7 +265,8 @@ function DecisionSearchContent() {
           {/* Summary */}
           <div className="card p-4">
             <p className="text-lg">
-              Found <strong>{totalDecisions}</strong> decision{totalDecisions !== 1 ? 's' : ''} for{' '}
+              Found <strong>{totalDecisions}</strong> decision{totalDecisions !== 1 ? 's' : ''}{' '}
+              {results.ip.includes('/') ? 'in or around' : 'for'}{' '}
               <span className="font-mono bg-slate-100 px-2 py-1 rounded">{results.ip}</span>
             </p>
           </div>
@@ -273,7 +283,12 @@ function DecisionSearchContent() {
               </p>
               <div className="space-y-3">
                 {results.shared.map((decision, idx) => (
-                  <DecisionCard key={`shared-${idx}`} decision={decision} canDelete={false} />
+                  <DecisionCard
+                    key={`shared-${idx}`}
+                    decision={decision}
+                    canDelete={false}
+                    answeredAt={answeredAt}
+                  />
                 ))}
               </div>
             </div>
@@ -299,7 +314,8 @@ function DecisionSearchContent() {
                       decision={decision}
                       server={serverResult.server}
                       onDelete={handleDeleteDecision}
-                      canDelete={true}
+                      canDelete={CAN_WRITE_DECISIONS}
+                      answeredAt={answeredAt}
                     />
                   ))}
                 </div>
@@ -312,6 +328,8 @@ function DecisionSearchContent() {
       {hasSearched && !results && !error && !searching && (
         <div className="card p-6 text-center text-slate-500">No results found</div>
       )}
+
+      <ActiveDecisions canWrite={CAN_WRITE_DECISIONS} />
     </div>
   );
 }

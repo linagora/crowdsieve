@@ -331,10 +331,20 @@ The dashboard includes a **Decisions** page (accessible from the navigation) tha
 
 Features:
 
-- Search by IP address (IPv4 or IPv6)
+- Search by IP address or CIDR range (IPv4 or IPv6). A range finds the decisions that contain it and the decisions inside it (e.g. `192.0.2.0/24` finds a `192.0.2.0/28` ban)
 - Results grouped by server
+- Each decision shows when it expires, in the browser's local time, with the remaining time (`Expires: 11 Nov 2026, 23:04 (in 3h 56m)`)
 - Shared decisions (from CAPI/blocklists) are deduplicated and shown separately
 - Direct link from alert details to view decisions for the source IP
+
+Below the search, the **Active decisions** table lists the current blocklist of every LAPI server, without typing anything:
+
+- Filters, kept in the URL (`/decisions?server=lapi-1&type=captcha`): LAPI server, type, origin, IP or range (an IP matches the decisions that contain it, a CIDR the decisions inside it), scenario/reason substring, and "Include community blocklists (CAPI, lists)", off by default
+- Sorted by expiry (soonest first), 50 rows per page
+- A LAPI that cannot be reached is reported above the table; the other servers are still listed
+- Delete one decision, or select several and **Delete selected**. A reason is required; each decision is deleted through the same route as a single delete, so every deletion records its own unban event (with the reason and the signed-in user) in the alert list. Decisions from the community blocklists cannot be selected (LAPI would pull them again), nor can the decisions of a server without machine credentials
+
+The list is read from LAPI's `GET /v1/decisions` with the bouncer API key. Without the community blocklists, CrowdSieve asks LAPI for the origins `crowdsec`, `cscli`, `cscli-import`, `console`, `appsec`, `crowdsieve` and `crowdsieve-replication`; decisions with another origin are only listed with the community blocklists included. At most 20,000 decisions per server are listed; the table says so when a server has more.
 
 ### Filter Rules
 

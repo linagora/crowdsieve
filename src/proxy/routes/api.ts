@@ -9,6 +9,13 @@ import { getAnalyzerEngine } from '../../analyzers/index.js';
 import { getMachineToken, CROWDSIEVE_VERSION } from '../../auth/machineToken.js';
 import { MANUAL_BAN_SCENARIO } from '../../storage/index.js';
 import {
+  LOCAL_DECISION_ORIGINS,
+  isSharedOrigin,
+  queryLapiDecisions,
+  queryLapiDecisionsMerged,
+} from '../lapiDecisions.js';
+import {
+  ActiveDecisionsResponse,
   AlertResponse,
   AnalyzerDetailResponse,
   AnalyzerRunTriggerResponse,
@@ -17,7 +24,9 @@ import {
   BouncerMetricResponse,
   BouncerNamesResponse,
   CountryCode,
+  DecisionOrigin,
   DecisionStatsResponse,
+  DecisionType,
   DecisionsResponse,
   Duration,
   ErrorResponse,
@@ -46,6 +55,8 @@ export const MAX_ACTOR_LENGTH = 256;
 export const DURATION_REGEX = /^\d+[smh]$/;
 export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
+/** Per-server cap of GET /api/decisions/active (community blocklists can be huge). */
+export const MAX_ACTIVE_DECISIONS_PER_SERVER = 20000;
 
 /**
  * Read the X-Crowdsieve-Actor header propagated by the dashboard proxy.
@@ -526,73 +537,23 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           return reply.send({ ip: normalizedIp, results: [], shared: [] });
         }
 
+        // A single IP finds the decisions that contain it. A range is looked
+        // up twice: the decisions that contain it (`range=`) and the ones
+        // inside it (`range=&contains=false`), merged by decision id.
+        const queries =
+          parsed.scope === 'ip'
+            ? [new URLSearchParams({ ip: normalizedIp })]
+            : [
+                new URLSearchParams({ range: normalizedIp }),
+                new URLSearchParams({ range: normalizedIp, contains: 'false' }),
+              ];
+
         // Query all LAPI servers in parallel
         const serverResults = await Promise.all(
-          servers.map(async (server: LapiServer) => {
-            try {
-              const lapiUrl = `${server.url}/v1/decisions?ip=${encodeURIComponent(normalizedIp)}`;
-              const response = await fetch(lapiUrl, {
-                headers: {
-                  'X-Api-Key': server.api_key,
-                  'User-Agent': `crowdsieve/${CROWDSIEVE_VERSION}`,
-                },
-                signal: AbortSignal.timeout(config.proxy.timeout_ms),
-              });
-
-              if (!response.ok) {
-                const errorBody = await response.text();
-                logger.warn(
-                  { server: server.name, status: response.status, error: errorBody },
-                  'LAPI returned error when querying decisions'
-                );
-                return {
-                  server: server.name,
-                  decisions: [] as Array<{
-                    id: number;
-                    origin: string;
-                    type: string;
-                    scope: string;
-                    value: string;
-                    duration: string;
-                    scenario: string;
-                    until?: string;
-                  }>,
-                  error: `LAPI error: ${response.status}`,
-                };
-              }
-
-              const decisions = await response.json();
-              return {
-                server: server.name,
-                decisions: (decisions || []) as Array<{
-                  id: number;
-                  origin: string;
-                  type: string;
-                  scope: string;
-                  value: string;
-                  duration: string;
-                  scenario: string;
-                  until?: string;
-                }>,
-              };
-            } catch (err) {
-              logger.warn({ server: server.name, err }, 'Failed to query LAPI for decisions');
-              return {
-                server: server.name,
-                decisions: [] as Array<{
-                  id: number;
-                  origin: string;
-                  type: string;
-                  scope: string;
-                  value: string;
-                  duration: string;
-                  scenario: string;
-                  until?: string;
-                }>,
-                error: err instanceof Error ? err.message : 'Unknown error',
-              };
-            }
-          })
+          servers.map(async (server: LapiServer) => ({
+            server: server.name,
+            ...(await queryLapiDecisionsMerged(server, queries, config.proxy.timeout_ms, logger)),
+          }))
         );
 
         // Separate shared decisions (from CAPI/lists) that appear on all servers
@@ -669,6 +630,135 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
       } catch (err) {
         logger.error({ err }, 'Failed to search decisions');
         return reply.code(500).send({ error: 'Failed to search decisions' });
+      }
+    }
+  );
+
+  // List the active decisions of every configured LAPI (or of one of them).
+  // The filters are applied by LAPI itself; the community blocklists (CAPI,
+  // lists) are left out unless include_shared is set.
+  fastify.get(
+    '/api/decisions/active',
+    {
+      schema: {
+        tags: ['decisions'],
+        summary: 'List the active decisions of the configured LAPI servers',
+        querystring: Type.Object({
+          server: Type.Optional(ServerName),
+          type: Type.Optional(DecisionType),
+          origin: Type.Optional(DecisionOrigin),
+          scenario: Type.Optional(
+            Type.String({
+              minLength: 1,
+              maxLength: MAX_SCENARIO_LENGTH,
+              pattern: '^[^\\x00-\\x1f\\x7f]+$',
+              description: 'Case-insensitive substring of the scenario (or reason)',
+            })
+          ),
+          value: Type.Optional(
+            Type.String({
+              minLength: 1,
+              maxLength: 64,
+              description:
+                'IP address (decisions that contain it) or CIDR range (decisions inside it)',
+            })
+          ),
+          include_shared: Type.Optional(
+            Type.Boolean({
+              default: false,
+              description: 'Include the community blocklists (origins CAPI and lists)',
+            })
+          ),
+        }),
+        response: {
+          200: ActiveDecisionsResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          500: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const {
+          server: serverName,
+          type,
+          origin,
+          scenario,
+          value,
+          include_shared: includeShared = false,
+        } = request.query;
+        const { config } = fastify;
+
+        let servers: LapiServer[] = config.lapi_servers || [];
+        if (serverName) {
+          servers = servers.filter((s: LapiServer) => s.name === serverName);
+          if (servers.length === 0) {
+            return reply.code(404).send({ error: 'LAPI server not found' });
+          }
+        }
+
+        const params = new URLSearchParams();
+        if (value) {
+          const parsed = parseIpOrCidr(value);
+          if (!parsed.valid) {
+            return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
+          }
+          if (parsed.scope === 'ip') {
+            params.set('ip', parsed.value);
+          } else {
+            params.set('range', parsed.value);
+            params.set('contains', 'false');
+          }
+        }
+        if (type) params.set('type', type);
+        const trimmedScenario = scenario?.trim();
+        if (trimmedScenario) params.set('scenarios_containing', trimmedScenario);
+
+        // An explicit shared origin with include_shared=false matches nothing.
+        const matchesNothing = Boolean(origin && !includeShared && isSharedOrigin(origin));
+        if (origin) {
+          params.set('origins', origin);
+        } else if (!includeShared) {
+          params.set('origins', LOCAL_DECISION_ORIGINS.join(','));
+        }
+
+        const results = await Promise.all(
+          servers.map(async (server: LapiServer) => {
+            if (matchesNothing) return { server: server.name, decisions: [] };
+            const { decisions, error } = await queryLapiDecisions(
+              server,
+              params,
+              config.proxy.timeout_ms,
+              logger
+            );
+            const kept = includeShared
+              ? decisions
+              : decisions.filter((d) => !isSharedOrigin(d.origin));
+            return {
+              server: server.name,
+              decisions: kept.slice(0, MAX_ACTIVE_DECISIONS_PER_SERVER),
+              ...(kept.length > MAX_ACTIVE_DECISIONS_PER_SERVER
+                ? { truncated: true, total: kept.length }
+                : {}),
+              ...(error ? { error } : {}),
+            };
+          })
+        );
+
+        logger.info(
+          {
+            serverCount: servers.length,
+            decisionCount: results.reduce((n, r) => n + r.decisions.length, 0),
+            filters: Object.fromEntries(params),
+          },
+          'Listed active decisions across LAPI servers'
+        );
+        return reply.send({ results });
+      } catch (err) {
+        logger.error({ err }, 'Failed to list active decisions');
+        return reply.code(500).send({ error: 'Failed to list active decisions' });
       }
     }
   );
