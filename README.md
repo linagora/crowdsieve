@@ -65,8 +65,8 @@ Traditional CrowdSec architecture embeds intelligence in each scenario to determ
 ### Using Docker
 
 ```bash
-# Pull and run the image
-docker run -d -p 8080:8080 -p 3000:3000 yadd/crowdsieve:latest
+# Pull and run the image (dashboard published on localhost only)
+docker run -d -p 8080:8080 -p 127.0.0.1:3000:3000 yadd/crowdsieve:latest
 
 # Or use docker compose
 git clone https://github.com/linagora/crowdsieve.git
@@ -78,6 +78,8 @@ The container runs both services:
 
 - **Proxy**: http://localhost:8080 (for CrowdSec LAPI)
 - **Dashboard**: http://localhost:3000 (web interface)
+
+> **Security:** without authentication settings the dashboard is open to anyone who can reach it, including ban and unban. The examples above, and `docker-compose.yml` (`DASHBOARD_BIND`, default `127.0.0.1`), therefore publish it on the loopback interface only. Configure [dashboard authentication](#dashboard-authentication) before exposing it; the dashboard logs a warning at startup while none is configured.
 
 ### Using Helm (Kubernetes)
 
@@ -262,7 +264,9 @@ This is useful for:
 
 ### Dashboard Authentication
 
-The dashboard supports two authentication modes (selected via `AUTH_MODE` or auto-detected). See the [Authentication documentation](./doc/oidc-authentication.md) for detailed setup instructions.
+The dashboard supports two authentication modes (selected via `AUTH_MODE` or auto-detected). See the [Authentication documentation](./docs/oidc-authentication.md) for detailed setup instructions.
+
+When neither `AUTH_MODE` nor OIDC is configured, the dashboard runs **without authentication** and logs a warning at startup. If access is restricted by other means (loopback binding, VPN, authenticating proxy), set `AUTH_MODE=none` to make this choice explicit.
 
 **OIDC mode** — the dashboard runs the OpenID Connect login flow itself:
 
@@ -288,7 +292,7 @@ TRUSTED_PROXY_IPS=10.0.0.5,10.42.0.0/16
 AUTH_LOGOUT_URL=https://portal.example.com/logout
 ```
 
-> **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [doc/oidc-authentication.md](./doc/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
+> **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [docs/oidc-authentication.md](./docs/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
 
 ### Decision Search
 

@@ -237,6 +237,15 @@ describe('getAuthMode', () => {
     expect(getAuthMode()).toBe('none');
   });
 
+  it('isAuthModeExplicit is true only for a supported AUTH_MODE value', async () => {
+    const { isAuthModeExplicit } = await import('../dashboard/lib/auth/mode.js');
+    expect(isAuthModeExplicit()).toBe(false);
+    process.env.AUTH_MODE = 'None';
+    expect(isAuthModeExplicit()).toBe(true);
+    process.env.AUTH_MODE = 'invalid';
+    expect(isAuthModeExplicit()).toBe(false);
+  });
+
   it('isHeadersAuthEnabled mirrors getAuthMode', async () => {
     process.env.AUTH_MODE = 'headers';
     const { isHeadersAuthEnabled } = await import('../dashboard/lib/auth/mode.js');

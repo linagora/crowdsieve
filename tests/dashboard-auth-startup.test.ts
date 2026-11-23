@@ -93,3 +93,41 @@ describe('checkAuthConfiguration: headers mode (GHSA-rjx9-mrqq-772w)', () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('checkAuthConfiguration: no authentication (GHSA-x9j8-8c9m-cmpp)', () => {
+  it('warns loudly when the mode resolves to none implicitly', async () => {
+    await runChecks();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnings()).toMatch(/WITHOUT AUTHENTICATION/);
+    expect(warnings()).toMatch(/AUTH_MODE=none/);
+  });
+
+  it('only logs a notice when AUTH_MODE=none is explicit', async () => {
+    process.env.AUTH_MODE = 'none';
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await runChecks();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(String(infoSpy.mock.calls[0][0])).toMatch(/authentication is disabled/);
+  });
+
+  it('flags an unknown AUTH_MODE that falls back to none', async () => {
+    process.env.AUTH_MODE = 'odic';
+    await runChecks();
+
+    expect(warnings()).toMatch(/Unknown AUTH_MODE "odic"/);
+    expect(warnings()).toMatch(/WITHOUT AUTHENTICATION/);
+  });
+
+  it('does not warn when OIDC is auto-detected', async () => {
+    process.env.OIDC_ISSUER = 'https://sso.example.com';
+    process.env.OIDC_CLIENT_ID = 'crowdsieve';
+    process.env.SESSION_SECRET = 'c'.repeat(64);
+    await runChecks();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+});

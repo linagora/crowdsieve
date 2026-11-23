@@ -6,9 +6,9 @@ CrowdSieve supports two authentication modes for the dashboard:
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `oidc`    | Standard OpenID Connect deployment. The dashboard handles the login flow itself via the iron-session cookie. Documented in this page.                                             |
 | `headers` | A trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) authenticates the user upstream and forwards their identity via `Auth-*` headers. |
-| `none`    | No authentication enforced. Default when neither OIDC nor headers mode is configured.                                                                                             |
+| `none`    | No authentication enforced. Default when neither OIDC nor headers mode is configured (a warning is logged at startup; set `AUTH_MODE=none` explicitly to acknowledge it).         |
 
-The mode is selected via `AUTH_MODE` (`oidc` | `headers` | `none`). When unset, the dashboard auto-detects: `oidc` if `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, otherwise `none`. Jump to [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler) for the proxy-based setup.
+The mode is selected via `AUTH_MODE` (`oidc` | `headers` | `none`). When unset, the dashboard auto-detects: `oidc` if `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, otherwise `none`. In that last case anyone who can reach the dashboard can read all data and ban or unban any IP, so the dashboard logs a prominent warning at startup; an explicit `AUTH_MODE=none` only logs a notice. An unknown `AUTH_MODE` value is ignored with a warning. The provided `docker-compose.yml` publishes the dashboard on `127.0.0.1` only (`DASHBOARD_BIND`) for this reason. Jump to [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler) for the proxy-based setup.
 
 ### Cross-site request protection
 

@@ -6,7 +6,7 @@
  * the logs at startup rather than on the first sign-in attempt.
  */
 
-import { getAuthMode } from './mode';
+import { getAuthMode, isAuthModeExplicit } from './mode';
 import { getSessionSecret } from '../oidc/config';
 import { getAuthProxySecret, getTrustedProxyIps } from './trust';
 
@@ -15,6 +15,37 @@ const MIN_PROXY_SECRET_LENGTH = 32;
 
 export function checkAuthConfiguration(): void {
   const mode = getAuthMode();
+  const rawMode = process.env.AUTH_MODE?.trim();
+
+  if (rawMode && !isAuthModeExplicit()) {
+    console.warn(
+      `[auth] Unknown AUTH_MODE "${rawMode}" (expected oidc, headers or none): ignored, ` +
+        `auto-detected mode is "${mode}".`
+    );
+  }
+
+  if (mode === 'none') {
+    if (isAuthModeExplicit()) {
+      console.info(
+        '[auth] AUTH_MODE=none: dashboard authentication is disabled. Make sure that only ' +
+          'trusted users can reach the dashboard.'
+      );
+    } else {
+      console.warn(
+        [
+          '[auth] ********************************************************************',
+          '[auth] WARNING: the dashboard runs WITHOUT AUTHENTICATION.',
+          '[auth] AUTH_MODE is not set and OIDC is not configured, so anyone who can',
+          '[auth] reach the dashboard port can read all alerts and decisions and ban or',
+          '[auth] unban any IP or range on every LAPI.',
+          '[auth] Configure OIDC (OIDC_ISSUER, OIDC_CLIENT_ID, SESSION_SECRET) or',
+          '[auth] AUTH_MODE=headers, or set AUTH_MODE=none to confirm that access to',
+          '[auth] the dashboard is restricted by other means.',
+          '[auth] ********************************************************************',
+        ].join('\n')
+      );
+    }
+  }
 
   if (mode === 'oidc') {
     try {
