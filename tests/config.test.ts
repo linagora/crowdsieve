@@ -481,7 +481,7 @@ describe('loadConfigFromEnv numeric validation', () => {
     expect(config.client_validation).toEqual({
       enabled: false,
       cache_ttl_seconds: 604800,
-      cache_ttl_error_seconds: 3600,
+      cache_ttl_error_seconds: 300,
       validation_timeout_ms: 5000,
       max_memory_entries: 1000,
       fail_closed: false,

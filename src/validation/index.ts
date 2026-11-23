@@ -32,7 +32,7 @@ export class ClientValidator {
   async validate(authHeader: string | undefined): Promise<ValidationResult> {
     // 1. No header = reject
     if (!authHeader) {
-      return { valid: false, reason: 'no_auth_header' };
+      return { valid: false, reason: 'no_auth_header', authenticated: false };
     }
 
     const tokenHash = sha256(authHeader);
@@ -41,18 +41,24 @@ export class ClientValidator {
     // 2. Check memory cache
     const memEntry = this.memoryCache.get(tokenHash);
     if (memEntry && !isExpired(memEntry)) {
+      if (memEntry.failOpen) {
+        // A recent fail-open: keep letting the client through without
+        // hammering an unavailable CAPI, but never as an authenticated client.
+        this.logger.debug({ tokenHash: shortHash }, 'Client allowed from fail-open cache');
+        return { valid: true, reason: 'cached_failopen', authenticated: false };
+      }
       this.logger.debug({ tokenHash: shortHash }, 'Client validated from memory cache');
-      return { valid: true, reason: 'cached_memory' };
+      return { valid: true, reason: 'cached_memory', authenticated: true };
     }
 
-    // 3. Check SQLite cache
+    // 3. Check SQLite cache (only real CAPI validations are persisted)
     try {
       const dbEntry = await this.dbCache.lookup(tokenHash);
       if (dbEntry && !isExpired(dbEntry)) {
         // Promote to memory cache
         this.memoryCache.set(tokenHash, dbEntry);
         this.logger.debug({ tokenHash: shortHash }, 'Client validated from SQLite cache');
-        return { valid: true, reason: 'cached_sqlite' };
+        return { valid: true, reason: 'cached_sqlite', authenticated: true };
       }
     } catch (err) {
       this.logger.error({ err, tokenHash: shortHash }, 'Failed to check SQLite cache');
@@ -64,8 +70,9 @@ export class ClientValidator {
     // - /v2/decisions/stream is for bouncers (uses API key)
     // - LAPI machines use JWT tokens obtained from /v3/watchers/login
     // - Sending an empty signals array is lightweight and validates the JWT
+    let response: Response;
     try {
-      const response = await fetch(`${this.capiUrl}/v3/signals`, {
+      response = await fetch(`${this.capiUrl}/v3/signals`, {
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -74,51 +81,76 @@ export class ClientValidator {
         body: '[]',
         signal: AbortSignal.timeout(this.config.validationTimeoutMs),
       });
-
-      if (response.ok) {
-        await this.cacheClient(tokenHash, this.config.cacheTtlSeconds);
-        this.logger.info({ tokenHash: shortHash }, 'Client validated with CAPI');
-        return { valid: true, reason: 'validated' };
-      }
-
-      // 401/403 = invalid credentials
-      if (response.status === 401 || response.status === 403) {
-        this.logger.warn({ status: response.status }, 'Client rejected - invalid credentials');
-        return { valid: false, reason: 'invalid_credentials' };
-      }
-
-      // Other CAPI error (5xx, 429, etc.)
-      if (this.config.failClosed) {
-        this.logger.error(
-          { tokenHash: shortHash, status: response.status },
-          'CAPI returned error, rejecting request (fail-closed mode)'
-        );
-        return { valid: false, reason: 'capi_error_failclosed' };
-      }
-
-      this.logger.warn(
-        { tokenHash: shortHash, status: response.status },
-        'CAPI returned error, allowing request (fail-open)'
-      );
-      await this.cacheClient(tokenHash, this.config.cacheTtlErrorSeconds);
-      return { valid: true, reason: 'capi_error_failopen' };
     } catch (err) {
-      // Timeout/network error
-      if (this.config.failClosed) {
-        this.logger.error(
-          { err, tokenHash: shortHash },
-          'CAPI validation failed, rejecting request (fail-closed mode)'
-        );
-        return { valid: false, reason: 'capi_error_failclosed' };
-      }
-
-      this.logger.warn(
-        { err, tokenHash: shortHash },
-        'CAPI validation failed, allowing request (fail-open)'
-      );
-      await this.cacheClient(tokenHash, this.config.cacheTtlErrorSeconds);
-      return { valid: true, reason: 'capi_error_failopen' };
+      // Timeout/network error: CAPI is unavailable
+      return this.capiUnavailable(tokenHash, { err }, 'CAPI validation failed');
     }
+
+    if (response.ok) {
+      await this.cacheClient(tokenHash, this.config.cacheTtlSeconds);
+      this.logger.info({ tokenHash: shortHash }, 'Client validated with CAPI');
+      return { valid: true, reason: 'validated', authenticated: true };
+    }
+
+    // 401/403 = invalid credentials
+    if (response.status === 401 || response.status === 403) {
+      this.logger.warn({ status: response.status }, 'Client rejected - invalid credentials');
+      return { valid: false, reason: 'invalid_credentials', authenticated: false };
+    }
+
+    // 5xx = CAPI itself is failing: the only status that may fail open
+    if (response.status >= 500) {
+      return this.capiUnavailable(
+        tokenHash,
+        { status: response.status },
+        'CAPI returned a server error'
+      );
+    }
+
+    // Any other non-2xx status (400, 404, 413, 429, ...) means CAPI did not
+    // accept this request. A client must never be able to turn a malformed or
+    // oversized Authorization header into an accepted one, so this is a
+    // rejection whatever `fail_closed` says.
+    this.logger.warn(
+      { tokenHash: shortHash, status: response.status },
+      'Client rejected - CAPI did not accept the credentials'
+    );
+    return { valid: false, reason: 'capi_rejected', authenticated: false };
+  }
+
+  /**
+   * Handle a CAPI outage (5xx, timeout, network error).
+   *
+   * Fail-closed: reject. Fail-open: let the request through without
+   * authenticating it, and remember that in the memory cache only, for
+   * `cacheTtlErrorSeconds`, so an outage does not cost a CAPI round-trip (and
+   * possibly a full timeout) on every request. Fail-open entries are never
+   * written to the persistent cache.
+   */
+  private capiUnavailable(
+    tokenHash: string,
+    details: Record<string, unknown>,
+    message: string
+  ): ValidationResult {
+    const shortHash = tokenHash.substring(0, 8);
+    if (this.config.failClosed) {
+      this.logger.error(
+        { ...details, tokenHash: shortHash },
+        `${message}, rejecting request (fail-closed mode)`
+      );
+      return { valid: false, reason: 'capi_error_failclosed', authenticated: false };
+    }
+
+    this.logger.warn(
+      { ...details, tokenHash: shortHash },
+      `${message}, allowing request without authentication (fail-open)`
+    );
+    this.memoryCache.set(tokenHash, {
+      tokenHash,
+      expiresAt: new Date(Date.now() + this.config.cacheTtlErrorSeconds * 1000),
+      failOpen: true,
+    });
+    return { valid: true, reason: 'capi_error_failopen', authenticated: false };
   }
 
   private async cacheClient(tokenHash: string, ttlSeconds: number): Promise<void> {

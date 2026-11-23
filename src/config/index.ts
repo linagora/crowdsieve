@@ -177,7 +177,7 @@ const ConfigSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       cache_ttl_seconds: z.number().positive().default(604800),
-      cache_ttl_error_seconds: z.number().positive().default(3600),
+      cache_ttl_error_seconds: z.number().positive().default(300),
       validation_timeout_ms: z.number().positive().default(5000),
       max_memory_entries: z.number().positive().default(1000),
       fail_closed: z.boolean().default(false),
@@ -316,7 +316,7 @@ export function loadConfigFromEnv(): Partial<Config> {
       cache_ttl_seconds: readIntegerEnv('CLIENT_VALIDATION_CACHE_TTL', '604800', POSITIVE_BOUNDS),
       cache_ttl_error_seconds: readIntegerEnv(
         'CLIENT_VALIDATION_CACHE_TTL_ERROR',
-        '3600',
+        '300',
         POSITIVE_BOUNDS
       ),
       validation_timeout_ms: readIntegerEnv(

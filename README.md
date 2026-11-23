@@ -364,11 +364,23 @@ Enable via environment variables:
 ```bash
 CLIENT_VALIDATION_ENABLED=true
 CLIENT_VALIDATION_CACHE_TTL=604800        # Cache valid clients for 1 week
-CLIENT_VALIDATION_CACHE_TTL_ERROR=3600    # Cache on CAPI errors for 1 hour
+CLIENT_VALIDATION_CACHE_TTL_ERROR=300     # Remember a fail-open result for 5 minutes
 CLIENT_VALIDATION_FAIL_CLOSED=false       # Set to true to reject when CAPI unavailable
 ```
 
 Validation uses a dual-layer cache (in-memory LRU + SQLite) for performance.
+
+How CAPI's answer to the validation request is interpreted:
+
+| CAPI answer                                | Result                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| 2xx                                        | Client **authenticated**, cached for `CLIENT_VALIDATION_CACHE_TTL` (memory + database)            |
+| 401, 403 and any other 4xx (400, 404, 429) | Request **rejected** (401), whatever the fail mode                                                |
+| 5xx, timeout, network error                | `FAIL_CLOSED=true`: rejected. `FAIL_CLOSED=false`: **let through, not authenticated** (see below) |
+
+A fail-open result is remembered in memory only, for `CLIENT_VALIDATION_CACHE_TTL_ERROR` seconds, so that a CAPI outage does not cost a round-trip on every request. A client let through this way is never treated as authenticated: its alerts are stored and forwarded, but its decisions are not replicated to your LAPIs (see [Decision Replication](#decision-replication)).
+
+`fail_closed` stays `false` by default, for backward compatibility. Only a genuine CAPI outage (5xx, timeout) can fail open, a client cannot cause one with a malformed token, and a fail-open client cannot trigger replication. The remaining exposure is that, during an outage, alerts from a token that is not already cached are stored in the local dashboard without having been authenticated. Set `CLIENT_VALIDATION_FAIL_CLOSED=true` if that is not acceptable for you: already-validated (cached) clients keep working during an outage either way.
 
 ## Log Analyzers
 
@@ -520,19 +532,20 @@ CrowdSec CAPI rejects requests whose **decompressed** body exceeds ~10 MiB. Afte
 
 ## Environment Variables
 
-| Variable                        | Default                  | Description                                           |
-| ------------------------------- | ------------------------ | ----------------------------------------------------- |
-| `CONFIG_PATH`                   | `./config/filters.yaml`  | Path to config file                                   |
-| `DATABASE_PATH`                 | `./data/crowdsieve.db`   | Path to SQLite database                               |
-| `GEOIP_DB_PATH`                 | `./data/geoip-city.mmdb` | Path to GeoIP database                                |
-| `PROXY_PORT`                    | `8080`                   | Proxy listen port                                     |
-| `DASHBOARD_PORT`                | `3000`                   | Dashboard listen port                                 |
-| `LOG_LEVEL`                     | `info`                   | Log level (debug, info, warn, error)                  |
-| `LOG_FORMAT`                    | `json`                   | Log format (json, pretty)                             |
-| `FORWARD_ENABLED`               | `true`                   | Set to `false` to disable CAPI forwarding (test mode) |
-| `CLIENT_VALIDATION_ENABLED`     | `false`                  | Enable client validation against CAPI                 |
-| `CLIENT_VALIDATION_CACHE_TTL`   | `604800`                 | Cache TTL for validated clients (seconds)             |
-| `CLIENT_VALIDATION_FAIL_CLOSED` | `false`                  | Reject requests when CAPI is unavailable              |
+| Variable                            | Default                  | Description                                           |
+| ----------------------------------- | ------------------------ | ----------------------------------------------------- |
+| `CONFIG_PATH`                       | `./config/filters.yaml`  | Path to config file                                   |
+| `DATABASE_PATH`                     | `./data/crowdsieve.db`   | Path to SQLite database                               |
+| `GEOIP_DB_PATH`                     | `./data/geoip-city.mmdb` | Path to GeoIP database                                |
+| `PROXY_PORT`                        | `8080`                   | Proxy listen port                                     |
+| `DASHBOARD_PORT`                    | `3000`                   | Dashboard listen port                                 |
+| `LOG_LEVEL`                         | `info`                   | Log level (debug, info, warn, error)                  |
+| `LOG_FORMAT`                        | `json`                   | Log format (json, pretty)                             |
+| `FORWARD_ENABLED`                   | `true`                   | Set to `false` to disable CAPI forwarding (test mode) |
+| `CLIENT_VALIDATION_ENABLED`         | `false`                  | Enable client validation against CAPI                 |
+| `CLIENT_VALIDATION_CACHE_TTL`       | `604800`                 | Cache TTL for validated clients (seconds)             |
+| `CLIENT_VALIDATION_CACHE_TTL_ERROR` | `300`                    | How long a fail-open result is remembered (seconds)   |
+| `CLIENT_VALIDATION_FAIL_CLOSED`     | `false`                  | Reject requests when CAPI is unavailable              |
 
 ## GeoIP Database
 

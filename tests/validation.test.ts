@@ -1,6 +1,31 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { LRUCache } from '../src/validation/memory-cache.js';
-import type { CacheEntry } from '../src/validation/types.js';
+import type { CacheEntry, ValidationConfig } from '../src/validation/types.js';
+import { ClientValidator } from '../src/validation/index.js';
+
+// In-memory stand-in for the persistent (SQLite/PostgreSQL) validation cache.
+const persistentCache = vi.hoisted(() => ({
+  entries: new Map<string, { tokenHash: string; expiresAt: Date }>(),
+  store: [] as Array<{ tokenHash: string; ttlSeconds: number }>,
+}));
+
+vi.mock('../src/validation/cache.js', () => ({
+  ValidationCache: class {
+    async lookup(tokenHash: string) {
+      return persistentCache.entries.get(tokenHash) ?? null;
+    }
+    async store(tokenHash: string, ttlSeconds: number) {
+      persistentCache.store.push({ tokenHash, ttlSeconds });
+      persistentCache.entries.set(tokenHash, {
+        tokenHash,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000),
+      });
+    }
+    async cleanupExpired() {
+      return 0;
+    }
+  },
+}));
 
 describe('LRUCache', () => {
   let cache: LRUCache;
@@ -170,66 +195,170 @@ describe('ClientValidator', () => {
     warn: vi.fn(),
     error: vi.fn(),
   };
+  const fetchMock = vi.fn();
+
+  function makeValidator(overrides: Partial<ValidationConfig> = {}): ClientValidator {
+    return new ClientValidator(
+      {
+        enabled: true,
+        cacheTtlSeconds: 3600,
+        cacheTtlErrorSeconds: 300,
+        validationTimeoutMs: 5000,
+        maxMemoryEntries: 100,
+        failClosed: false,
+        ...overrides,
+      },
+      'https://capi.example.test',
+      mockLogger as never
+    );
+  }
+
+  function capiAnswers(status: number): void {
+    fetchMock.mockResolvedValue(new Response(status === 204 ? null : '{}', { status }));
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', vi.fn());
+    fetchMock.mockReset();
+    persistentCache.entries.clear();
+    persistentCache.store.length = 0;
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  // Note: Full ClientValidator tests would require database setup
-  // These tests focus on the validation logic with mocked dependencies
+  it('should reject requests without authorization header', async () => {
+    const result = await makeValidator().validate(undefined);
 
-  describe('validation logic', () => {
-    it('should reject requests without authorization header', async () => {
-      // Import dynamically to avoid database initialization issues
-      const { ClientValidator } = await import('../src/validation/index.js');
+    expect(result).toEqual({ valid: false, reason: 'no_auth_header', authenticated: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
-      // Mock the database module
-      vi.mock('../src/db/index.js', () => ({
-        getDatabase: () => ({
-          select: () => ({
-            from: () => ({
-              where: () => ({
-                limit: () => Promise.resolve([]),
-              }),
-            }),
-          }),
-          update: () => ({
-            set: () => ({
-              where: () => Promise.resolve(),
-            }),
-          }),
-          insert: () => ({
-            values: () => ({
-              onConflictDoUpdate: () => Promise.resolve(),
-            }),
-          }),
-        }),
-        schema: {
-          validatedClients: {},
-        },
-      }));
+  it('authenticates on a CAPI 2xx and caches the result persistently', async () => {
+    capiAnswers(200);
+    const validator = makeValidator();
 
-      const validator = new ClientValidator(
-        {
-          enabled: true,
-          cacheTtlSeconds: 3600,
-          cacheTtlErrorSeconds: 300,
-          validationTimeoutMs: 5000,
-          maxMemoryEntries: 100,
-        },
-        'https://api.crowdsec.net',
-        mockLogger as any
-      );
+    const first = await validator.validate('Bearer good');
+    expect(first).toEqual({ valid: true, reason: 'validated', authenticated: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://capi.example.test/v3/signals',
+      expect.objectContaining({ method: 'POST', body: '[]' })
+    );
+    expect(persistentCache.store).toEqual([{ tokenHash: expect.any(String), ttlSeconds: 3600 }]);
 
-      const result = await validator.validate(undefined);
+    const second = await validator.validate('Bearer good');
+    expect(second).toEqual({ valid: true, reason: 'cached_memory', authenticated: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
-      expect(result.valid).toBe(false);
-      expect(result.reason).toBe('no_auth_header');
+  it('authenticates from the persistent cache', async () => {
+    capiAnswers(200);
+    await makeValidator().validate('Bearer good');
+
+    // A fresh validator has an empty memory cache.
+    const result = await makeValidator().validate('Bearer good');
+    expect(result).toEqual({ valid: true, reason: 'cached_sqlite', authenticated: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([401, 403])('rejects invalid credentials (CAPI %i)', async (status) => {
+    capiAnswers(status);
+    const result = await makeValidator().validate('Bearer bad');
+
+    expect(result).toEqual({ valid: false, reason: 'invalid_credentials', authenticated: false });
+    expect(persistentCache.store).toHaveLength(0);
+  });
+
+  it.each([400, 404, 405, 413, 422, 429, 431])(
+    'rejects the client on a CAPI %i, even in fail-open mode',
+    async (status) => {
+      capiAnswers(status);
+      const validator = makeValidator({ failClosed: false });
+
+      const result = await validator.validate('Bearer forged');
+      expect(result).toEqual({ valid: false, reason: 'capi_rejected', authenticated: false });
+      expect(persistentCache.store).toHaveLength(0);
+
+      // Nothing was cached: the next request asks CAPI again.
+      await validator.validate('Bearer forged');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it.each([500, 502, 503, 504])(
+    'fails open on a CAPI %i without authenticating the client',
+    async (status) => {
+      capiAnswers(status);
+      const validator = makeValidator({ failClosed: false });
+
+      const result = await validator.validate('Bearer unknown');
+      expect(result).toEqual({ valid: true, reason: 'capi_error_failopen', authenticated: false });
+      // Never persisted as a validated client.
+      expect(persistentCache.store).toHaveLength(0);
+
+      // Remembered in memory for cacheTtlErrorSeconds, still unauthenticated.
+      const cached = await validator.validate('Bearer unknown');
+      expect(cached).toEqual({ valid: true, reason: 'cached_failopen', authenticated: false });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('fails open on a timeout or network error without authenticating the client', async () => {
+    fetchMock.mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+    const result = await makeValidator({ failClosed: false }).validate('Bearer unknown');
+
+    expect(result).toEqual({ valid: true, reason: 'capi_error_failopen', authenticated: false });
+    expect(persistentCache.store).toHaveLength(0);
+  });
+
+  it('expires fail-open entries after cacheTtlErrorSeconds and asks CAPI again', async () => {
+    vi.useFakeTimers();
+    try {
+      capiAnswers(503);
+      const validator = makeValidator({ cacheTtlErrorSeconds: 60 });
+      await validator.validate('Bearer unknown');
+
+      vi.advanceTimersByTime(61_000);
+      capiAnswers(200);
+      const result = await validator.validate('Bearer unknown');
+
+      expect(result).toEqual({ valid: true, reason: 'validated', authenticated: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects on a CAPI 5xx or network error in fail-closed mode', async () => {
+    capiAnswers(503);
+    const validator = makeValidator({ failClosed: true });
+    expect(await validator.validate('Bearer unknown')).toEqual({
+      valid: false,
+      reason: 'capi_error_failclosed',
+      authenticated: false,
+    });
+
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+    expect(await validator.validate('Bearer unknown')).toEqual({
+      valid: false,
+      reason: 'capi_error_failclosed',
+      authenticated: false,
+    });
+    expect(persistentCache.store).toHaveLength(0);
+  });
+
+  it('keeps authenticating a cached client during a CAPI outage', async () => {
+    capiAnswers(200);
+    const validator = makeValidator({ failClosed: true });
+    await validator.validate('Bearer good');
+
+    capiAnswers(503);
+    expect(await validator.validate('Bearer good')).toEqual({
+      valid: true,
+      reason: 'cached_memory',
+      authenticated: true,
     });
   });
 });
