@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { getAuthMode } from '@/lib/auth/mode';
 import { parseAuthHeaders } from '@/lib/auth/headers';
+import { checkTrustedUpstream } from '@/lib/auth/trust';
 import { getLogoutUrl } from '@/lib/auth/logout';
 import { getSession, isSessionValid, SessionUser } from '@/lib/oidc/session';
 import { SessionSecretError } from '@/lib/oidc/config';
@@ -35,7 +36,9 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
   if (mode === 'headers') {
     try {
       const h = await headers();
-      const user = parseAuthHeaders(h);
+      // /api/auth/session is a public path: apply the trusted-upstream check
+      // here, as the middleware does for protected paths.
+      const user = checkTrustedUpstream(h).ok ? parseAuthHeaders(h) : null;
       return NextResponse.json({
         authenticated: user !== null,
         user,

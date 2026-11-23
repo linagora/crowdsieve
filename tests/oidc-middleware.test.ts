@@ -28,8 +28,13 @@ async function liveSessionCookie(overrides: Record<string, unknown> = {}): Promi
   return `crowdsieve-session=${seal}`;
 }
 
-async function runMiddleware(path: string, cookie?: string): Promise<Response> {
-  const headers = cookie ? { cookie } : undefined;
+async function runMiddleware(
+  path: string,
+  cookie?: string,
+  extraHeaders: Record<string, string> = {}
+): Promise<Response> {
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (cookie) headers.cookie = cookie;
   const request = new NextRequest(`http://localhost:18710${path}`, { headers });
   return middleware(request);
 }
@@ -176,5 +181,70 @@ describe('middleware without a usable SESSION_SECRET (GHSA-8hgc-3vpr-6r43)', () 
     const res = await runMiddleware('/api/alerts', await liveSessionCookie());
     expect(res.status).toBe(401);
     errorSpy.mockRestore();
+  });
+});
+
+describe('middleware in headers mode (GHSA-rjx9-mrqq-772w)', () => {
+  const PROXY_SECRET = 'proxy-secret-0123456789abcdef0123456789';
+
+  beforeEach(() => {
+    process.env.AUTH_MODE = 'headers';
+    delete process.env.AUTH_PROXY_SECRET;
+    delete process.env.TRUSTED_PROXY_IPS;
+  });
+
+  it('rejects forged Auth-* headers without the proxy secret', async () => {
+    process.env.AUTH_PROXY_SECRET = PROXY_SECRET;
+    const res = await runMiddleware('/api/alerts', undefined, { 'Auth-Sub': 'admin' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a wrong proxy secret', async () => {
+    process.env.AUTH_PROXY_SECRET = PROXY_SECRET;
+    const res = await runMiddleware('/', undefined, {
+      'Auth-Sub': 'admin',
+      'X-Auth-Proxy-Secret': 'guess',
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('accepts the proxy secret with Auth-Sub', async () => {
+    process.env.AUTH_PROXY_SECRET = PROXY_SECRET;
+    const res = await runMiddleware('/', undefined, {
+      'Auth-Sub': 'user-1',
+      'X-Auth-Proxy-Secret': PROXY_SECRET,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('still requires Auth-Sub with a valid proxy secret', async () => {
+    process.env.AUTH_PROXY_SECRET = PROXY_SECRET;
+    const res = await runMiddleware('/', undefined, { 'X-Auth-Proxy-Secret': PROXY_SECRET });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a spoofed first X-Forwarded-For entry', async () => {
+    process.env.TRUSTED_PROXY_IPS = '10.0.0.5';
+    const res = await runMiddleware('/', undefined, {
+      'Auth-Sub': 'admin',
+      'X-Forwarded-For': '10.0.0.5, 203.0.113.9',
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('accepts a request whose closest hop is in TRUSTED_PROXY_IPS', async () => {
+    process.env.TRUSTED_PROXY_IPS = '10.0.0.5';
+    const res = await runMiddleware('/', undefined, {
+      'Auth-Sub': 'user-1',
+      'X-Forwarded-For': '203.0.113.9, 10.0.0.5',
+    });
+
+    expect(res.status).toBe(200);
   });
 });

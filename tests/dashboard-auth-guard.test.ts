@@ -174,6 +174,28 @@ describe('API route guard in other modes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('headers mode: rejects Auth-Sub without the AUTH_PROXY_SECRET', async () => {
+    process.env.AUTH_MODE = 'headers';
+    process.env.AUTH_PROXY_SECRET = 'proxy-secret-0123456789abcdef0123456789';
+    state.headers = new Headers({ 'Auth-Sub': 'admin', 'X-Auth-Proxy-Secret': 'guess' });
+    const res = await banPost(banRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('headers mode: accepts Auth-Sub with the AUTH_PROXY_SECRET', async () => {
+    process.env.AUTH_MODE = 'headers';
+    process.env.AUTH_PROXY_SECRET = 'proxy-secret-0123456789abcdef0123456789';
+    state.headers = new Headers({
+      'Auth-Sub': 'user-1',
+      'X-Auth-Proxy-Secret': 'proxy-secret-0123456789abcdef0123456789',
+    });
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(200);
+  });
+
   it('none mode: no session is required', async () => {
     process.env.AUTH_MODE = 'none';
     const res = await alertsGet(alertsRequest());

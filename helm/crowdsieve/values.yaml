@@ -124,7 +124,8 @@ crowdsieve:
     #   - "oidc"    : OpenID Connect via iron-session cookies (see oidc: below)
     #   - "headers" : Trusted upstream proxy forwards identity via Auth-* headers
     #                 (e.g. LemonLDAP-NG handler). The dashboard MUST be
-    #                 unreachable except via that proxy.
+    #                 unreachable except via that proxy, and should require
+    #                 the proxy shared secret (auth.headers.proxySecret).
     #   - "none"    : No authentication enforced.
     # When unset, mode is auto-detected from OIDC env vars (oidc if configured,
     # none otherwise).
@@ -137,9 +138,20 @@ crowdsieve:
       # Defaults to "sub". Takes precedence over OIDC_ACTOR_CLAIM.
       actorClaim: ""
       headers:
-        # -- Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges.
-        # Empty = no IP check (defense in depth disabled, relies on network
-        # isolation only).
+        # -- Shared secret that the authenticating proxy must send in the
+        # X-Auth-Proxy-Secret request header (recommended). Requests without
+        # it are rejected. Stored in a Secret. Generate with:
+        # openssl rand -hex 32
+        proxySecret: ""
+        # -- Use an existing Secret for the proxy shared secret
+        proxySecretExistingSecret: ""
+        # -- Key in the existing Secret for the proxy shared secret
+        proxySecretKey: "proxy-secret"
+        # -- Comma-separated allowlist of IPs / IPv4 CIDR ranges checked
+        # against the right-most X-Forwarded-For entry (closest proxy).
+        # NOT a protection against clients that reach the dashboard directly
+        # (they can forge X-Forwarded-For): use proxySecret for that.
+        # Empty = no IP check.
         # Example: "10.0.0.5, 10.42.0.0/16"
         trustedProxyIps: ""
         # -- External logout URL the dashboard redirects to when a user clicks

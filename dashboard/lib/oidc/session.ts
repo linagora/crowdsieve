@@ -5,7 +5,7 @@ import { isSessionRevoked } from './revocation';
 import { isLiveSession, SESSION_COOKIE_NAME } from './session-cookie';
 import { getAuthMode } from '../auth/mode';
 import { parseAuthHeaders } from '../auth/headers';
-import { getClientIp, isTrustedProxy } from '../auth/trust';
+import { checkTrustedUpstream } from '../auth/trust';
 
 /**
  * SessionUser carries the minimal identity claims used by the dashboard.
@@ -112,7 +112,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 export async function isSessionValid(): Promise<boolean> {
   if (getAuthMode() === 'headers') {
     const h = await headers();
-    if (!isTrustedProxy(getClientIp({ headers: h }))) return false;
+    if (!checkTrustedUpstream(h).ok) return false;
     return parseAuthHeaders(h) !== null;
   }
 

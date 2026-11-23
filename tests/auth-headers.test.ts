@@ -341,9 +341,7 @@ describe('isTrustedProxy', () => {
 
   it('drops empty entries from the comma-separated list', async () => {
     process.env.TRUSTED_PROXY_IPS = ',10.0.0.1,,, 10.0.0.2,';
-    const { getTrustedProxyIps, isTrustedProxy } = await import(
-      '../dashboard/lib/auth/trust.js'
-    );
+    const { getTrustedProxyIps, isTrustedProxy } = await import('../dashboard/lib/auth/trust.js');
     expect(getTrustedProxyIps()).toEqual(['10.0.0.1', '10.0.0.2']);
     expect(isTrustedProxy('10.0.0.1')).toBe(true);
     expect(isTrustedProxy('10.0.0.2')).toBe(true);
@@ -355,22 +353,23 @@ describe('getClientIp', () => {
     vi.resetModules();
   });
 
-  it('prefers request.ip when set', async () => {
-    const { getClientIp } = await import('../dashboard/lib/auth/trust.js');
-    const headers = new Headers({ 'x-forwarded-for': '1.2.3.4' });
-    expect(getClientIp({ ip: '5.6.7.8', headers })).toBe('5.6.7.8');
-  });
-
-  it('falls back to first X-Forwarded-For entry', async () => {
+  it('uses the right-most X-Forwarded-For entry (closest hop)', async () => {
     const { getClientIp } = await import('../dashboard/lib/auth/trust.js');
     const headers = new Headers({ 'x-forwarded-for': '1.2.3.4, 5.6.7.8' });
-    expect(getClientIp({ headers })).toBe('1.2.3.4');
+    expect(getClientIp({ headers })).toBe('5.6.7.8');
   });
 
-  it('falls back to X-Real-IP when no XFF', async () => {
+  it('ignores X-Real-IP, which the client can set', async () => {
     const { getClientIp } = await import('../dashboard/lib/auth/trust.js');
     const headers = new Headers({ 'x-real-ip': '9.9.9.9' });
-    expect(getClientIp({ headers })).toBe('9.9.9.9');
+    expect(getClientIp({ headers })).toBeNull();
+  });
+
+  it('ignores a request.ip property', async () => {
+    const { getClientIp } = await import('../dashboard/lib/auth/trust.js');
+    const headers = new Headers({ 'x-forwarded-for': '1.2.3.4' });
+    const request = { ip: '5.6.7.8', headers } as unknown as { headers: Headers };
+    expect(getClientIp(request)).toBe('1.2.3.4');
   });
 
   it('returns null when no IP header is set', async () => {
@@ -380,8 +379,105 @@ describe('getClientIp', () => {
 
   it('skips empty XFF entries', async () => {
     const { getClientIp } = await import('../dashboard/lib/auth/trust.js');
-    const headers = new Headers({ 'x-forwarded-for': '  ,  , 1.2.3.4' });
-    expect(getClientIp({ headers })).toBe('1.2.3.4');
+    const headers = new Headers({ 'x-forwarded-for': '1.2.3.4,  , 5.6.7.8 ,  ' });
+    expect(getClientIp({ headers })).toBe('5.6.7.8');
+  });
+});
+
+describe('TRUSTED_PROXY_IPS against a spoofed X-Forwarded-For (GHSA-rjx9-mrqq-772w)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...originalEnv, TRUSTED_PROXY_IPS: '10.0.0.5' };
+    delete process.env.AUTH_PROXY_SECRET;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('rejects a client-written first entry naming the trusted proxy', async () => {
+    const { checkTrustedUpstream } = await import('../dashboard/lib/auth/trust.js');
+    // The client wrote "10.0.0.5", an appending proxy added the real peer.
+    const headers = new Headers({ 'x-forwarded-for': '10.0.0.5, 203.0.113.9' });
+    expect(checkTrustedUpstream(headers)).toEqual({ ok: false, reason: 'untrusted-ip' });
+  });
+
+  it('accepts a request whose closest hop is the trusted proxy', async () => {
+    const { checkTrustedUpstream } = await import('../dashboard/lib/auth/trust.js');
+    const headers = new Headers({ 'x-forwarded-for': '203.0.113.9, 10.0.0.5' });
+    expect(checkTrustedUpstream(headers)).toEqual({ ok: true });
+  });
+});
+
+describe('AUTH_PROXY_SECRET', () => {
+  const SECRET = 'proxy-secret-0123456789abcdef0123456789';
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...originalEnv, AUTH_PROXY_SECRET: SECRET };
+    delete process.env.TRUSTED_PROXY_IPS;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('accepts the exact secret in X-Auth-Proxy-Secret', async () => {
+    const { checkTrustedUpstream } = await import('../dashboard/lib/auth/trust.js');
+    expect(checkTrustedUpstream(new Headers({ 'X-Auth-Proxy-Secret': SECRET }))).toEqual({
+      ok: true,
+    });
+  });
+
+  it('rejects a missing secret', async () => {
+    const { checkTrustedUpstream } = await import('../dashboard/lib/auth/trust.js');
+    expect(checkTrustedUpstream(new Headers({ 'Auth-Sub': 'admin' }))).toEqual({
+      ok: false,
+      reason: 'proxy-secret',
+    });
+  });
+
+  it('rejects a wrong secret, a prefix and a longer value', async () => {
+    const { hasValidProxySecret } = await import('../dashboard/lib/auth/trust.js');
+    for (const value of ['wrong', SECRET.slice(0, -1), `${SECRET}x`, '', `${SECRET}, ${SECRET}`]) {
+      expect(hasValidProxySecret(new Headers({ 'X-Auth-Proxy-Secret': value }))).toBe(false);
+    }
+  });
+
+  it('is required in addition to TRUSTED_PROXY_IPS', async () => {
+    process.env.TRUSTED_PROXY_IPS = '10.0.0.5';
+    const { checkTrustedUpstream } = await import('../dashboard/lib/auth/trust.js');
+    const headers = new Headers({ 'x-forwarded-for': '10.0.0.5' });
+    expect(checkTrustedUpstream(headers).ok).toBe(false);
+    headers.set('X-Auth-Proxy-Secret', SECRET);
+    expect(checkTrustedUpstream(headers).ok).toBe(true);
+  });
+
+  it('is not checked when unset or blank', async () => {
+    process.env.AUTH_PROXY_SECRET = '   ';
+    const { checkTrustedUpstream } = await import('../dashboard/lib/auth/trust.js');
+    expect(checkTrustedUpstream(new Headers()).ok).toBe(true);
+  });
+
+  it('is not exposed as an identity claim', async () => {
+    const { parseAuthHeaders } = await import('../dashboard/lib/auth/headers.js');
+    const user = parseAuthHeaders(
+      new Headers({ 'Auth-Sub': 'user-1', 'X-Auth-Proxy-Secret': SECRET })
+    );
+    expect(user).toEqual({ sub: 'user-1' });
+  });
+});
+
+describe('constantTimeEqual', () => {
+  it('compares strings', async () => {
+    const { constantTimeEqual } = await import('../dashboard/lib/auth/trust.js');
+    expect(constantTimeEqual('abc', 'abc')).toBe(true);
+    expect(constantTimeEqual('abd', 'abc')).toBe(false);
+    expect(constantTimeEqual('ab', 'abc')).toBe(false);
+    expect(constantTimeEqual('abcd', 'abc')).toBe(false);
+    expect(constantTimeEqual('', 'abc')).toBe(false);
+    expect(constantTimeEqual('é', 'é')).toBe(true);
+    expect(constantTimeEqual('\u0000', '')).toBe(false);
   });
 });
 

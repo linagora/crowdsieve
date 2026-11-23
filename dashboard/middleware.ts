@@ -13,7 +13,8 @@ import { isSafeRedirect } from '@/lib/oidc/validation';
  *   - 'oidc'    : unseal the iron-session cookie and require a signed-in,
  *                 unexpired session; otherwise redirect pages to /login and
  *                 answer 401 to API calls.
- *   - 'headers' : require a valid `Auth-Sub` header from a trusted upstream.
+ *   - 'headers' : require a valid `Auth-Sub` header from a trusted upstream
+ *                 (AUTH_PROXY_SECRET / TRUSTED_PROXY_IPS, see lib/auth/trust.ts).
  *
  * Edge runtime caveat: the back-channel revocation store lives in the
  * Node.js server, so revocation is checked again by `requireAuth()` /
@@ -21,7 +22,7 @@ import { isSafeRedirect } from '@/lib/oidc/validation';
  */
 
 import { getAuthMode } from '@/lib/auth/mode';
-import { getClientIp, isTrustedProxy } from '@/lib/auth/trust';
+import { checkTrustedUpstream } from '@/lib/auth/trust';
 import { parseAuthHeaders } from '@/lib/auth/headers';
 import { isLiveSession, SESSION_COOKIE_NAME, unsealSessionCookie } from '@/lib/oidc/session-cookie';
 
@@ -62,11 +63,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   }
 
   if (mode === 'headers') {
-    // Defense-in-depth: optionally restrict by the source IP of the
-    // immediate caller. When TRUSTED_PROXY_IPS is unset, we trust the
-    // network layer to ensure only the proxy can reach this dashboard.
-    const clientIp = getClientIp(request);
-    if (!isTrustedProxy(clientIp)) {
+    // The Auth-* headers are only trusted from the authenticating proxy:
+    // require AUTH_PROXY_SECRET (X-Auth-Proxy-Secret) and/or a right-most
+    // X-Forwarded-For entry in TRUSTED_PROXY_IPS, when configured. With
+    // neither, we rely on the network layer to ensure only the proxy can
+    // reach this dashboard (a warning is logged at startup).
+    if (!checkTrustedUpstream(request.headers).ok) {
       return new NextResponse('Forbidden: untrusted proxy', { status: 403 });
     }
 

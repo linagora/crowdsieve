@@ -279,13 +279,16 @@ SESSION_SECRET=$(openssl rand -hex 32)
 
 ```bash
 AUTH_MODE=headers
-# Optional defense-in-depth: only accept requests from these IPs / IPv4 CIDR ranges.
+# Recommended: shared secret that the proxy must send in the X-Auth-Proxy-Secret header.
+AUTH_PROXY_SECRET=$(openssl rand -hex 32)
+# Optional: only accept requests whose closest hop (right-most X-Forwarded-For
+# entry) is in this list. Not a protection against direct access.
 TRUSTED_PROXY_IPS=10.0.0.5,10.42.0.0/16
 # Optional: where to send the user when they click "Sign out".
 AUTH_LOGOUT_URL=https://portal.example.com/logout
 ```
 
-> **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy. See [doc/oidc-authentication.md](./doc/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
+> **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [doc/oidc-authentication.md](./doc/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
 
 ### Decision Search
 

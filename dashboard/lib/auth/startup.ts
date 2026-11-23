@@ -8,6 +8,10 @@
 
 import { getAuthMode } from './mode';
 import { getSessionSecret } from '../oidc/config';
+import { getAuthProxySecret, getTrustedProxyIps } from './trust';
+
+/** Recommended minimum length of AUTH_PROXY_SECRET. */
+const MIN_PROXY_SECRET_LENGTH = 32;
 
 export function checkAuthConfiguration(): void {
   const mode = getAuthMode();
@@ -20,6 +24,27 @@ export function checkAuthConfiguration(): void {
       getSessionSecret();
     } catch {
       // Already logged by getSessionSecret(); requests fail closed.
+    }
+  }
+
+  if (mode === 'headers') {
+    const proxySecret = getAuthProxySecret();
+    if (proxySecret === null) {
+      const ipNote =
+        getTrustedProxyIps().length > 0
+          ? ' TRUSTED_PROXY_IPS does not prevent this: such a client can forge X-Forwarded-For.'
+          : '';
+      console.warn(
+        '[auth] AUTH_MODE=headers without AUTH_PROXY_SECRET: any client that can reach the ' +
+          'dashboard without going through the authenticating proxy can sign in as anyone by ' +
+          `sending Auth-* headers.${ipNote} Set AUTH_PROXY_SECRET and make the proxy send it in ` +
+          'the X-Auth-Proxy-Secret header, or make sure that only the proxy can reach the dashboard.'
+      );
+    } else if (proxySecret.length < MIN_PROXY_SECRET_LENGTH) {
+      console.warn(
+        `[auth] AUTH_PROXY_SECRET is shorter than ${MIN_PROXY_SECRET_LENGTH} characters; ` +
+          'use a random value (openssl rand -hex 32).'
+      );
     }
   }
 }
