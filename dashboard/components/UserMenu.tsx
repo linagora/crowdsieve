@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { User, LogOut, ChevronDown } from 'lucide-react';
+import { roleLabel, type UserRole } from '@/lib/auth/roles';
 
 interface SessionUser {
   sub: string;
@@ -17,6 +18,8 @@ interface SessionData {
   user: SessionUser | null;
   /** Where the Sign-out link should point. `null` means hide the link. */
   logoutUrl?: string | null;
+  /** Role computed by the server (never a user claim). */
+  role?: UserRole | null;
 }
 
 // Validate picture URL to prevent XSS via javascript: or data: URIs
@@ -73,6 +76,7 @@ export function UserMenu() {
   const displayName = buildDisplayName(session.user);
   const headerName = session.user.name || buildDisplayName(session.user);
   const logoutUrl = session.logoutUrl ?? null;
+  const role = roleLabel(session.role);
 
   return (
     <div className="relative">
@@ -102,6 +106,7 @@ export function UserMenu() {
               {session.user.email && (
                 <p className="text-xs text-gray-500 truncate">{session.user.email}</p>
               )}
+              {role && <p className="text-xs text-gray-500 mt-1">{role}</p>}
             </div>
             {logoutUrl && (
               <a

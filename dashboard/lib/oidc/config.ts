@@ -49,6 +49,24 @@ export function getActorClaim(): ActorClaim {
   return 'sub';
 }
 
+/** Scopes requested at sign-in when OIDC_SCOPES is unset. */
+export const DEFAULT_OIDC_SCOPES = 'openid email profile';
+
+/**
+ * Scopes requested at sign-in: `OIDC_SCOPES` (space- or comma-separated),
+ * default "openid email profile". `openid` is always included. Some
+ * providers only release the groups claim for an extra scope (Dex:
+ * "groups").
+ */
+export function getOidcScopes(env: Record<string, string | undefined> = process.env): string {
+  const raw = env.OIDC_SCOPES?.trim();
+  const scopes = (raw && raw.length > 0 ? raw : DEFAULT_OIDC_SCOPES)
+    .split(/[\s,]+/)
+    .filter((scope) => scope.length > 0);
+  if (!scopes.includes('openid')) scopes.unshift('openid');
+  return [...new Set(scopes)].join(' ');
+}
+
 /** Minimum length of SESSION_SECRET (iron-session requirement). */
 export const MIN_SESSION_SECRET_LENGTH = 32;
 

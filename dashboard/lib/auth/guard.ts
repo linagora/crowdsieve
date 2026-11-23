@@ -12,8 +12,9 @@
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
 import { getAuthMode } from './mode';
-import { isSessionValid } from '../oidc/session';
+import { getSessionRole, isSessionValid } from '../oidc/session';
 import { getSessionSecret, SessionSecretError } from '../oidc/config';
+import { READ_ONLY_ERROR, type UserRole } from './roles';
 
 /**
  * Check the session of the current request for the configured auth mode:
@@ -44,6 +45,29 @@ export async function requireAuth(): Promise<NextResponse | null> {
     console.error('Session validation error:', error);
   }
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
+
+/**
+ * Guard for the routes that change something (ban, unban, analyzer run...):
+ * `requireAuth()`, then the Operator role (see lib/auth/roles.ts). A signed-in
+ * Viewer gets 403 `{"error":"Your account is read-only"}`, before anything is
+ * sent to the proxy. Usage, in place of requireAuth():
+ *
+ *   const denied = (await requireOperator()) ?? requireJsonContentType(request);
+ *   if (denied) return denied;
+ */
+export async function requireOperator(): Promise<NextResponse | null> {
+  const denied = await requireAuth();
+  if (denied) return denied;
+
+  let role: UserRole = 'viewer';
+  try {
+    role = await getSessionRole();
+  } catch (error) {
+    console.error('Role resolution error:', error);
+  }
+  if (role === 'operator') return null;
+  return NextResponse.json({ error: READ_ONLY_ERROR }, { status: 403 });
 }
 
 /**

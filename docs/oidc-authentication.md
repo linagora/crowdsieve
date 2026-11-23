@@ -16,6 +16,73 @@ In every mode, including `none`, the dashboard rejects with HTTP **403** any `PO
 
 Behind a reverse proxy that rewrites the `Host` header, make it send `X-Forwarded-Host` (or set `NEXTAUTH_URL`) so that same-origin requests from the dashboard UI are recognized.
 
+### Read-only users and operator groups
+
+By default every signed-in user is an **Operator**: they can ban and unban any IP or range on any LAPI and run analyzers. To open the dashboard to more people (helpdesk, auditors, developers) without that risk, list in `AUTH_OPERATOR_GROUPS` the groups allowed to write. Every other signed-in user is a **Viewer**:
+
+- the user menu shows the name, the e-mail and "Viewer (read-only)" ("Operator" for operators);
+- the Manual Ban cards (home page, alert detail) are replaced by the note "Read-only access: ask an operator to ban an IP"; the unban (trash) buttons and bulk unban of the Decisions page and the "Run Now" buttons of the Analyzers page are not rendered;
+- everything else (alerts, details, map, statistics, bouncers, decision search, audit log, filter test) works as for an operator;
+- the write API routes (`POST /api/decisions/ban`, `DELETE /api/decisions/:id`, `POST /api/analyzers/:id/run`) answer HTTP **403** `{"error":"Your account is read-only"}` before anything is sent to the proxy, whatever the browser sends.
+
+| Variable               | Default                | Description                                                                                                                                                                      |
+| ---------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_OPERATOR_GROUPS` | empty                  | Comma-separated group names (case-sensitive). Empty or unset: every signed-in user is an Operator, as before.                                                                    |
+| `OIDC_GROUPS_CLAIM`    | `groups`               | (OIDC) Claim that lists the user's groups: an array of strings, or a string separated by commas, semicolons or pipes. A dotted path (`realm_access.roles`) reads a nested claim. |
+| `OIDC_SCOPES`          | `openid email profile` | (OIDC) Scopes requested at sign-in, space- or comma-separated (`openid` is always added). Add the scope that releases the groups claim when the provider needs one.              |
+| `AUTH_GROUPS_HEADER`   | `X-Forwarded-Groups`   | (Headers mode) Request header that carries the user's groups, separated by commas, semicolons or pipes.                                                                          |
+
+How the role is computed:
+
+- **OIDC mode:** at sign-in, from the `OIDC_GROUPS_CLAIM` claim of the ID token or, when the ID token has no such claim, of the userinfo response. A user whose groups include one of `AUTH_OPERATOR_GROUPS` is an Operator, anyone else a Viewer (also when the userinfo request fails). The role is sealed in the session cookie with the groups that granted it, and refreshed at the next sign-in: a user added to or removed from a group in the identity provider gets the new role when they sign in again (sessions last as long as the access token). Removing a group from `AUTH_OPERATOR_GROUPS` demotes its members at once; adding one takes effect at their next sign-in.
+- **Sessions opened before the upgrade, or before `AUTH_OPERATOR_GROUPS` was set,** carry no role and no groups, so the role cannot be recomputed: they are **Viewers until the user signs in again**. When `AUTH_OPERATOR_GROUPS` is unset they stay Operators.
+- **Headers mode:** on every request, from the `AUTH_GROUPS_HEADER` header, only after the `AUTH_PROXY_SECRET` / `TRUSTED_PROXY_IPS` checks. **The proxy must set this header, or remove it, on every request**: a value sent by the client and passed through unchanged would grant the operator role (the same rule as for `Auth-*` headers, see [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler)). If you name it `Auth-Groups`, it is also exposed as a `groups` user claim; claims such as `Auth-Role` are only display data and never grant a role.
+- **`none` mode:** there is no user, everyone is an Operator; `AUTH_OPERATOR_GROUPS` is ignored (with a warning at startup).
+
+The role is always computed on the server. The `role` field of `GET /api/auth/session` (`"operator"`, `"viewer"`, or `null` when signed out) only drives the UI. Roles do not apply to the proxy's REST API keys.
+
+#### Example: Dex
+
+Dex puts a `groups` claim in the ID token only when the `groups` scope is requested, and only for connectors that know groups (LDAP with `groupSearch`, GitHub, GitLab, an upstream OIDC provider with `insecureEnableGroups: true`...):
+
+```bash
+AUTH_OPERATOR_GROUPS=secops
+OIDC_SCOPES="openid email profile groups"
+# OIDC_GROUPS_CLAIM=groups (default)
+```
+
+#### Example: LemonLDAP::NG (OIDC)
+
+In the Relying Party, export the groups and release them for a `groups` scope:
+
+- `Exported attributes`: claim `groups`, variable `groups`, type `string`, array `always` (LemonLDAP::NG stores the groups as a `; `-separated string, which is split either way);
+- `Extra claims`: scope `groups` → claims `groups`.
+
+```bash
+AUTH_OPERATOR_GROUPS=secops
+OIDC_SCOPES="openid email profile groups"
+```
+
+CrowdSieve reads the claim from the ID token, or from the userinfo endpoint when the ID token does not carry it, so enabling "release claims in ID token" is optional.
+
+#### Example: headers mode
+
+LemonLDAP::NG handler (Manager > Virtual Hosts > Headers), next to the `Auth-*` headers:
+
+```
+X-Forwarded-Groups = $groups
+```
+
+NGINX `auth_request`:
+
+```nginx
+auth_request_set $auth_groups $upstream_http_x_forwarded_groups;
+# Always set: an empty value removes the header sent by the client.
+proxy_set_header X-Forwarded-Groups $auth_groups;
+```
+
+oauth2-proxy sends `X-Forwarded-Groups` with `--pass-user-headers`; with Authelia or authentik, set `AUTH_GROUPS_HEADER=Remote-Groups` or `X-authentik-groups`.
+
 ## OIDC Mode
 
 CrowdSieve supports OpenID Connect (OIDC) authentication for the dashboard. When configured, users must authenticate via an OIDC provider to access the dashboard.
@@ -78,6 +145,10 @@ The session is stored in the encrypted `crowdsieve-session` cookie (iron-session
 | `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Allowlist of IPs / IPv4 CIDR ranges for the right-most `X-Forwarded-For` entry. Not a protection against direct access. Empty = no IP check.      |
 | `AUTH_LOGOUT_URL`       | No       | -       | (Headers mode only) External logout URL the dashboard redirects to when a user clicks "Sign out". When unset, the link is hidden.                                     |
 | `AUTH_LOGIN_URL`        | No       | -       | (Headers mode only) External login URL surfaced as a "Go to login portal" button on the headers-mode 401 page.                                                        |
+| `AUTH_OPERATOR_GROUPS`  | No       | -       | Groups allowed to ban, unban and run analyzers; other users are read-only. Empty = everyone. See [Read-only users](#read-only-users-and-operator-groups).             |
+| `OIDC_GROUPS_CLAIM`     | No       | -       | Claim (ID token, else userinfo) that lists the user's groups. Defaults to `groups`.                                                                                   |
+| `OIDC_SCOPES`           | No       | -       | Scopes requested at sign-in. Defaults to `openid email profile` (Dex: add `groups`).                                                                                  |
+| `AUTH_GROUPS_HEADER`    | No       | -       | (Headers mode only) Header with the user's groups, default `X-Forwarded-Groups`. The proxy must set or remove it.                                                     |
 
 The `AUTH_ACTOR_CLAIM` (or legacy `OIDC_ACTOR_CLAIM`) variable controls which
 claim identifies the user that issued or revoked a decision (recorded on every
@@ -534,6 +605,7 @@ Mapping rule: strip the `auth-` prefix (case-insensitive), then convert the rema
 - The "Sign out" link in the user menu is hidden unless `AUTH_LOGOUT_URL` is configured. When it is, clicking the link redirects the user to that URL (typically the proxy's logout endpoint).
 - Sessions are **stateless**: there is no iron-session cookie, no server-side session store. Every request re-validates against the headers it carries.
 - The audit-log actor (`X-Crowdsieve-Actor` forwarded to the backend on bans/unbans) follows the configured `AUTH_ACTOR_CLAIM`. With headers mode you can use any claim you forward, e.g. `preferredUsername` or `email`.
+- With `AUTH_OPERATOR_GROUPS` set, the role follows the `AUTH_GROUPS_HEADER` header (default `X-Forwarded-Groups`) on every request: see [Read-only users](#read-only-users-and-operator-groups). The proxy must set or remove that header on every request.
 
 ### Example: LemonLDAP-NG handler
 
@@ -548,6 +620,8 @@ Auth-Name               = $cn
 Auth-Family-Name        = $sn
 Auth-Given-Name         = $givenName
 Auth-Preferred-Username = $uid
+# Only with AUTH_OPERATOR_GROUPS (read-only users)
+X-Forwarded-Groups      = $groups
 ```
 
 Then point your reverse proxy (NGINX, Apache, etc.) at the LemonLDAP-NG handler and forward to the CrowdSieve dashboard. See the [LemonLDAP-NG documentation](https://lemonldap-ng.org/documentation/latest/) for the canonical setup.

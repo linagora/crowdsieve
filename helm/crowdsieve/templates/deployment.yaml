@@ -102,6 +102,11 @@ spec:
             - name: AUTH_ACTOR_CLAIM
               value: {{ .Values.crowdsieve.dashboard.auth.actorClaim | quote }}
             {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth.operatorGroups }}
+            # Groups whose members may write; other users are read-only.
+            - name: AUTH_OPERATOR_GROUPS
+              value: {{ .Values.crowdsieve.dashboard.auth.operatorGroups | quote }}
+            {{- end }}
             {{- if .Values.crowdsieve.dashboard.auth.headers }}
             {{- $authHeaders := .Values.crowdsieve.dashboard.auth.headers }}
             {{- if or $authHeaders.proxySecret $authHeaders.proxySecretExistingSecret }}
@@ -131,6 +136,11 @@ spec:
             - name: AUTH_LOGIN_URL
               value: {{ .Values.crowdsieve.dashboard.auth.headers.loginUrl | quote }}
             {{- end }}
+            {{- if .Values.crowdsieve.dashboard.auth.headers.groupsHeader }}
+            # Header that carries the user's groups (set or removed by the proxy).
+            - name: AUTH_GROUPS_HEADER
+              value: {{ .Values.crowdsieve.dashboard.auth.headers.groupsHeader | quote }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- if .Values.crowdsieve.dashboard.oidc.enabled }}
@@ -139,6 +149,14 @@ spec:
               value: {{ .Values.crowdsieve.dashboard.oidc.issuer | quote }}
             - name: OIDC_CLIENT_ID
               value: {{ .Values.crowdsieve.dashboard.oidc.clientId | quote }}
+            {{- if .Values.crowdsieve.dashboard.oidc.groupsClaim }}
+            - name: OIDC_GROUPS_CLAIM
+              value: {{ .Values.crowdsieve.dashboard.oidc.groupsClaim | quote }}
+            {{- end }}
+            {{- if .Values.crowdsieve.dashboard.oidc.scopes }}
+            - name: OIDC_SCOPES
+              value: {{ .Values.crowdsieve.dashboard.oidc.scopes | quote }}
+            {{- end }}
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:

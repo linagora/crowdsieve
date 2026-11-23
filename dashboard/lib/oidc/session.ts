@@ -6,6 +6,7 @@ import { isLiveSession, SESSION_COOKIE_NAME } from './session-cookie';
 import { getAuthMode } from '../auth/mode';
 import { parseAuthHeaders } from '../auth/headers';
 import { checkTrustedUpstream } from '../auth/trust';
+import { roleFromHeaders, roleFromSession, type UserRole } from '../auth/roles';
 
 /**
  * SessionUser carries the minimal identity claims used by the dashboard.
@@ -46,6 +47,13 @@ export interface SessionData {
   expiresAt?: number;
   /** Session ID from OIDC provider (for back-channel logout support) */
   sid?: string;
+  /**
+   * Role computed at sign-in from the user's groups (see lib/auth/roles.ts).
+   * Missing in sessions sealed before roles existed.
+   */
+  role?: UserRole;
+  /** The user's groups that granted the Operator role at sign-in. */
+  operatorGroups?: string[];
   // Temporary OIDC state for callback verification (cleared after use)
   state?: string;
   nonce?: string;
@@ -94,6 +102,36 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
   const session = await getSession();
   return session.user ?? null;
+}
+
+/**
+ * Role of the current request (see lib/auth/roles.ts):
+ *   - 'none' mode: always 'operator';
+ *   - 'headers' mode: from the groups header, only once the request passed
+ *     the trusted-upstream checks and carries an `Auth-Sub`;
+ *   - 'oidc' mode: from the role stored in a live session cookie.
+ * Anything that is not an authenticated request gets 'viewer'. This does
+ * not replace `isSessionValid()`: call `requireAuth()` first in routes.
+ */
+export async function getSessionRole(): Promise<UserRole> {
+  const mode = getAuthMode();
+  if (mode === 'none') return 'operator';
+
+  if (mode === 'headers') {
+    const h = await headers();
+    if (!checkTrustedUpstream(h).ok || parseAuthHeaders(h) === null) return 'viewer';
+    return roleFromHeaders(h);
+  }
+
+  let session: IronSession<SessionData>;
+  try {
+    session = await getSession();
+  } catch {
+    // Unusable cookie or SESSION_SECRET: no session, no write access.
+    return 'viewer';
+  }
+  if (!isLiveSession(session)) return 'viewer';
+  return roleFromSession(session);
 }
 
 /**

@@ -1,3 +1,5 @@
+import { READ_ONLY_ERROR } from './auth/roles';
+
 let sessionExpiredOverlay: HTMLElement | null = null;
 
 function showSessionExpiredOverlay() {
@@ -52,6 +54,21 @@ function dismissServerErrorWarning() {
   serverErrorBanner = null;
 }
 
+/**
+ * Whether a 403 answer is the "read-only account" refusal of a write route
+ * (lib/auth/guard.ts requireOperator), which the caller displays, rather
+ * than an authentication failure.
+ */
+async function isReadOnlyRefusal(res: Response): Promise<boolean> {
+  if (res.status !== 403) return false;
+  try {
+    const body = await res.clone().json();
+    return body !== null && typeof body === 'object' && body.error === READ_ONLY_ERROR;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchWithAuth(
   input: RequestInfo | URL,
   init?: RequestInit
@@ -61,6 +78,10 @@ export async function fetchWithAuth(
     headers.set('Accept', 'application/json');
   }
   const res = await fetch(input, { ...init, headers, redirect: 'follow' });
+  if (await isReadOnlyRefusal(res)) {
+    // Signed in, but not allowed to write: let the caller show the message.
+    return res;
+  }
   if (res.status === 401 || res.status === 403) {
     showSessionExpiredOverlay();
     return new Promise(() => {});

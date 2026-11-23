@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { User } from 'lucide-react';
 import type { AlertDetail } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
-import { BanIPForm } from '@/components/BanIPForm';
+import { ManualBan } from '@/components/ManualBan';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { LocalDateTime } from '@/components/LocalDateTime';
 import { ApiError } from '@/components/ApiError';
@@ -327,7 +327,7 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
       {(alert.sourceIp || alert.sourceValue) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <IPInfoPanel ip={alert.sourceIp || alert.sourceValue || ''} />
-          <BanIPForm initialIp={alert.sourceIp || alert.sourceValue || ''} />
+          <ManualBan initialIp={alert.sourceIp || alert.sourceValue || ''} />
         </div>
       )}
 

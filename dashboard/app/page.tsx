@@ -1,6 +1,6 @@
 import { StatsPanel } from '@/components/StatsPanel';
 import { DashboardContent } from '@/components/DashboardContent';
-import { BanIPForm } from '@/components/BanIPForm';
+import { ManualBan } from '@/components/ManualBan';
 import { ApiError } from '@/components/ApiError';
 import type { StoredAlert, AlertStats } from '@/lib/types';
 import { requirePageAuth } from '@/lib/auth/guard';
@@ -113,8 +113,8 @@ export default async function DashboardPage() {
       {/* Dashboard Content with Filters */}
       <DashboardContent initialAlerts={alerts} stats={stats} />
 
-      {/* Manual Ban */}
-      <BanIPForm />
+      {/* Manual Ban (a read-only note for Viewers) */}
+      <ManualBan />
     </div>
   );
 }

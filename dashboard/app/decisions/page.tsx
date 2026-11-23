@@ -8,11 +8,8 @@ import type { DecisionSearchResponse, Decision } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
 import { CtiLink } from '@/components/CtiLink';
 import { ActiveDecisions } from '@/components/ActiveDecisions';
+import { useCanWrite } from '@/components/UserRoleProvider';
 import { decisionExpiry, expiryRemainingMs, formatExpiry } from '@/lib/decisionExpiry';
-
-// Write controls (delete, bulk delete). Read-only users will get false once
-// roles exist.
-const CAN_WRITE_DECISIONS = true;
 
 interface DecisionCardProps {
   decision: Decision;
@@ -142,6 +139,8 @@ function DecisionCard({ decision, server, onDelete, canDelete, answeredAt }: Dec
 
 function DecisionSearchContent() {
   const searchParams = useSearchParams();
+  // Write controls (delete, bulk delete): hidden for read-only users.
+  const canWrite = useCanWrite();
   const initialIp = searchParams.get('ip') || '';
 
   const [ip, setIp] = useState(initialIp);
@@ -316,7 +315,7 @@ function DecisionSearchContent() {
                       decision={decision}
                       server={serverResult.server}
                       onDelete={handleDeleteDecision}
-                      canDelete={CAN_WRITE_DECISIONS}
+                      canDelete={canWrite}
                       answeredAt={answeredAt}
                     />
                   ))}
@@ -331,7 +330,7 @@ function DecisionSearchContent() {
         <div className="card p-6 text-center text-slate-500">No results found</div>
       )}
 
-      <ActiveDecisions canWrite={CAN_WRITE_DECISIONS} />
+      <ActiveDecisions canWrite={canWrite} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcClient } from '@/lib/oidc/client';
-import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
+import { isOidcEnabled, getBaseUrl, getOidcScopes } from '@/lib/oidc/config';
 import { getSession } from '@/lib/oidc/session';
 import { isSafeRedirect } from '@/lib/oidc/validation';
 import { checkSessionSecret } from '@/lib/auth/guard';
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Build authorization URL
     const authUrl = client.buildAuthorizationUrl(oidcClient, {
       redirect_uri: redirectUri,
-      scope: 'openid email profile',
+      scope: getOidcScopes(),
       state,
       nonce,
       code_challenge: codeChallenge,
