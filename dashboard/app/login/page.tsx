@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { isOidcEnabled } from '@/lib/oidc/config';
+import { isOidcEnabled, isSessionSecretUsable } from '@/lib/oidc/config';
 import { isSessionValid } from '@/lib/oidc/session';
 import { buildLoginHref, resolvePostLoginPath } from '@/lib/oidc/loginRedirect';
 import { getAuthMode } from '@/lib/auth/mode';
@@ -77,6 +77,30 @@ export default async function LoginPage({
                 <code>AUTH_MODE=oidc</code> is set but <code>OIDC_ISSUER</code> and/or{' '}
                 <code>OIDC_CLIENT_ID</code> are missing. Please contact your administrator or check
                 the server configuration.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // OIDC mode without a usable SESSION_SECRET (production): sign-in is
+  // disabled, explain why instead of failing on every request.
+  if (!isSessionSecretUsable()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-gray-900">CrowdSieve</h1>
+              <p className="text-gray-600 mt-2">Authentication misconfigured</p>
+            </div>
+
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">
+                <code>SESSION_SECRET</code> is missing or shorter than 32 characters, so sign-in is
+                disabled. Please contact your administrator or check the server configuration.
               </p>
             </div>
           </div>

@@ -104,20 +104,65 @@ describe('OIDC Config', () => {
       expect(getSessionSecret()).toBe('this-is-a-secret-with-32-chars!!');
     });
 
-    it('should return default secret when not configured', async () => {
+    it('should throw in production when SESSION_SECRET is not configured', async () => {
       delete process.env.SESSION_SECRET;
+      process.env.NODE_ENV = 'production';
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const { getSessionSecret } = await import('../dashboard/lib/oidc/config.js');
-      const secret = getSessionSecret();
-      expect(secret.length).toBeGreaterThanOrEqual(32);
+      const { getSessionSecret, SessionSecretError, isSessionSecretUsable } = await import(
+        '../dashboard/lib/oidc/config.js'
+      );
+      expect(() => getSessionSecret()).toThrow(SessionSecretError);
+      expect(() => getSessionSecret()).toThrow(/at least 32 characters/);
+      expect(isSessionSecretUsable()).toBe(false);
+      // Logged once, not on every call.
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
     });
 
-    it('should return default secret when configured secret is too short', async () => {
+    it('should throw in production when SESSION_SECRET is too short', async () => {
       process.env.SESSION_SECRET = 'short';
+      process.env.NODE_ENV = 'production';
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { getSessionSecret, SessionSecretError } = await import(
+        '../dashboard/lib/oidc/config.js'
+      );
+      expect(() => getSessionSecret()).toThrow(SessionSecretError);
+      errorSpy.mockRestore();
+    });
+
+    it('should never return the former public fallback secret', async () => {
+      delete process.env.SESSION_SECRET;
+      process.env.NODE_ENV = 'development';
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { getSessionSecret } = await import('../dashboard/lib/oidc/config.js');
+      expect(getSessionSecret()).not.toBe('crowdsieve-dev-secret-32-chars!!');
+      warnSpy.mockRestore();
+    });
+
+    it('should use a random per-process secret outside production, with a warning', async () => {
+      delete process.env.SESSION_SECRET;
+      process.env.NODE_ENV = 'development';
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const { getSessionSecret } = await import('../dashboard/lib/oidc/config.js');
       const secret = getSessionSecret();
-      expect(secret.length).toBeGreaterThanOrEqual(32);
+      expect(secret).toMatch(/^[0-9a-f]{64}$/);
+      // Stable within the process, and shared through process.env.
+      expect(getSessionSecret()).toBe(secret);
+      expect(process.env.SESSION_SECRET).toBe(secret);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+
+      // Another process (fresh module) gets another secret.
+      vi.resetModules();
+      delete process.env.SESSION_SECRET;
+      const warnSpy2 = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const again = await import('../dashboard/lib/oidc/config.js');
+      expect(again.getSessionSecret()).not.toBe(secret);
+      warnSpy2.mockRestore();
     });
   });
 

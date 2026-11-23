@@ -1,6 +1,7 @@
 import { ApiError } from '@/components/ApiError';
 import { AnalyzersContent } from '@/components/AnalyzersContent';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
+import { requirePageAuth } from '@/lib/auth/guard';
 
 // Force dynamic rendering to read env vars at runtime
 export const dynamic = 'force-dynamic';
@@ -69,6 +70,8 @@ async function getAnalyzers(): Promise<ApiResult<AnalyzersData>> {
 }
 
 export default async function AnalyzersPage() {
+  await requirePageAuth();
+
   const result = await getAnalyzers();
 
   if (!result.success) {

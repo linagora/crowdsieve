@@ -2,6 +2,7 @@ import { ApiError } from '@/components/ApiError';
 import { BouncersContent } from '@/components/BouncersContent';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 import type { BouncerMetric, BouncerName } from '@/lib/types';
+import { requirePageAuth } from '@/lib/auth/guard';
 
 interface StatsBlocked {
   blockedRequests: number;
@@ -81,6 +82,8 @@ async function getInitialMetrics(): Promise<ApiResult<BouncerMetric[]>> {
 }
 
 export default async function BouncersPage() {
+  await requirePageAuth();
+
   const [namesResult, metricsResult, blockedRequests] = await Promise.all([
     getBouncerNames(),
     getInitialMetrics(),

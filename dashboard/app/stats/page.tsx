@@ -2,6 +2,7 @@ import { ApiError } from '@/components/ApiError';
 import { StatsContent } from '@/components/StatsContent';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 import type { TimeDistributionStats, DecisionStats } from '@/lib/types';
+import { requirePageAuth } from '@/lib/auth/guard';
 
 // Force dynamic rendering to read env vars at runtime
 export const dynamic = 'force-dynamic';
@@ -100,6 +101,8 @@ async function getDecisionStats(period?: string): Promise<ApiResult<DecisionStat
 }
 
 export default async function StatsPage() {
+  await requirePageAuth();
+
   const [distributionResult, decisionResult] = await Promise.all([
     getDistributionStats(),
     getDecisionStats(),

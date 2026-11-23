@@ -6,9 +6,15 @@ CrowdSieve supports two authentication modes for the dashboard:
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `oidc`    | Standard OpenID Connect deployment. The dashboard handles the login flow itself via the iron-session cookie. Documented in this page.                                             |
 | `headers` | A trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) authenticates the user upstream and forwards their identity via `Auth-*` headers. |
-| `none`    | No authentication enforced. Default when neither OIDC nor headers mode is configured.                                                                                             |
+| `none`    | No authentication enforced. Default when neither OIDC nor headers mode is configured (a warning is logged at startup; set `AUTH_MODE=none` explicitly to acknowledge it).         |
 
-The mode is selected via `AUTH_MODE` (`oidc` | `headers` | `none`). When unset, the dashboard auto-detects: `oidc` if `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, otherwise `none`. Jump to [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler) for the proxy-based setup.
+The mode is selected via `AUTH_MODE` (`oidc` | `headers` | `none`). When unset, the dashboard auto-detects: `oidc` if `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, otherwise `none`. In that last case anyone who can reach the dashboard can read all data and ban or unban any IP, so the dashboard logs a prominent warning at startup; an explicit `AUTH_MODE=none` only logs a notice. An unknown `AUTH_MODE` value is ignored with a warning. The provided `docker-compose.yml` publishes the dashboard on `127.0.0.1` only (`DASHBOARD_BIND`) for this reason. Jump to [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler) for the proxy-based setup.
+
+### Cross-site request protection
+
+In every mode, including `none`, the dashboard rejects with HTTP **403** any `POST`, `PUT`, `PATCH` or `DELETE` on `/api/*` that the browser flags as coming from another site: a `Sec-Fetch-Site` header other than `same-origin`, or an `Origin` whose host is neither the request's `Host`, the first `X-Forwarded-Host` entry, nor the host of `NEXTAUTH_URL`. `/api/auth/backchannel-logout`, called server-to-server by the OIDC provider, is exempt. The routes that take a JSON body (ban, unban, analyzer run) also require `Content-Type: application/json` and answer **415** otherwise, which an HTML form cannot send.
+
+Behind a reverse proxy that rewrites the `Host` header, make it send `X-Forwarded-Host` (or set `NEXTAUTH_URL`) so that same-origin requests from the dashboard UI are recognized.
 
 ## OIDC Mode
 
@@ -46,6 +52,13 @@ sequenceDiagram
     Dashboard->>User: 10. Authenticated
 ```
 
+### Session validation
+
+The session is stored in the encrypted `crowdsieve-session` cookie (iron-session, sealed with `SESSION_SECRET`). It is checked on every request:
+
+- The middleware unseals the cookie and requires a signed-in user and an expiry (`expiresAt`, taken from the access token lifetime) in the future. Otherwise pages are redirected to `/login` and API calls get `401 {"error":"Unauthorized"}`. The cookie that `/api/auth/login` saves while a login is in progress does not qualify.
+- Every API route (except `/api/auth/*` and `/api/jwks`) and every server page that loads data checks the session again, adding the [back-channel logout](#back-channel-logout) revocation check, which the Edge middleware cannot see.
+
 ## Configuration
 
 ### Environment Variables
@@ -58,10 +71,11 @@ sequenceDiagram
 | `OIDC_CLIENT_SECRET`    | No\*     | -       | OAuth2 client secret (\*required for OIDC unless JWS is enabled).                                                                                                     |
 | `AUTH_ACTOR_CLAIM`      | No       | `sub`   | Claim used as audit-log actor. Any non-empty string (e.g. `sub`, `email`, `name`, `preferredUsername`, `familyName`). Wins over `OIDC_ACTOR_CLAIM` when both are set. |
 | `OIDC_ACTOR_CLAIM`      | No       | `sub`   | Legacy alias for `AUTH_ACTOR_CLAIM`. Kept for back-compat.                                                                                                            |
-| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode.                                                                                             |
+| `SESSION_SECRET`        | Yes\*    | -       | Session encryption key (minimum 32 characters). \*Required for OIDC mode: without it, sign-in is refused in production (see below).                                   |
 | `SESSION_COOKIE_SECURE` | No       | `true`  | Set to `false` for HTTP-only development.                                                                                                                             |
 | `NEXTAUTH_URL`          | No       | auto    | Base URL for callbacks (auto-detected if not set).                                                                                                                    |
-| `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges. Empty = no IP check.                                                          |
+| `AUTH_PROXY_SECRET`     | No       | -       | (Headers mode only, recommended) Shared secret the proxy must send in the `X-Auth-Proxy-Secret` header. Requests without it get 403.                                  |
+| `TRUSTED_PROXY_IPS`     | No       | -       | (Headers mode only) Allowlist of IPs / IPv4 CIDR ranges for the right-most `X-Forwarded-For` entry. Not a protection against direct access. Empty = no IP check.      |
 | `AUTH_LOGOUT_URL`       | No       | -       | (Headers mode only) External logout URL the dashboard redirects to when a user clicks "Sign out". When unset, the link is hidden.                                     |
 | `AUTH_LOGIN_URL`        | No       | -       | (Headers mode only) External login URL surfaced as a "Go to login portal" button on the headers-mode 401 page.                                                        |
 
@@ -74,6 +88,8 @@ trail. If the configured claim is missing on the user, the code falls back to
 `sub`. Any non-empty string is accepted, which makes this work seamlessly with
 claims forwarded by [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler)
 such as `familyName` or `preferredUsername`.
+
+`SESSION_SECRET` seals the session cookie, so anyone who knows it can forge a session for any user. There is no built-in default: when it is missing or shorter than 32 characters, the dashboard logs an error at startup and, in production (`NODE_ENV=production`, as in the Docker image), refuses OIDC sign-in: `/api/auth/login`, `/api/auth/callback` and the API routes answer HTTP 500 and `/login` shows a configuration error. Outside production, a random secret is generated for the process (with a warning), so sessions do not survive a restart.
 
 Generate secrets with:
 
@@ -426,6 +442,10 @@ crowdsieve:
 - Ensure `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `SESSION_SECRET` are set
 - Check that the issuer URL is reachable
 
+**"SESSION_SECRET must be set to a random value of at least 32 characters"**
+
+- Set `SESSION_SECRET` to the output of `openssl rand -hex 32` and restart the dashboard. All existing sessions are invalidated when the secret changes.
+
 **"Invalid redirect URI"**
 
 - Verify the callback URL is registered in your provider: `https://crowdsieve.example.com/api/auth/callback/oidc`
@@ -466,14 +486,18 @@ Look for:
 
 Some deployments sit behind a "handler" reverse proxy (LemonLDAP-NG, NGINX `auth_request`, Apache `mod_auth_*`, Traefik ForwardAuth, etc.) that performs authentication upstream and forwards the user's identity to the protected app via HTTP headers. CrowdSieve supports this model via `AUTH_MODE=headers`.
 
-> **Critical security requirement:** the dashboard MUST be unreachable except via the trusted upstream proxy. Headers mode trusts every `Auth-*` header it receives — if a client can reach the dashboard directly, they can spoof any identity. Use network isolation (Kubernetes NetworkPolicy, firewall rules, listening on `127.0.0.1`, etc.) and optionally `TRUSTED_PROXY_IPS` for defense in depth.
+> **Critical security requirement:** the dashboard must only accept `Auth-*` headers from the authenticating proxy. If a client can reach the dashboard directly, it can spoof any identity. Set `AUTH_PROXY_SECRET` and make the proxy send it in the `X-Auth-Proxy-Secret` header (see [Proxy shared secret](#proxy-shared-secret)), and keep the dashboard unreachable except via the proxy (Kubernetes NetworkPolicy, firewall rules, listening on `127.0.0.1`, etc.). `TRUSTED_PROXY_IPS` does **not** protect against direct access (see [Trusted-proxy IP gating](#trusted-proxy-ip-gating)). Without `AUTH_PROXY_SECRET`, the dashboard logs a warning at startup.
 
 ### Quick start
 
 ```bash
 AUTH_MODE=headers
-# Optional: only accept requests from these source IPs / IPv4 CIDR ranges.
-# When unset, no IP check is performed (rely on network isolation).
+# Recommended: shared secret that the proxy sends in X-Auth-Proxy-Secret.
+# Requests without it are rejected with 403. Generate with: openssl rand -hex 32
+AUTH_PROXY_SECRET=change-me-to-a-random-value
+# Optional: only accept requests whose closest hop (right-most
+# X-Forwarded-For entry) is one of these IPs / IPv4 CIDR ranges. This is NOT
+# a protection against clients that reach the dashboard directly.
 TRUSTED_PROXY_IPS=10.0.0.5,10.42.0.0/16
 # Optional: where to send the user when they click "Sign out".
 # When unset, the Sign-out link is hidden.
@@ -504,7 +528,8 @@ Mapping rule: strip the `auth-` prefix (case-insensitive), then convert the rema
 ### Behavior
 
 - A request **without** a non-empty `Auth-Sub` header is rejected with HTTP **401**.
-- When `TRUSTED_PROXY_IPS` is set, a request from any other source IP is rejected with HTTP **403** before headers are even inspected.
+- When `AUTH_PROXY_SECRET` is set, a request without the exact value in `X-Auth-Proxy-Secret` is rejected with HTTP **403** before the `Auth-*` headers are inspected.
+- When `TRUSTED_PROXY_IPS` is set, a request whose right-most `X-Forwarded-For` entry is not in the list is rejected with HTTP **403** as well. See the [limits](#trusted-proxy-ip-gating) of this check.
 - The login page (`/login`) renders a static "Authentication required" UI. The dashboard does **not** initiate a login flow — that is the upstream proxy's responsibility.
 - The "Sign out" link in the user menu is hidden unless `AUTH_LOGOUT_URL` is configured. When it is, clicking the link redirects the user to that URL (typically the proxy's logout endpoint).
 - Sessions are **stateless**: there is no iron-session cookie, no server-side session store. Every request re-validates against the headers it carries.
@@ -516,6 +541,7 @@ In the LemonLDAP-NG manager, configure a "Virtual Host" pointing at the dashboar
 
 ```
 # Headers (Manager > Virtual Hosts > <crowdsieve.example.com> > Headers)
+X-Auth-Proxy-Secret     = "<value of AUTH_PROXY_SECRET>"
 Auth-Sub                = $uid
 Auth-Email              = $mail
 Auth-Name               = $cn
@@ -549,19 +575,30 @@ server {
     auth_request_set $auth_email $upstream_http_auth_email;
     auth_request_set $auth_name  $upstream_http_auth_name;
 
-    # Forward them to the dashboard.
+    # Forward them to the dashboard, with the shared secret.
     proxy_set_header Auth-Sub   $auth_sub;
     proxy_set_header Auth-Email $auth_email;
     proxy_set_header Auth-Name  $auth_name;
+    proxy_set_header X-Auth-Proxy-Secret "<value of AUTH_PROXY_SECRET>";
 
     proxy_pass http://crowdsieve-dashboard:3000;
   }
 }
 ```
 
+### Proxy shared secret
+
+`AUTH_PROXY_SECRET` is the recommended way to make sure that the `Auth-*` headers come from the authenticating proxy:
+
+- Set `AUTH_PROXY_SECRET` on the dashboard to a random value (`openssl rand -hex 32`; a warning is logged when it is shorter than 32 characters).
+- Configure the proxy to send the same value in the `X-Auth-Proxy-Secret` request header on every request it forwards to the dashboard, replacing any value sent by the client (`proxy_set_header` in NGINX, `RequestHeader set` in Apache, an exported header in LemonLDAP-NG).
+- The dashboard compares it in constant time, in the middleware and again in every API route, and rejects any request without the exact value with HTTP **403**.
+
+Keep the secret out of logs and of anything the browser can see: only the proxy and the dashboard should know it.
+
 ### Trusted-proxy IP gating
 
-`TRUSTED_PROXY_IPS` is a comma-separated allowlist applied to the immediate caller of the dashboard:
+`TRUSTED_PROXY_IPS` is a comma-separated allowlist:
 
 | Entry format      | Match semantics                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------- |
@@ -570,10 +607,8 @@ server {
 | `2001:db8::1`     | Exact IPv6 (IPv6 CIDRs are matched as exact strings only in v1).                             |
 | `::ffff:10.0.0.1` | IPv4-mapped IPv6, normalized to the IPv4 form for comparison against IPv4/IPv4-CIDR entries. |
 
-The client IP is resolved in this order:
+The address checked is the **right-most** non-empty entry of `X-Forwarded-For`, i.e. the one added by the closest proxy. Entries on the left are written by the client or by earlier proxies and are ignored. `X-Real-IP` is not used.
 
-1. The Next.js `NextRequest.ip` field, if present.
-2. The first non-empty entry of the `X-Forwarded-For` header.
-3. The `X-Real-IP` header.
+> **Limitation:** the Next.js server does not expose the socket address to the middleware. It only sets `X-Forwarded-For` to the socket address when the request carries no such header, and does not append to a header sent by the client. A client that reaches the dashboard **directly** can therefore send `X-Forwarded-For: <trusted IP>` and pass this check. `TRUSTED_PROXY_IPS` is only useful to reject requests that arrive through some other proxy which appends to `X-Forwarded-For`; it is **not** a protection against direct access. Use `AUTH_PROXY_SECRET` and network isolation for that.
 
-When `TRUSTED_PROXY_IPS` is unset, no IP check is performed — operators are expected to ensure the dashboard is unreachable except via the proxy.
+When `TRUSTED_PROXY_IPS` is unset, no IP check is performed.

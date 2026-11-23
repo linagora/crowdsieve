@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIP } from 'net';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
+import { requireAuth } from '@/lib/auth/guard';
 
 /**
  * Extract the base IP from a value that may be an IP or CIDR notation.
@@ -17,6 +18,9 @@ function extractIpFromValue(value: string): string {
  * This avoids URL routing issues with %2F in path segments.
  */
 export async function GET(request: NextRequest) {
+  const denied = await requireAuth();
+  if (denied) return denied;
+
   const { apiBase } = getApiConfig();
   const ip = request.nextUrl.searchParams.get('ip');
 

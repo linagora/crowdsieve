@@ -2,8 +2,10 @@ import { getIronSession, IronSession } from 'iron-session';
 import { cookies, headers } from 'next/headers';
 import { getActorClaim, getSessionSecret } from './config';
 import { isSessionRevoked } from './revocation';
+import { isLiveSession, SESSION_COOKIE_NAME } from './session-cookie';
 import { getAuthMode } from '../auth/mode';
 import { parseAuthHeaders } from '../auth/headers';
+import { checkTrustedUpstream } from '../auth/trust';
 
 /**
  * SessionUser carries the minimal identity claims used by the dashboard.
@@ -63,7 +65,7 @@ function isSecureCookie(): boolean {
 }
 
 const SESSION_OPTIONS = {
-  cookieName: 'crowdsieve-session',
+  cookieName: SESSION_COOKIE_NAME,
   password: '', // Will be set dynamically
   cookieOptions: {
     secure: isSecureCookie(),
@@ -95,21 +97,37 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 }
 
 /**
- * Whether the current request carries a valid session. Headers mode requires
- * only that `Auth-Sub` is present and parseable; OIDC mode adds expiration
- * and revocation checks.
+ * Whether the current request carries a valid session.
+ *
+ * - Headers mode: the request must come from a trusted upstream (see
+ *   `lib/auth/trust.ts`) and carry a non-empty `Auth-Sub`.
+ * - OIDC mode: the iron-session cookie must hold a signed-in user (`user`),
+ *   an `expiresAt` in the future, and must not have been revoked through
+ *   back-channel logout.
+ *
+ * A cookie that cannot be unsealed is treated as no session. Errors about a
+ * missing or too short SESSION_SECRET are propagated so that callers can
+ * report the misconfiguration.
  */
 export async function isSessionValid(): Promise<boolean> {
   if (getAuthMode() === 'headers') {
     const h = await headers();
+    if (!checkTrustedUpstream(h).ok) return false;
     return parseAuthHeaders(h) !== null;
   }
-  const session = await getSession();
-  if (!session.user) {
+
+  // Resolve the secret first so that a misconfiguration is not mistaken for
+  // a bad cookie below.
+  getSessionSecret();
+
+  let session: IronSession<SessionData>;
+  try {
+    session = await getSession();
+  } catch {
+    // Cookie that iron-session cannot parse: no valid session.
     return false;
   }
-  // Check if session has expired
-  if (session.expiresAt && Date.now() > session.expiresAt) {
+  if (!isLiveSession(session)) {
     return false;
   }
   // Check if session has been revoked via back-channel logout

@@ -917,10 +917,13 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
   );
 
   // Delete a decision from a LAPI server using machine credentials
-  // Note: CSRF protection is not needed here because:
-  // 1. This endpoint requires API key authentication (already checked by preHandler)
-  // 2. Requests come from the Next.js dashboard proxy (server-to-server)
-  // 3. The dashboard proxy already handles browser CSRF via same-origin policy
+  // Note: this endpoint has no CSRF protection of its own because it requires
+  // the dashboard API key (checked by the preHandler), which browsers never
+  // hold: requests come from the Next.js dashboard server (server-to-server).
+  // Browser CSRF is handled by the dashboard: its middleware rejects
+  // cross-origin POST/PUT/PATCH/DELETE on /api/* (Origin / Sec-Fetch-Site)
+  // and its JSON write routes require Content-Type: application/json. The
+  // same-origin policy alone would not stop a cross-site form post.
   fastify.delete(
     '/api/decisions/:id',
     {

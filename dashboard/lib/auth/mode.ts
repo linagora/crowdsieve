@@ -8,7 +8,9 @@
  *
  * Behavior when AUTH_MODE is unset:
  *   - 'oidc' if both OIDC_ISSUER and OIDC_CLIENT_ID are set.
- *   - 'none' otherwise (matches the historical default).
+ *   - 'none' otherwise (matches the historical default). A loud warning is
+ *     logged at startup (lib/auth/startup.ts): set AUTH_MODE=none to make
+ *     the choice explicit.
  *
  * NOTE: This module must remain Edge-Runtime-compatible. Do not import any
  * Node.js-only API (no fs, no crypto, no next/headers).
@@ -16,9 +18,19 @@
 
 export type AuthMode = 'oidc' | 'headers' | 'none';
 
-export function getAuthMode(): AuthMode {
+function getExplicitAuthMode(): AuthMode | null {
   const explicit = process.env.AUTH_MODE?.trim().toLowerCase();
-  if (explicit === 'oidc' || explicit === 'headers' || explicit === 'none') {
+  return explicit === 'oidc' || explicit === 'headers' || explicit === 'none' ? explicit : null;
+}
+
+/** Whether AUTH_MODE is set to one of the supported values. */
+export function isAuthModeExplicit(): boolean {
+  return getExplicitAuthMode() !== null;
+}
+
+export function getAuthMode(): AuthMode {
+  const explicit = getExplicitAuthMode();
+  if (explicit !== null) {
     // Note: an explicit `AUTH_MODE=oidc` with missing OIDC_ISSUER /
     // OIDC_CLIENT_ID is a misconfiguration. We honor the explicit choice and
     // let the /login page render a clear configuration error — returning

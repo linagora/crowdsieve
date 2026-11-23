@@ -9,6 +9,7 @@ import { LocalDateTime } from '@/components/LocalDateTime';
 import { ApiError } from '@/components/ApiError';
 import { parseReturnPath, isValidAlertId } from '@/lib/alertFilters';
 import { getAlertKind, showsFilteredBadge, showsForwardedBadge } from '@/lib/alertStatus';
+import { requirePageAuth } from '@/lib/auth/guard';
 
 // Read env vars inside functions to ensure they're evaluated at runtime (not build time)
 function getApiConfig() {
@@ -84,6 +85,8 @@ interface AlertDetailPageProps {
 }
 
 export default async function AlertDetailPage({ params, searchParams }: AlertDetailPageProps) {
+  await requirePageAuth();
+
   const [{ id }, { from }] = await Promise.all([params, searchParams]);
   // Reject non-numeric ids before hitting the API: the proxy answers 400 for
   // them, which would be displayed as a connection/configuration error.

@@ -1,17 +1,85 @@
 /**
- * Trusted-proxy IP gating for headers authentication mode.
+ * Trusted-upstream checks for headers authentication mode.
  *
- * When `TRUSTED_PROXY_IPS` is set, the middleware rejects requests whose
- * source IP is not in the allowlist. This is a defense-in-depth measure on
- * top of network-level isolation (the dashboard SHOULD be unreachable except
- * via the trusted upstream proxy).
+ * In headers mode the identity comes from `Auth-*` request headers, so the
+ * dashboard must only accept them from the authenticating proxy. Two
+ * optional controls are available on top of network isolation:
  *
- * Format: comma-separated list of IPv4 addresses, IPv6 addresses, or
- * IPv4 CIDR ranges. IPv6 CIDR ranges are matched as exact strings only in
- * v1 (a hand-rolled IPv6 prefix matcher is overkill for this use case).
+ * 1. `AUTH_PROXY_SECRET` (recommended): a shared secret that the proxy adds
+ *    to every request in the `X-Auth-Proxy-Secret` header. Requests without
+ *    the exact value are rejected (constant-time comparison).
  *
- * This module must remain Edge-Runtime-compatible.
+ * 2. `TRUSTED_PROXY_IPS`: an allowlist checked against the RIGHT-MOST entry
+ *    of `X-Forwarded-For`, i.e. the address appended by the closest proxy.
+ *    LIMITATION: the Next.js server only sets `X-Forwarded-For` to the socket
+ *    address when the request has no such header; it does not append to a
+ *    header sent by the client. A client that reaches the dashboard directly
+ *    can therefore send `X-Forwarded-For: <trusted IP>` and pass this check.
+ *    It only filters requests that come through a proxy that appends to the
+ *    header, and is NOT a protection against direct access.
+ *
+ * Format of TRUSTED_PROXY_IPS: comma-separated list of IPv4 addresses, IPv6
+ * addresses, or IPv4 CIDR ranges. IPv6 CIDR ranges are matched as exact
+ * strings only in v1 (a hand-rolled IPv6 prefix matcher is overkill for this
+ * use case).
+ *
+ * This module must remain Edge-Runtime-compatible (no node:crypto).
  */
+
+/** Header in which the authenticating proxy sends AUTH_PROXY_SECRET. */
+export const AUTH_PROXY_SECRET_HEADER = 'x-auth-proxy-secret';
+
+/** Return AUTH_PROXY_SECRET, or null when unset or blank. */
+export function getAuthProxySecret(): string | null {
+  const raw = process.env.AUTH_PROXY_SECRET;
+  if (!raw || raw.trim().length === 0) return null;
+  return raw;
+}
+
+/**
+ * Compare a provided value with the expected secret in constant time with
+ * respect to the content of the provided value: the loop always runs over
+ * the whole expected secret, and a length mismatch only changes the result.
+ * Edge-compatible replacement for node:crypto timingSafeEqual.
+ */
+export function constantTimeEqual(provided: string, expected: string): boolean {
+  const encoder = new TextEncoder();
+  const a = encoder.encode(provided);
+  const b = encoder.encode(expected);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < b.length; i++) {
+    diff |= (i < a.length ? a[i] : 0) ^ b[i];
+  }
+  return diff === 0;
+}
+
+/**
+ * Whether the request carries the configured AUTH_PROXY_SECRET. Returns true
+ * when no secret is configured.
+ */
+export function hasValidProxySecret(headers: Headers): boolean {
+  const expected = getAuthProxySecret();
+  if (expected === null) return true;
+  const provided = headers.get(AUTH_PROXY_SECRET_HEADER);
+  if (provided === null) return false;
+  return constantTimeEqual(provided, expected);
+}
+
+export type UpstreamCheck = { ok: true } | { ok: false; reason: 'proxy-secret' | 'untrusted-ip' };
+
+/**
+ * Check that a headers-mode request comes from the trusted upstream proxy:
+ * AUTH_PROXY_SECRET first (when set), then TRUSTED_PROXY_IPS (when set).
+ */
+export function checkTrustedUpstream(headers: Headers): UpstreamCheck {
+  if (!hasValidProxySecret(headers)) {
+    return { ok: false, reason: 'proxy-secret' };
+  }
+  if (!isTrustedProxy(getClientIp({ headers }))) {
+    return { ok: false, reason: 'untrusted-ip' };
+  }
+  return { ok: true };
+}
 
 /** Read TRUSTED_PROXY_IPS from env, return parsed entries (no validation). */
 export function getTrustedProxyIps(): string[] {
@@ -120,34 +188,23 @@ export function isTrustedProxy(clientIp: string | null): boolean {
 }
 
 /**
- * Resolve the client IP for trust-checking purposes. Order:
- *  1. NextRequest.ip (only present in some Next.js runtimes).
- *  2. X-Forwarded-For first entry.
- *  3. X-Real-IP.
- * Returns null if none can be determined.
+ * Resolve the address of the closest hop for TRUSTED_PROXY_IPS: the
+ * right-most non-empty entry of `X-Forwarded-For`. Entries on the left are
+ * written by the client and earlier proxies, and are never used.
+ *
+ * The Next.js server fills `X-Forwarded-For` with the socket address only
+ * when the request has none, so without a proxy the right-most entry is
+ * either the real peer or a value forged by the client: see the module
+ * comment. `X-Real-IP` is not used, as a client can set it as well.
+ *
+ * Returns null when no address can be determined.
  */
-export function getClientIp(
-  request: Request | { ip?: string | null; headers: Headers }
-): string | null {
-  const reqWithIp = request as { ip?: string | null };
-  if (typeof reqWithIp.ip === 'string' && reqWithIp.ip.length > 0) {
-    return reqWithIp.ip;
-  }
-
-  const headers = (request as { headers: Headers }).headers;
-  const xff = headers.get('x-forwarded-for');
-  if (xff) {
-    // First non-empty entry wins.
-    for (const entry of xff.split(',')) {
-      const trimmed = entry.trim();
-      if (trimmed.length > 0) return trimmed;
-    }
-  }
-
-  const xri = headers.get('x-real-ip');
-  if (xri && xri.trim().length > 0) {
-    return xri.trim();
-  }
-
-  return null;
+export function getClientIp(request: { headers: Headers }): string | null {
+  const xff = request.headers.get('x-forwarded-for');
+  if (!xff) return null;
+  const entries = xff
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return entries.length > 0 ? entries[entries.length - 1] : null;
 }

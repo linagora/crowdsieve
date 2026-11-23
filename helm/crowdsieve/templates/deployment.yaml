@@ -103,9 +103,23 @@ spec:
               value: {{ .Values.crowdsieve.dashboard.auth.actorClaim | quote }}
             {{- end }}
             {{- if .Values.crowdsieve.dashboard.auth.headers }}
+            {{- $authHeaders := .Values.crowdsieve.dashboard.auth.headers }}
+            {{- if or $authHeaders.proxySecret $authHeaders.proxySecretExistingSecret }}
+            # Shared secret the authenticating proxy sends in X-Auth-Proxy-Secret.
+            - name: AUTH_PROXY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if $authHeaders.proxySecretExistingSecret }}
+                  name: {{ $authHeaders.proxySecretExistingSecret }}
+                  key: {{ $authHeaders.proxySecretKey | default "proxy-secret" }}
+                  {{- else }}
+                  name: {{ include "crowdsieve.fullname" . }}-auth-proxy
+                  key: proxy-secret
+                  {{- end }}
+            {{- end }}
             {{- if .Values.crowdsieve.dashboard.auth.headers.trustedProxyIps }}
-            # Comma-separated allowlist of upstream-proxy IPs / IPv4 CIDR ranges.
-            # Empty = no IP check (rely on network isolation).
+            # Allowlist for the right-most X-Forwarded-For entry (closest proxy).
+            # Not a protection against direct access: use AUTH_PROXY_SECRET.
             - name: TRUSTED_PROXY_IPS
               value: {{ .Values.crowdsieve.dashboard.auth.headers.trustedProxyIps | quote }}
             {{- end }}

@@ -96,10 +96,34 @@ Priority: 1) User-provided value, 2) Existing secret value (for upgrades), 3) Ne
 {{- end -}}
 
 {{/*
+OIDC session secret - use provided value, existing secret value, or generate a new one.
+Priority: 1) User-provided value, 2) Existing secret value (for upgrades), 3) New random value.
+Reusing the existing value keeps user sessions valid across helm upgrades.
+*/}}
+{{- define "crowdsieve.sessionSecret" -}}
+{{- if .Values.crowdsieve.dashboard.oidc.session.secret -}}
+{{- .Values.crowdsieve.dashboard.oidc.session.secret -}}
+{{- else -}}
+{{- $secretName := printf "%s-oidc" (include "crowdsieve.fullname" .) -}}
+{{- $existingSecret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- if and $existingSecret $existingSecret.data (index $existingSecret.data "session-secret") -}}
+{{- index $existingSecret.data "session-secret" | b64dec -}}
+{{- else -}}
+{{- /* Generate a random 64-character alphanumeric secret for new installations */ -}}
+{{- randAlphaNum 64 -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Validate CrowdSieve configuration
 */}}
 {{- define "crowdsieve.validateConfig" -}}
 {{- if .Values.crowdsieve.enabled }}
+{{- $session := .Values.crowdsieve.dashboard.oidc.session }}
+{{- if and .Values.crowdsieve.dashboard.oidc.enabled $session.secret (lt (len $session.secret) 32) }}
+{{- fail "CrowdSieve: crowdsieve.dashboard.oidc.session.secret must be at least 32 characters long (generate one with: openssl rand -hex 32), or leave it empty to auto-generate one." }}
+{{- end }}
 {{- if and (gt (int .Values.crowdsieve.replicaCount) 1) (ne .Values.crowdsieve.storage.type "postgres") }}
 {{- fail "CrowdSieve: replicaCount > 1 requires PostgreSQL. Set crowdsieve.storage.type=postgres or use replicaCount=1 with SQLite." }}
 {{- end }}
