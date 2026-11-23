@@ -296,6 +296,20 @@ function runSQLiteMigrations(sqlite: Database.Database) {
     }
   }
 
+  // Migration: purge validation cache rows written by older versions. Before
+  // the fail-open fix they were persisted for clients CAPI had never
+  // authenticated, and are now trusted as authenticated. Adding the marker
+  // column happens exactly once, so the purge does too.
+  const clientInfo = sqlite.prepare('PRAGMA table_info(validated_clients)').all() as {
+    name: string;
+  }[];
+  if (!clientInfo.some((col) => col.name === 'authenticated')) {
+    sqlite.exec(`
+      DELETE FROM validated_clients;
+      ALTER TABLE validated_clients ADD COLUMN authenticated INTEGER NOT NULL DEFAULT 1;
+    `);
+  }
+
   sqlite.exec('CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit)');
 
   // Migration: Add unique index on uuid (partial - only for non-null values)

@@ -305,6 +305,22 @@ export async function initializePostgres(
       ALTER TABLE alerts ADD COLUMN IF NOT EXISTS audit_duration TEXT;
     `);
 
+    // Migration: purge validation cache rows written by older versions (they
+    // may cover clients CAPI never authenticated, see the SQLite migration).
+    // Adding the marker column happens once, so the purge does too.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'validated_clients' AND column_name = 'authenticated'
+        ) THEN
+          DELETE FROM validated_clients;
+          ALTER TABLE validated_clients ADD COLUMN authenticated BOOLEAN NOT NULL DEFAULT TRUE;
+        END IF;
+      END $$;
+    `);
+
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit);`);
 
     // Migration: Add unique partial index on uuid (only for non-null values)
