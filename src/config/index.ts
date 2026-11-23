@@ -154,6 +154,117 @@ const PostgresConfigSchema = z.object({
 
 export type PostgresConfig = z.infer<typeof PostgresConfigSchema>;
 
+// Notification targets (webhooks), see src/notifications/.
+export const NOTIFICATION_EVENTS = [
+  'alert',
+  'manual_ban',
+  'unban',
+  'forwarding_error',
+  'lapi_error',
+] as const;
+
+/** Target names appear in URLs (/api/notifications/<name>/test). */
+const NOTIFICATION_TARGET_NAME_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+/** RFC 9110 token, the characters allowed in an HTTP header name. */
+const HTTP_HEADER_NAME_REGEX = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+/** Headers set by CrowdSieve or by the HTTP client, that the config cannot override. */
+const RESERVED_NOTIFICATION_HEADERS = new Set([
+  'content-length',
+  'content-type',
+  'host',
+  'connection',
+  'transfer-encoding',
+]);
+
+/** http(s) URL, without credentials (put secrets in `headers`). */
+const HttpUrl = z
+  .string()
+  .url()
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'must be an http:// or https:// URL' }
+  );
+
+const NotificationTargetSchema = z
+  .object({
+    name: z.string().regex(NOTIFICATION_TARGET_NAME_REGEX, {
+      message: 'must be 1 to 64 letters, digits, "-" or "_"',
+    }),
+    type: z.enum(['webhook', 'slack']),
+    url: HttpUrl.refine(
+      (value) => {
+        const url = new URL(value);
+        return url.username === '' && url.password === '';
+      },
+      { message: 'must not contain credentials: use headers (e.g. Authorization) instead' }
+    ),
+    headers: z
+      .record(
+        z.string().regex(HTTP_HEADER_NAME_REGEX, { message: 'invalid HTTP header name' }),
+        z.string().refine((value) => !/[\r\n\0]/.test(value), {
+          message: 'header values must not contain line breaks',
+        })
+      )
+      .refine(
+        (headers) =>
+          Object.keys(headers).every((h) => !RESERVED_NOTIFICATION_HEADERS.has(h.toLowerCase())),
+        { message: `cannot set ${[...RESERVED_NOTIFICATION_HEADERS].join(', ')}` }
+      )
+      .default({}),
+    events: z
+      .array(z.enum(NOTIFICATION_EVENTS))
+      .min(1)
+      .transform((events) => [...new Set(events)]),
+    match: z
+      .object({
+        // Substrings of the scenario (case-insensitive)
+        scenarios: z.array(z.string().min(1)).default([]),
+        // ISO 3166-1 alpha-2 country codes
+        countries: z
+          .array(z.string().regex(/^[A-Za-z]{2}$/, { message: 'must be a 2-letter country code' }))
+          .default([])
+          .transform((codes) => codes.map((c) => c.toUpperCase())),
+        machines: z.array(z.string().min(1)).default([]),
+        // forwarded: alerts that passed the filters; filtered: alerts the
+        // filters held back; any: both.
+        status: z.enum(['forwarded', 'filtered', 'any']).default('forwarded'),
+      })
+      .strict()
+      .prefault({}),
+    // Go duration ("5m", "1h30m", "0" to send every event on its own).
+    min_interval: z
+      .string()
+      .refine((value) => (parseGoDuration(value) ?? -1) >= 0, {
+        message: 'must be a Go duration such as "5m", "30s" or "1h"',
+      })
+      .default('5m'),
+  })
+  .strict();
+
+const NotificationsSchema = z
+  .object({
+    // Public URL of the dashboard, used for the links of the messages.
+    dashboard_url: HttpUrl.transform((value) => value.replace(/\/+$/, '')).optional(),
+    targets: z
+      .array(NotificationTargetSchema)
+      .default([])
+      .refine((targets) => new Set(targets.map((t) => t.name)).size === targets.length, {
+        message: 'target names must be unique',
+      }),
+  })
+  .strict();
+
+export type NotificationEventType = (typeof NOTIFICATION_EVENTS)[number];
+export type NotificationTarget = z.infer<typeof NotificationTargetSchema>;
+export type NotificationsConfig = z.infer<typeof NotificationsSchema>;
+
 const ConfigSchema = z.object({
   proxy: z.object({
     listen_port: z.number().default(8080),
@@ -234,6 +345,8 @@ const ConfigSchema = z.object({
       retention_days: z.number().int().positive().default(30),
     })
     .prefault({}),
+  // Webhook notifications (alerts, manual bans/unbans, service failures).
+  notifications: NotificationsSchema.prefault({}),
 });
 
 export type BouncerMetricsConfig = z.infer<typeof ConfigSchema.shape.bouncer_metrics>;

@@ -21,6 +21,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
 - **Status Page**: Health of CAPI forwarding and of every LAPI server (periodic check), with a red banner on every page when something fails
+- **Notifications**: Webhook (JSON) and Slack-compatible (Slack, Mattermost, Rocket.Chat) messages for new alerts, manual bans and unbans, and CAPI or LAPI failures, with per-target filters and digests
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
   - `ban` or `captcha` remediation, preset or custom duration (1 minute to 365 days), up to 100 IPs/ranges per submission
@@ -377,7 +378,53 @@ The **Status** page (header entry) shows the health of the integrations CrowdSie
 - **CAPI forwarding**: enabled, disabled (`FORWARD_ENABLED=false`) or failing, the time of the last successful push, the alerts sent and failed in the last 24 hours, and the last error. Forwarding counts as failing when CAPI is unreachable or answers 5xx, 401, 403 or 429.
 - **Each LAPI server**: reachable (with the response time) or unreachable (with the error), checked every 60 seconds with `GET /v1/heartbeat` using the machine credentials when configured (else `GET /v1/decisions?ip=127.0.0.1` with the bouncer key), whether manual ban is available (machine credentials configured and accepted), and the last decision-replication error.
 
+The page also has a **Notifications** card (see [Notifications](#notifications)).
+
 When CAPI forwarding fails or a LAPI is unreachable, a red banner appears under the header on every page. The home page's "Forwarded" card reads "Forwarding disabled" when forwarding is off. The state is kept in memory and is reset at restart. It is served by `GET /api/status` and never contains API keys, passwords or URL credentials.
+
+### Notifications
+
+CrowdSieve can post a message to a webhook when something happens, so that the on-call team learns about it in its chat or incident tool. Targets are configured in the `notifications` section of `config/filters.yaml`:
+
+```yaml
+notifications:
+  dashboard_url: 'https://crowdsieve.example.com' # public URL of the dashboard, for the links
+  targets:
+    - name: soc-chat # letters, digits, - and _
+      type: slack # or webhook
+      url: '${SOC_CHAT_WEBHOOK_URL}'
+      events: [alert, manual_ban, unban]
+      match: # alerts only, every entry is optional
+        scenarios: [ssh-bf, smtp] # substrings of the scenario, case-insensitive
+        countries: [FR]
+        machines: [mail-agent]
+        status: forwarded # forwarded (default: passed the filters), filtered or any
+      min_interval: 5m # default 5m, "0" to send every event on its own
+    - name: incidents
+      type: webhook
+      url: 'https://incidents.example.com/hooks/crowdsieve'
+      headers:
+        Authorization: 'Bearer ${INCIDENTS_TOKEN}'
+      events: [forwarding_error, lapi_error]
+```
+
+Events:
+
+- `alert`: an alert received through `/v2/signals` (or `/v3/signals`) and stored, matching the target's `match`. Manual bans coming back from the LAPI (`crowdsieve/manual`) are not repeated as alerts.
+- `manual_ban` and `unban`: a ban or an unban from the dashboard (or the API), with the user, IP or range, server, type, duration and reason.
+- `forwarding_error`: CAPI forwarding starts failing, and works again.
+- `lapi_error`: a LAPI becomes unreachable (periodic check of the status page), is reachable again, or a decision replication to it fails.
+
+Message formats:
+
+- `webhook`: a JSON POST `{ event, occurred_at, crowdsieve_url, total, omitted, summary, items }`. An alert item carries `id`, `scenario`, `ip`, `country`, `machine`, `filtered` and `link` (`<dashboard_url>/alerts/<id>`); a ban or unban item `actor`, `ip`, `scope`, `server`, `reason`, `link` and `type` and `duration` (ban) or `decision_id` (unban); an error item `server`, `state` (`failing`, `recovered`, `replication_failed`) and `error`.
+- `slack`: `{ "text": "..." }`, one line per event, e.g. ``🚨 `crowdsecurity/ssh-bf` from 203.0.113.7 (FR) on `qa-agent` — https://crowdsieve.example.com/alerts/123``. Values that come from alerts or users (scenario, machine, reason…) are written as inline code and `&`, `<`, `>` are escaped, so that they cannot add links or mentions.
+
+Delivery is asynchronous and never slows down `/v2/signals`. For each target and event type, the events received within one second are sent in one message; the events that follow within `min_interval` are grouped into one digest sent when the interval ends ("➕ 11 more alerts: `crowdsecurity/ssh-bf` ×8, …"). A message that fails with a network error, a timeout, HTTP 408, 429 or 5xx is retried three times, after 5 s, 30 s and 2 min; other answers (e.g. HTTP 404) are not retried, and redirects are never followed. Each request times out after 10 seconds. Memory is bounded: a message lists at most 100 events (all of them are counted), and at most 20 messages wait per target, the oldest waiting one being dropped (and logged) beyond. Messages not yet sent are lost at restart.
+
+The URL must be `http://` or `https://` without credentials: put tokens in `headers` (or in the URL path, as Slack does), and use `${VAR}` (see [Environment Variables in Config](#environment-variables-in-config)) to keep them out of the file. An invalid `notifications` section stops the start-up with an error. URLs and header values never appear in the logs nor in the dashboard, only the host of each target.
+
+On the **Status** page, the **Notifications** card lists each target with its type, events, alert filter and last delivery ("Delivered 3 min ago", "Failed 2 min ago: HTTP 500"), and a **Send test** button that sends "CrowdSieve test notification from <dashboard_url>" and shows the result. The proxy serves them with `GET /api/notifications` and `POST /api/notifications/<name>/test`.
 
 ### Filter Rules
 

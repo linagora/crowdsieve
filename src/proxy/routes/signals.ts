@@ -81,6 +81,7 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     clientValidator,
     replicationService,
     statusService,
+    notificationService,
   } = fastify;
 
   /**
@@ -192,6 +193,15 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
         logger,
       });
       replicableIndices = storeResult.replicableIndices;
+      // Notifications only queue the alerts here; delivery is asynchronous
+      // and never delays the answer.
+      if (notificationService?.enabled && storeResult.stored?.length) {
+        try {
+          notificationService.notifyAlerts(storeResult.stored);
+        } catch (err) {
+          logger.error({ err }, 'Failed to queue alert notifications');
+        }
+      }
     } catch (err) {
       logger.error({ err }, 'Failed to store alerts');
       // Don't fail the request - storage is secondary
