@@ -62,6 +62,20 @@ export const ServerName = Type.String({
   pattern: '^[a-zA-Z0-9_-]+$',
 });
 
+/** Decision type as stored by LAPI (`ban`, `captcha`, `throttle`, custom...) */
+export const DecisionType = Type.String({
+  pattern: '^[a-zA-Z0-9_-]+$',
+  maxLength: 64,
+  description: 'Decision type, e.g. ban or captcha',
+});
+
+/** Decision origin as stored by LAPI (`crowdsec`, `cscli`, `CAPI`, `lists`...) */
+export const DecisionOrigin = Type.String({
+  pattern: '^[a-zA-Z0-9_.:-]+$',
+  maxLength: 64,
+  description: 'Decision origin, e.g. crowdsec, cscli, crowdsieve, CAPI or lists',
+});
+
 /** ISO 8601 date-time string (validated by Ajv `date-time` format) */
 export const IsoDate = Type.String({
   format: 'date-time',
@@ -331,6 +345,20 @@ export const AuditLogResponse = Type.Object({
 
 export const AuditActorsResponse = Type.Object({
   actors: Type.Array(Type.String()),
+});
+
+export const ActiveDecisionsServerResult = Type.Object({
+  server: Type.String(),
+  decisions: Type.Array(LapiDecision),
+  error: Type.Optional(Type.String()),
+  /** Set when the server had more matching decisions than the per-server cap. */
+  truncated: Type.Optional(Type.Boolean()),
+  /** Number of matching decisions before the cap, when truncated. */
+  total: Type.Optional(Type.Integer()),
+});
+
+export const ActiveDecisionsResponse = Type.Object({
+  results: Type.Array(ActiveDecisionsServerResult),
 });
 
 // --- IP info (matches IPInfo from src/ipinfo/index.ts) -----------------------

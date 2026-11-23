@@ -177,6 +177,17 @@ export interface DecisionSearchResponse {
   shared: Decision[]; // Decisions from CAPI/lists present on all servers
 }
 
+export interface ActiveDecisionsServerResult extends ServerDecisions {
+  /** More decisions matched than the proxy returns per server. */
+  truncated?: boolean;
+  /** Number of matching decisions before the cap, when truncated. */
+  total?: number;
+}
+
+export interface ActiveDecisionsResponse {
+  results: ActiveDecisionsServerResult[];
+}
+
 export interface TimeDistributionStats {
   byDayOfWeek: Array<{ day: number; dayName: string; count: number }>;
   byHourOfDay: Array<{ hour: number; count: number }>;
