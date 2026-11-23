@@ -92,6 +92,7 @@ const ALERT_COLUMNS = [
   'geoOrg',
   'filtered',
   'filterReasons',
+  'filterRules',
   'forwardedToCapi',
   'forwardedAt',
   'localAudit',
