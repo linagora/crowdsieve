@@ -203,19 +203,31 @@ lapi_servers:
     machine_id: 'crowdsieve'
     password: 'your-machine-password'
     replicate_decisions: true
-    source_machine_ids: ['agent1', 'agent2'] # Machine IDs of agents connected to this LAPI
+    # Online API login of this LAPI (online_api_credentials.yaml), then its agents
+    source_machine_ids: ['4b1d0c2e...lapi1-online-api-login', 'agent1', 'agent2']
   - name: 'lapi2'
     url: 'http://192.168.1.10:8080'
     api_key: 'another-bouncer-key'
     machine_id: 'crowdsieve-2'
     password: 'another-password'
     replicate_decisions: true
-    source_machine_ids: ['agent3'] # Machine IDs of agents connected to this LAPI
+    source_machine_ids: ['9f3e7a51...lapi2-online-api-login', 'agent3']
 ```
+
+**Who may have its decisions replicated:**
+
+Replication writes into the decision base of every target LAPI, so CrowdSieve only replicates decisions sent by a LAPI it knows:
+
+1. The sender must be **authenticated against CAPI**: CAPI must have accepted its `Authorization` header with a 2xx (now, or within `CLIENT_VALIDATION_CACHE_TTL`). This check runs even when `client_validation` is disabled, as soon as replication is configured; it then only decides about replication, not about accepting the request. A fail-open result (CAPI unavailable) does not count.
+2. The machine id of the sender's JWT (the `id` claim, i.e. the `login` of the LAPI's `/etc/crowdsec/online_api_credentials.yaml`) must be listed in the `source_machine_ids` of one of the `lapi_servers`. The allowlist is the **union** of all `source_machine_ids`, including servers without `replicate_decisions` (a LAPI may be a source only). The `machine_id` fields of the alerts themselves are never used to authorize a sender.
+
+Signals that fail either check are still stored and forwarded to CAPI as usual, but their decisions are not replicated, and a warning is logged (once per 15 minutes per sender).
+
+> **Upgrade note:** `source_machine_ids` used to be matched against the `machine_id` of the alerts only (the agents). Add the online API `login` of each LAPI to its `source_machine_ids`, or nothing will be replicated. To find it: `grep login /etc/crowdsec/online_api_credentials.yaml` on the LAPI host, or look for the warning `sender machine id is not listed in any lapi_servers[].source_machine_ids`, which carries the `machineId` CrowdSieve saw.
 
 **How it works:**
 
-- When CrowdSieve receives alerts with decisions (via `/v2/signals` or `/v3/signals`), it replicates those decisions to LAPI servers with `replicate_decisions: true`
+- When CrowdSieve receives alerts with decisions (via `/v2/signals` or `/v3/signals`) from a trusted sender (see above), it replicates those decisions to LAPI servers with `replicate_decisions: true`
 - Decisions are **not** replicated back to the server they originated from (based on `source_machine_ids`)
 - Replication is asynchronous and non-blocking (doesn't slow down the main request)
 - Errors during replication are logged but don't affect the response to the client
@@ -225,7 +237,7 @@ lapi_servers:
 
 CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
 
-1. **Source server exclusion**: Decisions are not replicated back to the server they originated from. Configure `source_machine_ids` with all machine IDs of agents connected to each LAPI server. The same `source_machine_ids` are also used to resolve the friendly server name when capturing `usage-metrics` from the LAPI's CAPI relay — if the LAPI's online API machine_id matches one of these entries, the row is tagged with this server's `name` instead of the raw machine_id.
+1. **Source server exclusion**: Decisions are not replicated back to the server they originated from: the server whose `source_machine_ids` holds the sender's online API machine id, and any server whose `source_machine_ids` holds the `machine_id` of one of the alerts (agent ids, which can only remove targets). The same `source_machine_ids` are also used to resolve the friendly server name when capturing `usage-metrics` from the LAPI's CAPI relay — if the LAPI's online API machine_id matches one of these entries, the row is tagged with this server's `name` instead of the raw machine_id.
 2. **Origin tagging**: Replicated decisions are marked with `origin: crowdsieve-replication`
 3. **Origin filtering**: Decisions with `crowdsieve` or `crowdsieve-replication` origins are never replicated
 4. **CAPI filtering**: Crowdsieve-originated alerts are not forwarded to CAPI
@@ -234,7 +246,7 @@ CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
 
 - Machine credentials (`machine_id` and `password`) must be configured for replication to work
 - The machine must be registered on the target LAPI server (`cscli machines add crowdsieve`)
-- **Important**: Configure `source_machine_ids` with all agent machine IDs connected to each LAPI to prevent duplicate decisions
+- **Important**: Configure `source_machine_ids` with the online API machine id of each LAPI that sends decisions (required for replication at all), plus its agent machine IDs if you want them to exclude targets too
 
 ### Environment Variables in Config
 

@@ -30,6 +30,7 @@ import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
 import type { BaseLogger } from 'pino';
 import { buildRowsFromPayload, type UsageMetricsPayload } from '../../metrics/parse.js';
+import { extractJwtMachineId } from '../../auth/jwt.js';
 import {
   ErrorResponse,
   ErrorWithMessageResponse,
@@ -147,34 +148,16 @@ function scheduleBackgroundChunks(
 }
 
 /**
- * Best-effort decode of the `id` (machine_id) claim from a CrowdSec machine
- * JWT. The LAPI -> CAPI traffic always carries one in the `Authorization`
- * header. We do NOT verify the signature: CAPI is the source of truth for that
- * (and our own `clientValidator` already takes that role when enabled).
+ * Machine id (`id` claim) of the bearer JWT, used to label the persisted rows.
+ * See {@link extractJwtMachineId}: the signature is not verified here, CAPI is
+ * the source of truth for that (and our own `clientValidator` when enabled).
  *
  * Returns `'unknown'` when the header is missing or malformed — the row still
  * gets persisted, just bucketed under that fallback name. This keeps data
  * collection robust to occasional CrowdSec format changes.
  */
 function extractMachineIdFromAuth(authHeader: string | undefined): string {
-  if (!authHeader) return 'unknown';
-  const m = /^Bearer\s+(.+)$/i.exec(authHeader.trim());
-  const token = m ? m[1] : authHeader.trim();
-  const parts = token.split('.');
-  if (parts.length < 2) return 'unknown';
-  try {
-    // JWT payload is base64url
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
-    const decoded = Buffer.from(padded, 'base64').toString('utf-8');
-    const obj = JSON.parse(decoded) as Record<string, unknown>;
-    // CrowdSec emits `id` for machine tokens.
-    const id = obj.id ?? obj.machine_id ?? obj.sub;
-    if (typeof id === 'string' && id.length > 0) return id;
-    return 'unknown';
-  } catch {
-    return 'unknown';
-  }
+  return extractJwtMachineId(authHeader) ?? 'unknown';
 }
 
 const usageMetricsRoute: FastifyPluginAsyncTypebox = async (fastify) => {

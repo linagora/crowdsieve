@@ -32,6 +32,14 @@ filters:
 #   - name: "server2"
 #     url: "http://192.168.1.10:8080"
 #     api_key: "another-api-key"
+#     # Decision replication (see README "Decision Replication"): decisions
+#     # received through signals are only replicated from senders authenticated
+#     # against CAPI whose online API login (online_api_credentials.yaml) is
+#     # listed in some server's source_machine_ids.
+#     machine_id: "crowdsieve"
+#     password: "machine-password"
+#     replicate_decisions: true
+#     source_machine_ids: ["online-api-login-of-server2"]
 
 # Bouncer metrics (always-on capture)
 # CrowdSieve intercepts the usage-metrics that CrowdSec LAPI relays to CAPI,

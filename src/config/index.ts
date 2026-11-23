@@ -120,7 +120,11 @@ export type FilterRule = z.infer<typeof FilterRuleSchema>;
 // - api_key: for bouncer (read-only) operations like querying decisions
 // - machine_id + password: for machine (write) operations like posting alerts/bans
 // - replicate_decisions: if true, replicate received decisions to this LAPI server
-// - source_machine_ids: array of machine_ids that send alerts from this LAPI (for loop prevention)
+// - source_machine_ids: machine ids identifying signals sent by this LAPI: its online API
+//   (CAPI) login, as found in the `id` claim of its JWT, and optionally its agents' ids.
+//   The union of all source_machine_ids is the allowlist of senders whose decisions may be
+//   replicated (matched against the CAPI-validated JWT only); they also exclude this server
+//   from the targets of its own decisions (loop prevention).
 const LapiServerSchema = z.object({
   name: z.string().min(1),
   url: z.string().url(),
@@ -128,7 +132,7 @@ const LapiServerSchema = z.object({
   machine_id: z.string().min(1).optional(), // Machine ID for posting alerts
   password: z.string().min(1).optional(), // Machine password for posting alerts
   replicate_decisions: z.boolean().default(false), // Replicate decisions to this server
-  source_machine_ids: z.array(z.string().min(1)).optional(), // Machine IDs that send alerts from this LAPI (loop prevention)
+  source_machine_ids: z.array(z.string().min(1)).optional(), // Senders from this LAPI (replication allowlist + loop prevention)
 });
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;

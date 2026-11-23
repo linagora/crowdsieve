@@ -15,14 +15,71 @@ export interface ReplicationLogger {
   debug: (obj: object, msg: string) => void;
 }
 
+/**
+ * Who sent the alerts to replicate, as established by the signals route.
+ */
+export interface ReplicationSender {
+  /**
+   * CAPI accepted the sender's `Authorization` header with a 2xx, now or
+   * within the validation cache TTL. Fail-open results do not count.
+   */
+  authenticated: boolean;
+  /**
+   * Machine id (`id` claim) of the sender's JWT. Only meaningful when
+   * `authenticated` is true; never taken from the request body.
+   */
+  machineId?: string;
+  /** Validation reason when not authenticated, for the logs. */
+  reason?: string;
+  /**
+   * `machine_id` values found in the alerts themselves (the CrowdSec agents
+   * behind the sending LAPI). Attacker-controlled: only ever used to exclude
+   * more targets (loop prevention for configurations that list agent ids),
+   * never to authorize a sender.
+   */
+  reportedMachineIds?: readonly string[];
+}
+
+/**
+ * - `replicated`: decisions were sent (possibly with per-target failures);
+ * - `nothing_to_do`: no replicable decision or no target;
+ * - `refused`: the sender is not trusted, nothing was sent.
+ */
+export type ReplicationOutcome = 'replicated' | 'nothing_to_do' | 'refused';
+
 export interface ReplicationService {
   /**
-   * Replicate decisions from alerts to configured LAPI servers
-   * @param alerts - The alerts containing decisions to replicate
-   * @param sourceMachineId - The machine ID of the source (to avoid replicating back)
+   * Replicate decisions from alerts to configured LAPI servers.
+   *
+   * Decisions are only replicated when the sender is authenticated against
+   * CAPI and its JWT machine id is a trusted one (see
+   * {@link getTrustedSourceMachineIds}).
    */
-  replicateDecisions(alerts: Alert[], sourceMachineId?: string): Promise<void>;
+  replicateDecisions(alerts: Alert[], sender: ReplicationSender): Promise<ReplicationOutcome>;
 }
+
+/**
+ * Machine ids allowed to have their decisions replicated: the union of every
+ * `lapi_servers[].source_machine_ids`, whether or not that server is itself a
+ * replication target (a LAPI may be a source only).
+ *
+ * They are compared with the `id` claim of the CAPI JWT the LAPI uses to push
+ * its signals, i.e. the `login` of its `online_api_credentials.yaml`.
+ */
+export function getTrustedSourceMachineIds(config: Pick<Config, 'lapi_servers'>): Set<string> {
+  const ids = new Set<string>();
+  for (const server of config.lapi_servers || []) {
+    for (const id of server.source_machine_ids || []) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+// A refused sender is logged at warn level at most once per this interval.
+const REFUSAL_LOG_INTERVAL_MS = 15 * 60 * 1000;
+// Bound on the number of distinct senders remembered for log rate limiting.
+const REFUSAL_LOG_MAX_KEYS = 1000;
 
 /**
  * Create a ReplicationService that replicates decisions to LAPI servers
@@ -32,11 +89,58 @@ export function createReplicationService(
   logger: ReplicationLogger
 ): ReplicationService {
   const timeoutMs = config.proxy.timeout_ms;
+  const trustedMachineIds = getTrustedSourceMachineIds(config);
+  const refusalLoggedAt = new Map<string, number>();
+
+  /**
+   * Log a refused sender at warn level once per REFUSAL_LOG_INTERVAL_MS (per
+   * machine id, or per reason for unauthenticated senders), debug otherwise.
+   */
+  function logRefusal(key: string, details: object, msg: string): void {
+    const now = Date.now();
+    const last = refusalLoggedAt.get(key);
+    if (last !== undefined && now - last < REFUSAL_LOG_INTERVAL_MS) {
+      logger.debug(details, msg);
+      return;
+    }
+    if (refusalLoggedAt.size >= REFUSAL_LOG_MAX_KEYS) {
+      refusalLoggedAt.clear();
+    }
+    refusalLoggedAt.set(key, now);
+    logger.warn(details, msg);
+  }
+
+  /**
+   * Check that decisions from this sender may be replicated.
+   * Returns the trusted machine id, or undefined (and logs) when refused.
+   */
+  function authorizeSender(sender: ReplicationSender, alertCount: number): string | undefined {
+    if (!sender.authenticated) {
+      logRefusal(
+        `unauthenticated:${sender.reason ?? 'unknown'}`,
+        { reason: sender.reason, alertCount },
+        'Not replicating decisions: sender is not authenticated against CAPI'
+      );
+      return undefined;
+    }
+    if (!sender.machineId || !trustedMachineIds.has(sender.machineId)) {
+      logRefusal(
+        `untrusted:${sender.machineId ?? ''}`,
+        { machineId: sender.machineId, alertCount },
+        'Not replicating decisions: sender machine id is not listed in any lapi_servers[].source_machine_ids'
+      );
+      return undefined;
+    }
+    return sender.machineId;
+  }
 
   /**
    * Get LAPI servers that should receive replicated decisions
    */
-  function getReplicationTargets(sourceMachineId?: string): LapiServer[] {
+  function getReplicationTargets(
+    senderMachineId: string,
+    reportedMachineIds: readonly string[]
+  ): LapiServer[] {
     return (config.lapi_servers || []).filter((server) => {
       // Skip servers without replicate_decisions enabled
       if (!server.replicate_decisions) {
@@ -52,11 +156,21 @@ export function createReplicationService(
         return false;
       }
 
-      // Skip the source server (don't replicate back to origin)
-      // Check if sourceMachineId is in the server's source_machine_ids array
-      if (sourceMachineId && server.source_machine_ids?.includes(sourceMachineId)) {
+      // Skip the source server (don't replicate back to origin): the one
+      // whose source_machine_ids holds the authenticated JWT machine id, and
+      // (for configurations listing agent ids) any server holding one of the
+      // machine_ids reported in the alerts. The latter can only remove targets.
+      const sourceIds = server.source_machine_ids || [];
+      const matched = sourceIds.includes(senderMachineId)
+        ? senderMachineId
+        : reportedMachineIds.find((id) => sourceIds.includes(id));
+      if (matched !== undefined) {
         logger.debug(
-          { server: server.name, sourceMachineId, source_machine_ids: server.source_machine_ids },
+          {
+            server: server.name,
+            sourceMachineId: matched,
+            source_machine_ids: server.source_machine_ids,
+          },
           'Skipping replication target: source machine is in source_machine_ids'
         );
         return false;
@@ -177,23 +291,32 @@ export function createReplicationService(
   }
 
   return {
-    async replicateDecisions(alerts: Alert[], sourceMachineId?: string): Promise<void> {
+    async replicateDecisions(
+      alerts: Alert[],
+      sender: ReplicationSender
+    ): Promise<ReplicationOutcome> {
       // Filter alerts that have decisions
       const alertsWithDecisions = alerts.filter(
-        (alert) => alert.decisions && alert.decisions.length > 0
+        (alert) => Array.isArray(alert.decisions) && alert.decisions.length > 0
       );
 
       if (alertsWithDecisions.length === 0) {
         logger.debug({}, 'No alerts with decisions to replicate');
-        return;
+        return 'nothing_to_do';
+      }
+
+      // Only replicate decisions from an authenticated, trusted LAPI
+      const senderMachineId = authorizeSender(sender, alertsWithDecisions.length);
+      if (senderMachineId === undefined) {
+        return 'refused';
       }
 
       // Get replication targets
-      const targets = getReplicationTargets(sourceMachineId);
+      const targets = getReplicationTargets(senderMachineId, sender.reportedMachineIds ?? []);
 
       if (targets.length === 0) {
         logger.debug({}, 'No replication targets configured');
-        return;
+        return 'nothing_to_do';
       }
 
       logger.info(
@@ -222,6 +345,7 @@ export function createReplicationService(
       } else {
         logger.info({ succeeded, total: targets.length }, 'Replication completed successfully');
       }
+      return 'replicated';
     },
   };
 }

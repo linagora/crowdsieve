@@ -1,6 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import type { SignalsRequest, Alert } from '../../models/alert.js';
+import type { ValidationResult } from '../../validation/index.js';
+import type { ReplicationSender } from '../../replication/index.js';
+import { extractJwtMachineId } from '../../auth/jwt.js';
 import {
   ErrorResponse,
   ErrorWithMessageResponse,
@@ -17,17 +20,18 @@ export const MAX_ALERTS_PER_BATCH = 1000;
 export const CROWDSIEVE_ORIGINS: readonly string[] = Object.freeze(['crowdsieve-replication']);
 
 /**
- * Extract machine_id from the alerts payload
- * CrowdSec includes the machine_id in each alert
+ * Collect the machine_id values the alerts claim to come from (the CrowdSec
+ * agents behind the sending LAPI). Attacker-controlled: only used by the
+ * replication service to exclude more targets, never to authorize anything.
  */
-function extractSourceMachineId(alerts: SignalsRequest): string | undefined {
-  // Use the machine_id from the first alert if available
+function extractReportedMachineIds(alerts: SignalsRequest): string[] {
+  const ids = new Set<string>();
   for (const alert of alerts) {
-    if (alert.machine_id) {
-      return alert.machine_id;
+    if (typeof alert.machine_id === 'string' && alert.machine_id.length > 0) {
+      ids.add(alert.machine_id);
     }
   }
-  return undefined;
+  return [...ids];
 }
 
 /**
@@ -73,6 +77,32 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     replicationService,
   } = fastify;
 
+  /**
+   * Establish who sent a batch, for replication purposes.
+   *
+   * Reuses the request's validation result when client validation is
+   * enabled; otherwise validates the Authorization header against CAPI now
+   * (the validator is always created when replication is configured), without
+   * affecting the response. The machine id is read from the JWT only when CAPI
+   * authenticated that exact header (a real 2xx, not a fail-open).
+   */
+  async function resolveReplicationSender(
+    authHeader: string | undefined,
+    validation: ValidationResult | undefined
+  ): Promise<Omit<ReplicationSender, 'reportedMachineIds'>> {
+    let result = validation;
+    if (!result) {
+      if (!clientValidator) {
+        return { authenticated: false, reason: 'no_validator' };
+      }
+      result = await clientValidator.validate(authHeader);
+    }
+    if (!result.authenticated) {
+      return { authenticated: false, reason: result.reason };
+    }
+    return { authenticated: true, machineId: extractJwtMachineId(authHeader) };
+  }
+
   // Shared handler for both /v2/signals and /v3/signals
   const handleSignals = async (
     request: FastifyRequest<{ Body: SignalsRequest }>,
@@ -103,14 +133,18 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       'Incoming request'
     );
 
+    const authHeader = request.headers.authorization;
+
     // Client validation (if enabled)
+    let validation: ValidationResult | undefined;
     if (config.client_validation?.enabled) {
       if (!clientValidator) {
         logger.error('Client validation enabled but clientValidator not initialized');
         return reply.code(500).send({ error: 'Internal server error' });
       }
 
-      const result = await clientValidator.validate(request.headers.authorization);
+      const result = await clientValidator.validate(authHeader);
+      validation = result;
 
       if (!result.valid) {
         logger.warn(
@@ -156,14 +190,22 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     }
 
     // Replicate decisions to LAPI servers asynchronously (non-blocking)
-    // We replicate ALL original alerts with decisions, regardless of filtering
+    // We replicate ALL original alerts with decisions, regardless of filtering,
+    // but only from a sender authenticated against CAPI whose JWT machine id
+    // is trusted (checked by the replication service).
     if (replicationService && replicableIndices.length > 0) {
-      const sourceMachineId = extractSourceMachineId(alerts);
+      const reportedMachineIds = extractReportedMachineIds(alerts);
       setImmediate(async () => {
         try {
-          await replicationService.replicateDecisions(alerts, sourceMachineId);
-          // Mark alerts as replicated only after successful replication
-          await storage.markAlertsReplicated(replicableIndices);
+          const sender = await resolveReplicationSender(authHeader, validation);
+          const outcome = await replicationService.replicateDecisions(alerts, {
+            ...sender,
+            reportedMachineIds,
+          });
+          // Mark alerts as replicated only after replication went through
+          if (outcome !== 'refused') {
+            await storage.markAlertsReplicated(replicableIndices);
+          }
         } catch (err) {
           logger.error({ err }, 'Failed to replicate decisions');
         }
