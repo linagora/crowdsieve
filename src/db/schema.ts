@@ -61,6 +61,7 @@ export const alerts = sqliteTable(
     // Processing status
     filtered: integer('filtered', { mode: 'boolean' }).default(false),
     filterReasons: text('filter_reasons'), // JSON array
+    filterRules: text('filter_rules'), // JSON array of matched rule names
     forwardedToCapi: integer('forwarded_to_capi', { mode: 'boolean' }).default(false),
     forwardedAt: text('forwarded_at'),
     // Locally-recorded audit event flag. Set on rows inserted by CrowdSieve to

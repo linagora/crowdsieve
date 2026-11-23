@@ -53,6 +53,7 @@ function setupTestDatabase() {
       geo_org TEXT,
       filtered INTEGER DEFAULT 0,
       filter_reasons TEXT,
+      filter_rules TEXT,
       forwarded_to_capi INTEGER DEFAULT 0,
       forwarded_at TEXT,
       local_audit INTEGER DEFAULT 0,

@@ -129,6 +129,7 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       geo_org TEXT,
       filtered INTEGER DEFAULT 0,
       filter_reasons TEXT,
+      filter_rules TEXT,
       forwarded_to_capi INTEGER DEFAULT 0,
       forwarded_at TEXT,
       local_audit INTEGER DEFAULT 0,
@@ -277,6 +278,12 @@ function runSQLiteMigrations(sqlite: Database.Database) {
   const hasActorColumn = tableInfo.some((col) => col.name === 'actor');
   if (!hasActorColumn) {
     sqlite.exec('ALTER TABLE alerts ADD COLUMN actor TEXT');
+  }
+
+  // Migration: Add filter_rules column (JSON array of the names of the filter
+  // rules an alert matched). Older alerts keep NULL and count under no rule.
+  if (!tableInfo.some((col) => col.name === 'filter_rules')) {
+    sqlite.exec('ALTER TABLE alerts ADD COLUMN filter_rules TEXT');
   }
 
   sqlite.exec('CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit)');

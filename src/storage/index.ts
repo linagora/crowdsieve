@@ -77,6 +77,8 @@ export interface AlertQuery {
   sourceCountry?: string;
   sourceIp?: string;
   machineId?: string;
+  /** Name of a filter rule the alert matched (see `filter_rules`). */
+  rule?: string;
   since?: Date;
   until?: Date;
   limit?: number;
@@ -112,6 +114,17 @@ export interface AlertStats {
   allScenarios: Array<{ scenario: string; count: number }>;
   topCountries: Array<{ country: string; count: number }>;
   timeBounds: { min: string | null; max: string | null };
+}
+
+/**
+ * Alerts matched by each filter rule, from the `filter_rules` column.
+ * Local audit rows and alerts stored before the column existed count under no
+ * rule; `total` and `filtered` exclude audit rows too.
+ */
+export interface FilterRuleStats {
+  total: number;
+  filtered: number;
+  byRule: Array<{ name: string; count: number; lastMatchedAt: string | null }>;
 }
 
 export interface TimeDistributionStats {
@@ -242,6 +255,7 @@ export interface AlertStorage {
   getStats(since?: Date): Promise<AlertStats>;
   getTimeDistributionStats(since?: Date): Promise<TimeDistributionStats>;
   getDecisionStats(since?: Date): Promise<DecisionStats>;
+  getFilterRuleStats(since?: Date): Promise<FilterRuleStats>;
   cleanup(retentionDays: number): Promise<number>;
   saveBouncerMetrics(rows: NewBouncerMetric[]): Promise<void>;
   getBouncerMetrics(filters: BouncerMetricsQuery): Promise<BouncerMetric[]>;
@@ -346,6 +360,18 @@ async function isActorOfLocalManualBan(alert: Alert, actor: string): Promise<boo
     return (await query).length > 0;
   }
   return (query as unknown as { get(): { id: number } | undefined }).get() !== undefined;
+}
+
+/**
+ * JSON array of the distinct names of the rules an alert matched, or null when
+ * it matched none (stored in `filter_rules`).
+ */
+function matchedRuleNames(matchedFilters: Array<{ filterName?: string }>): string | null {
+  const names = new Set<string>();
+  for (const f of matchedFilters) {
+    if (typeof f.filterName === 'string') names.add(f.filterName);
+  }
+  return names.size > 0 ? JSON.stringify([...names]) : null;
 }
 
 /**
@@ -560,6 +586,7 @@ export function createStorage(): AlertStorage {
                 detail.matchedFilters.length > 0
                   ? JSON.stringify(detail.matchedFilters.map((f) => f.reason).filter(Boolean))
                   : null,
+              filterRules: matchedRuleNames(detail.matchedFilters),
               actor: actorFromMeta,
               rawJson: JSON.stringify(alert),
             } as typeof schema.alerts.$inferInsert)
@@ -729,6 +756,15 @@ export function createStorage(): AlertStorage {
       }
       if (query.machineId) {
         conditions.push(eq(schema.alerts.machineId, query.machineId));
+      }
+      if (query.rule) {
+        // Exact element match in the JSON array (a LIKE would also match
+        // names that contain the searched one).
+        conditions.push(
+          isPostgres
+            ? sql`${schema.alerts.filterRules}::jsonb @> jsonb_build_array(${query.rule}::text)`
+            : sql`EXISTS (SELECT 1 FROM json_each(${schema.alerts.filterRules}) WHERE value = ${query.rule})`
+        );
       }
       if (query.since) {
         conditions.push(gte(schema.alerts.receivedAt, query.since.toISOString()));
@@ -1350,6 +1386,68 @@ export function createStorage(): AlertStorage {
           countryName: c.countryName || c.countryCode || 'Unknown',
           count: Number(c.count),
         })),
+      };
+    },
+
+    async getFilterRuleStats(since) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const sinceDate = since?.toISOString();
+      const notLocalAudit = sql`(${schema.alerts.localAudit} IS NULL OR ${schema.alerts.localAudit} = ${isPostgres ? sql`FALSE` : sql`0`})`;
+
+      const totalQuery = db
+        .select({
+          total: sql<number>`count(*)`,
+          filtered: sql<number>`sum(case when ${schema.alerts.filtered} then 1 else 0 end)`,
+        })
+        .from(schema.alerts)
+        .where(
+          and(sinceDate ? gte(schema.alerts.receivedAt, sinceDate) : undefined, notLocalAudit)
+        );
+      const totals = isPostgres
+        ? (await totalQuery)[0]
+        : (totalQuery as unknown as { get(): { total: number; filtered: number } }).get();
+
+      // Count in SQL rather than in app code: one pass over the alerts of the
+      // period, and the result has one row per rule name whatever the number
+      // of alerts. Both databases expand the JSON array of `filter_rules`
+      // into rows, with their own table function. NULL (alerts stored before
+      // the column, audit rows) expands to no row. Every value is written by
+      // storeAlerts with JSON.stringify, so it is always a valid array.
+      const expanded = isPostgres
+        ? sql`alerts a CROSS JOIN LATERAL jsonb_array_elements_text(a.filter_rules::jsonb) AS r(name)`
+        : sql`alerts a, json_each(a.filter_rules) AS r`;
+      const ruleName = isPostgres ? sql`r.name` : sql`r.value`;
+      const byRuleQuery = sql`
+        SELECT ${ruleName} AS name, count(*) AS count, max(a.received_at) AS last_matched_at
+        FROM ${expanded}
+        WHERE a.filter_rules IS NOT NULL
+          AND (a.local_audit IS NULL OR a.local_audit = ${isPostgres ? sql`FALSE` : sql`0`})
+          ${sinceDate ? sql`AND a.received_at >= ${sinceDate}` : sql``}
+        GROUP BY ${ruleName}
+        ORDER BY count DESC, name
+        LIMIT 500
+      `;
+
+      type RuleRow = { name: string; count: number | string; last_matched_at: string | null };
+      let rows: RuleRow[];
+      if (isPostgres) {
+        // node-postgres resolves db.execute() to a QueryResult ({ rows }).
+        const res = await db.execute(byRuleQuery);
+        rows = (Array.isArray(res) ? res : ((res as { rows?: RuleRow[] }).rows ?? [])) as RuleRow[];
+      } else {
+        rows = (db as unknown as { all<T>(q: unknown): T[] }).all<RuleRow>(byRuleQuery);
+      }
+
+      return {
+        total: Number(totals?.total) || 0,
+        filtered: Number(totals?.filtered) || 0,
+        byRule: rows
+          .filter((r) => typeof r.name === 'string')
+          .map((r) => ({
+            name: r.name,
+            count: Number(r.count),
+            lastMatchedAt: r.last_matched_at ?? null,
+          })),
       };
     },
 

@@ -116,6 +116,8 @@ const FilterRuleSchema = BaseFilterSchema.extend({
 
 export type ExpressionConditionType = ExpressionCondition;
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
+/** A filter rule with the name of the file it was loaded from, when known. */
+export type LoadedFilterRule = FilterRule & { file?: string };
 
 // LAPI server configuration
 // - api_key: for bouncer (read-only) operations like querying decisions
@@ -354,7 +356,7 @@ export function loadConfigFromEnv(): Partial<Config> {
 }
 
 export interface FilterLoadResult {
-  filters: FilterRule[];
+  filters: LoadedFilterRule[];
   errors: Array<{ file: string; error: string }>;
 }
 
@@ -393,7 +395,7 @@ export function loadFiltersFromDirectory(dirPath: string): FilterLoadResult {
       const content = readFileSync(join(dirPath, file), 'utf-8');
       const parsed = parseYaml(content);
       const validated = FilterRuleSchema.parse(parsed);
-      result.filters.push(validated);
+      result.filters.push({ ...validated, file });
     } catch (error) {
       result.errors.push({
         file,

@@ -49,6 +49,8 @@ export interface StoredAlert {
   geoLongitude?: number;
   filtered: boolean;
   filterReasons?: string;
+  /** JSON array of the names of the filter rules the alert matched (null for older alerts). */
+  filterRules?: string | null;
   forwardedToCapi: boolean;
   replicated: boolean;
   /**

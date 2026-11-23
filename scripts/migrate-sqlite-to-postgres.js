@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   geo_org TEXT,
   filtered BOOLEAN DEFAULT FALSE,
   filter_reasons TEXT,
+  filter_rules TEXT,
   forwarded_to_capi BOOLEAN DEFAULT FALSE,
   forwarded_at TEXT,
   local_audit BOOLEAN DEFAULT FALSE,
@@ -239,13 +240,13 @@ async function migrate() {
           source_as_number, source_as_name, source_cn,
           geo_country_code, geo_country_name, geo_city, geo_region,
           geo_latitude, geo_longitude, geo_timezone, geo_isp, geo_org,
-          filtered, filter_reasons, forwarded_to_capi, forwarded_at,
+          filtered, filter_reasons, filter_rules, forwarded_to_capi, forwarded_at,
           local_audit, actor, raw_json
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
           $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
           $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37,
-          $38, $39, $40
+          $38, $39, $40, $41
         ) RETURNING id`,
         [
           alert.uuid,
@@ -283,6 +284,7 @@ async function migrate() {
           alert.geo_org,
           Boolean(alert.filtered),
           alert.filter_reasons,
+          alert.filter_rules ?? null,
           Boolean(alert.forwarded_to_capi),
           alert.forwarded_at,
           Boolean(alert.local_audit),

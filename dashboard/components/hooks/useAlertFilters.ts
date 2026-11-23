@@ -113,6 +113,7 @@ export function useAlertFilters({
         filters.until ||
         filters.scenario ||
         filters.machineId ||
+        filters.rule ||
         filters.status !== 'all';
 
       if (!hasServerFilters && !isAutoRefresh) {
@@ -139,6 +140,7 @@ export function useAlertFilters({
           until: filters.until?.toISOString(),
           scenario: filters.scenario || undefined,
           machineId: filters.machineId || undefined,
+          rule: filters.rule || undefined,
           filtered: filters.status === 'filtered' ? true : undefined,
           forwardedToCapi: filters.status === 'forwarded' ? true : undefined,
           newerThan: latestTimestamp || undefined,
@@ -177,6 +179,7 @@ export function useAlertFilters({
       filters.until,
       filters.scenario,
       filters.machineId,
+      filters.rule,
       filters.status,
       limit,
       // Note: alerts is intentionally NOT in dependencies - we use alertsRef
@@ -254,6 +257,7 @@ export function useAlertFilters({
     filters.until !== null ||
     filters.scenario !== null ||
     filters.machineId !== null ||
+    filters.rule !== null ||
     filters.status !== 'all';
 
   const refresh = useCallback(() => {

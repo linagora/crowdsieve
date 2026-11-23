@@ -381,6 +381,32 @@ filter:
         value: ['FR', 'DE', 'US']
 ```
 
+Files whose name starts with `_` or `.` are not loaded (the `_*.yaml.disabled` examples).
+Rules are read at startup: restart CrowdSieve after changing them.
+
+### Filters Page
+
+The dashboard's **Filters** page (any signed-in user, read-only) shows:
+
+- the filter mode (`block` or `allow`) and what it means;
+- one card per loaded rule, enabled rules first, with its description, file, state and
+  condition (as YAML);
+- for the chosen period (7 days, 30 days, all), how many stored alerts each rule matched and
+  when it last matched. The count opens the Alerts page filtered on that rule (`rule` URL
+  parameter, shown as a removable "Rule: …" chip);
+- **Test an alert**: runs the rules loaded now on a stored alert, by ID, and tells whether it
+  would be filtered and by which rules. Nothing is stored or forwarded.
+
+The names of the matched rules are saved with each alert (`filter_rules` column). Alerts stored
+by earlier versions, and the local audit entries of manual bans and unbans, count under no rule.
+
+Proxy endpoints (`X-API-Key`):
+
+- `GET /api/filters` — mode and rules (`name`, `description`, `enabled`, `file`, `condition`)
+- `GET /api/filters/stats?since=<ISO date>` — `{ total, filtered, byRule: [{ name, count, lastMatchedAt }] }`
+- `POST /api/filters/test` with `{ "alertId": 42 }` — `{ filtered, matched: [{ name, reason }] }`
+- `GET /api/alerts?rule=<name>` — alerts that matched a rule
+
 ## Filter Operators
 
 | Operator                   | Description           |

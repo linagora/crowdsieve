@@ -331,6 +331,47 @@ describePostgres('PostgreSQL Integration', () => {
     });
   });
 
+  describe('Filter rule names', () => {
+    const storage = createStorage();
+    // The database is shared by the whole suite: use rule names of our own
+    const ruleA = `rule-a-${Date.now()}`;
+    const ruleB = `rule-b-${Date.now()}`;
+    const matched = (...names: string[]) => ({
+      filtered: true,
+      matchedFilters: names.map((filterName) => ({ matched: true, filterName, reason: 'r' })),
+    });
+
+    it('stores matched rule names, filters and counts alerts by rule', async () => {
+      await storage.storeAlerts(
+        [createTestAlert(), createTestAlert(), createTestAlert(), createTestAlert()],
+        [matched(ruleA), matched(ruleA, ruleB), matched(`${ruleA}-other`), matched()] as never,
+        undefined
+      );
+      await storage.recordManualBanAuditEvent({
+        ip: '10.9.9.9',
+        scope: 'ip',
+        comment: 'manual',
+        server: 'lapi',
+        duration: '4h',
+      });
+
+      const byA = await storage.queryAlerts({ rule: ruleA });
+      expect(byA).toHaveLength(2);
+      expect(JSON.parse(byA.find((a) => a.filterRules?.includes(ruleB))!.filterRules!)).toEqual([
+        ruleA,
+        ruleB,
+      ]);
+      expect(await storage.queryAlerts({ rule: ruleB })).toHaveLength(1);
+
+      const stats = await storage.getFilterRuleStats(new Date(Date.now() - 60 * 60 * 1000));
+      const count = (name: string) => stats.byRule.find((r) => r.name === name)?.count;
+      expect(count(ruleA)).toBe(2);
+      expect(count(ruleB)).toBe(1);
+      expect(typeof stats.total).toBe('number');
+      expect(stats.byRule.find((r) => r.name === ruleA)?.lastMatchedAt).toEqual(expect.any(String));
+    });
+  });
+
   describe('Time Distribution Statistics', () => {
     const storage = createStorage();
 

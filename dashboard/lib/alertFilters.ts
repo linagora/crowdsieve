@@ -15,6 +15,8 @@ export interface FilterState {
   range: TimeRangePreset | null;
   scenario: string | null;
   machineId: string | null;
+  /** Name of a filter rule the alert matched */
+  rule: string | null;
   status: 'all' | 'filtered' | 'forwarded';
 }
 
@@ -24,6 +26,7 @@ export const DEFAULT_FILTERS: FilterState = {
   range: null,
   scenario: null,
   machineId: null,
+  rule: null,
   status: 'all',
 };
 
@@ -33,6 +36,7 @@ const PARAM_UNTIL = 'until';
 const PARAM_RANGE = 'range';
 const PARAM_SCENARIO = 'scenario';
 const PARAM_MACHINE = 'machine';
+const PARAM_RULE = 'rule';
 const PARAM_STATUS = 'status';
 
 // Pages that render an alert list and may be used as a "back" target
@@ -87,6 +91,7 @@ export function parseFilterParams(params: URLSearchParams): FilterState {
     range: normalizeRange(parseTimeRangePreset(params.get(PARAM_RANGE)), since, until),
     scenario: params.get(PARAM_SCENARIO) || null,
     machineId: params.get(PARAM_MACHINE) || null,
+    rule: params.get(PARAM_RULE) || null,
     status: status === 'filtered' || status === 'forwarded' ? status : 'all',
   };
 }
@@ -102,11 +107,23 @@ export function writeFilterParams(params: URLSearchParams, filters: FilterState)
     [PARAM_RANGE, normalizeRange(filters.range, filters.since, filters.until)],
     [PARAM_SCENARIO, filters.scenario],
     [PARAM_MACHINE, filters.machineId],
+    [PARAM_RULE, filters.rule],
     [PARAM_STATUS, filters.status === 'all' ? null : filters.status],
   ];
   for (const [key, value] of entries) {
     if (value) params.set(key, value);
     else params.delete(key);
+  }
+}
+
+/** Names of the filter rules an alert matched (none for alerts stored before they were recorded). */
+export function alertRuleNames(alert: Pick<StoredAlert, 'filterRules'>): string[] {
+  if (!alert.filterRules) return [];
+  try {
+    const names: unknown = JSON.parse(alert.filterRules);
+    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : [];
+  } catch {
+    return [];
   }
 }
 
@@ -120,6 +137,7 @@ export function alertMatchesFilters(alert: StoredAlert, filters: FilterState): b
   if (filters.status === 'filtered' && (!alert.filtered || alert.localAudit)) return false;
   if (filters.status === 'forwarded' && (!alert.forwardedToCapi || alert.localAudit)) return false;
   if (filters.machineId && alert.machineId !== filters.machineId) return false;
+  if (filters.rule && !alertRuleNames(alert).includes(filters.rule)) return false;
   // The API uses a LIKE '%...%' match; stay case-insensitive so this never
   // hides an alert the API would return
   if (filters.scenario && !alert.scenario.toLowerCase().includes(filters.scenario.toLowerCase())) {
