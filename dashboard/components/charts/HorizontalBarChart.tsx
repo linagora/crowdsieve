@@ -1,7 +1,10 @@
 'use client';
 
+import Link from 'next/link';
+
 interface HorizontalBarChartProps {
-  data: Array<{ label: string; value: number; flag?: string }>;
+  /** Bars; a bar with an `href` is a link (e.g. to the matching alerts). */
+  data: Array<{ label: string; value: number; flag?: string; href?: string; hrefHint?: string }>;
   title: string;
   maxBars?: number;
   colorClass?: string;
@@ -26,23 +29,42 @@ export function HorizontalBarChart({
       <h3 className="text-lg font-semibold mb-4">{title}</h3>
       {displayData.length > 0 ? (
         <div className="space-y-3">
-          {displayData.map((item, index) => (
-            <div key={index}>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-slate-700 flex items-center gap-2 truncate">
-                  {item.flag && <span>{item.flag}</span>}
-                  <span className="truncate">{item.label}</span>
-                </span>
-                <span className="text-slate-500 ml-2 shrink-0">{item.value.toLocaleString()}</span>
+          {displayData.map((item, index) => {
+            const content = (
+              <>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-slate-700 flex items-center gap-2 truncate">
+                    {item.flag && <span>{item.flag}</span>}
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  <span className="text-slate-500 ml-2 shrink-0">
+                    {item.value.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${barColorClass}`}
+                    style={{ width: `${(item.value / maxValue) * 100}%` }}
+                  />
+                </div>
+              </>
+            );
+            const tooltip = `${item.label}: ${item.value.toLocaleString()}`;
+            return item.href ? (
+              <Link
+                key={index}
+                href={item.href}
+                title={`${tooltip}\n${item.hrefHint ?? 'Click to view'}`}
+                className="block -mx-1 px-1 rounded cursor-pointer hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crowdsec-primary"
+              >
+                {content}
+              </Link>
+            ) : (
+              <div key={index} title={tooltip}>
+                {content}
               </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-300 ${barColorClass}`}
-                  style={{ width: `${(item.value / maxValue) * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center text-slate-400 py-8">No data available</div>

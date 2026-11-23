@@ -18,6 +18,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
   - Search alerts by IP address or CIDR range and by country, and page through the whole history
+  - Click a Statistics bar (country or scenario) to open the matching alerts
 - **Dashboard Authentication**: Two modes, both documented in [docs/oidc-authentication.md](./docs/oidc-authentication.md)
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
@@ -340,7 +341,8 @@ The filter bar of the **Alerts** page and of the home page's recent alerts combi
 
 Every filter is kept in the URL (`ip=`, `country=`, `scenario=`, …), so a filtered list can be
 reloaded or shared. The lists show the newest alerts first; **Load more alerts** at the end of
-the list fetches the next 100.
+the list fetches the next 100. The bars of the **Top Countries** and **Top Scenarios** charts
+of the Statistics page link to the matching alerts, for the selected period.
 
 In the REST API, `GET /api/alerts` accepts the same filters: `ip` takes an address or a CIDR,
 `country` an ISO 3166-1 alpha-2 code, and `limit` / `offset` page through the results.

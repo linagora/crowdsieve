@@ -7,6 +7,7 @@ import { HorizontalBarChart } from '@/components/charts/HorizontalBarChart';
 import { TrendChart } from '@/components/charts/TrendChart';
 import type { TimeDistributionStats, DecisionStats } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { alertsHref, normalizeCountryCode, type FilterState } from '@/lib/alertFilters';
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -20,6 +21,21 @@ function countryCodeToFlag(code: string): string {
   return String.fromCodePoint(...codePoints);
 }
 
+const VIEW_ALERTS_HINT = 'Click to view alerts';
+
+type StatsPeriod = '7d' | '30d' | 'all';
+
+/**
+ * Time filters of the Alerts page matching a Statistics period: the proxy
+ * computes the 7d / 30d periods as "now minus N calendar days".
+ */
+function periodAlertFilters(period: StatsPeriod, now = new Date()): Partial<FilterState> {
+  if (period === 'all') return {};
+  const since = new Date(now);
+  since.setDate(since.getDate() - (period === '7d' ? 7 : 30));
+  return { since, range: period };
+}
+
 interface StatsContentProps {
   initialStats: TimeDistributionStats;
   initialDecisionStats: DecisionStats;
@@ -28,7 +44,7 @@ interface StatsContentProps {
 export function StatsContent({ initialStats, initialDecisionStats }: StatsContentProps) {
   const [stats, setStats] = useState(initialStats);
   const [decisionStats, setDecisionStats] = useState(initialDecisionStats);
-  const [period, setPeriod] = useState<'7d' | '30d' | 'all'>('30d');
+  const [period, setPeriod] = useState<StatsPeriod>('30d');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -49,6 +65,7 @@ export function StatsContent({ initialStats, initialDecisionStats }: StatsConten
         if (distributionRes.ok) {
           const data = await distributionRes.json();
           setStats(data);
+          setPeriodFilters(periodAlertFilters(period));
         }
         if (decisionRes.ok) {
           const data = await decisionRes.json();
@@ -88,25 +105,36 @@ export function StatsContent({ initialStats, initialDecisionStats }: StatsConten
     }));
   }, [stats.byHourOfDay]);
 
-  // Country data - memoized
+  // Time filters for the links to the alerts, taken when the data arrives
+  const [periodFilters, setPeriodFilters] = useState(() => periodAlertFilters(period));
+
+  // Country data - memoized; each bar links to the alerts of its country
   const countryData = useMemo(
     () =>
-      stats.byCountry.map((c) => ({
-        label: c.countryName || c.countryCode || 'Unknown',
-        value: c.count,
-        flag: countryCodeToFlag(c.countryCode),
-      })),
-    [stats.byCountry]
+      stats.byCountry.map((c) => {
+        const country = normalizeCountryCode(c.countryCode);
+        return {
+          label: c.countryName || c.countryCode || 'Unknown',
+          value: c.count,
+          flag: countryCodeToFlag(c.countryCode),
+          href: country ? alertsHref({ ...periodFilters, country }) : undefined,
+          hrefHint: VIEW_ALERTS_HINT,
+        };
+      }),
+    [stats.byCountry, periodFilters]
   );
 
-  // Scenario data - memoized (keep full path like "crowdsecurity/http-bad-user-agent")
+  // Scenario data - memoized (keep full path like "crowdsecurity/http-bad-user-agent");
+  // each bar links to the alerts of its scenario
   const scenarioData = useMemo(
     () =>
       stats.byScenario.map((s) => ({
         label: s.scenario,
         value: s.count,
+        href: alertsHref({ ...periodFilters, scenario: s.scenario }),
+        hrefHint: VIEW_ALERTS_HINT,
       })),
-    [stats.byScenario]
+    [stats.byScenario, periodFilters]
   );
 
   // Decision stats data - memoized
