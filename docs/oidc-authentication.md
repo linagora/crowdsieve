@@ -10,6 +10,12 @@ CrowdSieve supports two authentication modes for the dashboard:
 
 The mode is selected via `AUTH_MODE` (`oidc` | `headers` | `none`). When unset, the dashboard auto-detects: `oidc` if `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, otherwise `none`. Jump to [HTTP Headers Mode](#http-headers-mode-lemonldap-ng-handler) for the proxy-based setup.
 
+### Cross-site request protection
+
+In every mode, including `none`, the dashboard rejects with HTTP **403** any `POST`, `PUT`, `PATCH` or `DELETE` on `/api/*` that the browser flags as coming from another site: a `Sec-Fetch-Site` header other than `same-origin`, or an `Origin` whose host is neither the request's `Host`, the first `X-Forwarded-Host` entry, nor the host of `NEXTAUTH_URL`. `/api/auth/backchannel-logout`, called server-to-server by the OIDC provider, is exempt. The routes that take a JSON body (ban, unban, analyzer run) also require `Content-Type: application/json` and answer **415** otherwise, which an HTML form cannot send.
+
+Behind a reverse proxy that rewrites the `Host` header, make it send `X-Forwarded-Host` (or set `NEXTAUTH_URL`) so that same-origin requests from the dashboard UI are recognized.
+
 ## OIDC Mode
 
 CrowdSieve supports OpenID Connect (OIDC) authentication for the dashboard. When configured, users must authenticate via an OIDC provider to access the dashboard.

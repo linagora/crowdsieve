@@ -167,6 +167,9 @@ export function AnalyzersContent({ data }: AnalyzersContentProps) {
     try {
       const res = await fetchWithAuth(`/api/analyzers/${id}/run`, {
         method: 'POST',
+        // Required by the route (CSRF defence), even though there is no payload.
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
       });
 
       if (res.ok) {

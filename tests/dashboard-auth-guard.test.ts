@@ -26,6 +26,8 @@ vi.mock('next/headers', () => ({
 
 import { POST as banPost } from '../dashboard/app/api/decisions/ban/route.js';
 import { GET as alertsGet } from '../dashboard/app/api/alerts/route.js';
+import { POST as analyzerRunPost } from '../dashboard/app/api/analyzers/[id]/run/route.js';
+import { DELETE as decisionDelete } from '../dashboard/app/api/decisions/[id]/route.js';
 import { GET as loginGet } from '../dashboard/app/api/auth/login/route.js';
 import { GET as callbackGet } from '../dashboard/app/api/auth/callback/route.js';
 import { revokeSession } from '../dashboard/lib/oidc/revocation.js';
@@ -244,5 +246,98 @@ describe('OIDC mode without a usable SESSION_SECRET (GHSA-8hgc-3vpr-6r43)', () =
     const res = await loginGet(new NextRequest('http://localhost:3000/api/auth/login'));
 
     expect(res.status).toBe(500);
+  });
+});
+
+describe('JSON write routes require Content-Type: application/json (GHSA-2q3x-9jxw-8c7h)', () => {
+  // Body of the cross-site form from the advisory: enctype="text/plain".
+  const FORM_BODY = '{"server":"lapi","ip":"0.0.0.0/0","duration":"9999h","reason":"x","p":"="}';
+
+  beforeEach(async () => {
+    await setSessionCookie(liveSession());
+  });
+
+  it('POST /api/decisions/ban rejects a text/plain body with 415', async () => {
+    const res = await banPost(
+      new NextRequest('http://localhost:3000/api/decisions/ban', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: FORM_BODY,
+      })
+    );
+
+    expect(res.status).toBe(415);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/decisions/ban rejects a form-encoded body with 415', async () => {
+    const res = await banPost(
+      new NextRequest('http://localhost:3000/api/decisions/ban', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'ip=0.0.0.0%2F0',
+      })
+    );
+
+    expect(res.status).toBe(415);
+  });
+
+  it('POST /api/decisions/ban accepts application/json with a charset', async () => {
+    const res = await banPost(
+      new NextRequest('http://localhost:3000/api/decisions/ban', {
+        method: 'POST',
+        headers: { 'content-type': 'Application/JSON; charset=utf-8' },
+        body: JSON.stringify({ server: 'lapi', ip: '192.0.2.1', duration: '4h', reason: 'x' }),
+      })
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it('POST /api/analyzers/:id/run rejects a request without JSON content type', async () => {
+    const res = await analyzerRunPost(
+      new NextRequest('http://localhost:3000/api/analyzers/a/run', { method: 'POST' }),
+      { params: Promise.resolve({ id: 'a' }) }
+    );
+
+    expect(res.status).toBe(415);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/analyzers/:id/run accepts a JSON request', async () => {
+    const res = await analyzerRunPost(
+      new NextRequest('http://localhost:3000/api/analyzers/a/run', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+      { params: Promise.resolve({ id: 'a' }) }
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE /api/decisions/:id rejects a text/plain body with 415', async () => {
+    const res = await decisionDelete(
+      new NextRequest('http://localhost:3000/api/decisions/1?server=lapi', {
+        method: 'DELETE',
+        headers: { 'content-type': 'text/plain' },
+        body: '{"ip":"192.0.2.1","reason":"x"}',
+      }),
+      { params: Promise.resolve({ id: '1' }) }
+    );
+
+    expect(res.status).toBe(415);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('checks the session before the content type', async () => {
+    state.cookies.clear();
+    const res = await analyzerRunPost(
+      new NextRequest('http://localhost:3000/api/analyzers/a/run', { method: 'POST' }),
+      { params: Promise.resolve({ id: 'a' }) }
+    );
+
+    expect(res.status).toBe(401);
   });
 });

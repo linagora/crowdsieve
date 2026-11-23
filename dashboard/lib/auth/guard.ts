@@ -64,6 +64,23 @@ export function checkSessionSecret(): NextResponse | null {
 }
 
 /**
+ * CSRF defence for routes that read a JSON body: require
+ * `Content-Type: application/json` (optionally with parameters such as
+ * charset). An HTML form cannot send it, and a cross-origin fetch() that
+ * sets it needs a CORS preflight, which the dashboard does not grant.
+ * Returns a 415 JSON response when the request does not qualify.
+ */
+export function requireJsonContentType(request: Request): NextResponse | null {
+  const contentType = request.headers.get('content-type');
+  const mediaType = contentType?.split(';')[0].trim().toLowerCase();
+  if (mediaType === 'application/json') return null;
+  return NextResponse.json(
+    { error: 'Unsupported Media Type: Content-Type must be application/json' },
+    { status: 415 }
+  );
+}
+
+/**
  * Guard for server pages: redirect to /login when the current request does
  * not carry a valid session. Does nothing in 'none' mode.
  */

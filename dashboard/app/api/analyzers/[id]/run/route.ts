@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
-import { requireAuth } from '@/lib/auth/guard';
+import { requireAuth, requireJsonContentType } from '@/lib/auth/guard';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireAuth();
+  const denied = (await requireAuth()) ?? requireJsonContentType(request);
   if (denied) return denied;
 
   const { apiBase } = getApiConfig();

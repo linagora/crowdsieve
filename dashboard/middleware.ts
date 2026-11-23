@@ -16,12 +16,16 @@ import { isSafeRedirect } from '@/lib/oidc/validation';
  *   - 'headers' : require a valid `Auth-Sub` header from a trusted upstream
  *                 (AUTH_PROXY_SECRET / TRUSTED_PROXY_IPS, see lib/auth/trust.ts).
  *
+ * In every mode, state-changing API calls that a browser flags as coming
+ * from another origin are rejected with 403 first (CSRF, lib/auth/csrf.ts).
+ *
  * Edge runtime caveat: the back-channel revocation store lives in the
  * Node.js server, so revocation is checked again by `requireAuth()` /
  * `requirePageAuth()` (lib/auth/guard.ts) in every API route and data page.
  */
 
 import { getAuthMode } from '@/lib/auth/mode';
+import { isCrossOriginWrite } from '@/lib/auth/csrf';
 import { checkTrustedUpstream } from '@/lib/auth/trust';
 import { parseAuthHeaders } from '@/lib/auth/headers';
 import { isLiveSession, SESSION_COOKIE_NAME, unsealSessionCookie } from '@/lib/oidc/session-cookie';
@@ -48,9 +52,15 @@ function isApiPath(pathname: string): boolean {
 }
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
+  // CSRF: reject cross-origin POST/PUT/PATCH/DELETE on /api/* in every mode,
+  // before any session is considered.
+  if (isCrossOriginWrite(request)) {
+    return NextResponse.json({ error: 'Forbidden: cross-origin request' }, { status: 403 });
+  }
+
   const mode = getAuthMode();
 
-  // 'none': no auth — allow everything (current behavior pre-headers-mode).
+  // 'none': no auth — allow everything else (current behavior pre-headers-mode).
   if (mode === 'none') {
     return NextResponse.next();
   }

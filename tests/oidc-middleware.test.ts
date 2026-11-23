@@ -248,3 +248,127 @@ describe('middleware in headers mode (GHSA-rjx9-mrqq-772w)', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('middleware CSRF defence (GHSA-2q3x-9jxw-8c7h)', () => {
+  // Body of the cross-site form from the advisory: enctype="text/plain".
+  const FORM_BODY = '{"server":"lapi","ip":"0.0.0.0/0","duration":"9999h","reason":"x","p":"="}';
+
+  async function post(
+    path: string,
+    headers: Record<string, string>,
+    init: { method?: string; cookie?: string; host?: string } = {}
+  ): Promise<Response> {
+    const allHeaders: Record<string, string> = { 'content-type': 'text/plain', ...headers };
+    if (init.cookie) allHeaders.cookie = init.cookie;
+    const request = new NextRequest(`http://${init.host ?? 'dashboard.example:3000'}${path}`, {
+      method: init.method ?? 'POST',
+      headers: allHeaders,
+      body: init.method === 'GET' ? undefined : FORM_BODY,
+    });
+    return middleware(request);
+  }
+
+  it('rejects a cross-origin text/plain POST with 403, even with a valid session', async () => {
+    const res = await post(
+      '/api/decisions/ban',
+      { origin: 'https://evil.example' },
+      { cookie: await liveSessionCookie() }
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Forbidden: cross-origin request' });
+  });
+
+  it('rejects it in "none" mode too', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await post('/api/decisions/ban', { origin: 'http://evil.example' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects Sec-Fetch-Site other than same-origin', async () => {
+    process.env.AUTH_MODE = 'none';
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      const res = await post('/api/analyzers/a/run', { 'sec-fetch-site': site });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it('rejects DELETE, PUT and PATCH from another origin', async () => {
+    process.env.AUTH_MODE = 'none';
+    for (const method of ['DELETE', 'PUT', 'PATCH']) {
+      const res = await post('/api/decisions/1', { origin: 'https://evil.example' }, { method });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it('rejects an opaque "null" Origin', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await post('/api/decisions/ban', { origin: 'null' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a sibling subdomain (same-site, other origin)', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await post('/api/decisions/ban', { origin: 'http://blog.dashboard.example:3000' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('accepts a same-origin request', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await post('/api/decisions/ban', {
+      origin: 'http://dashboard.example:3000',
+      'sec-fetch-site': 'same-origin',
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts the public origin seen through a proxy (X-Forwarded-Host)', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await post(
+      '/api/decisions/ban',
+      { origin: 'https://crowdsieve.example.com', 'x-forwarded-host': 'crowdsieve.example.com' },
+      { host: 'crowdsieve:3000' }
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts the origin of NEXTAUTH_URL', async () => {
+    process.env.AUTH_MODE = 'none';
+    process.env.NEXTAUTH_URL = 'https://crowdsieve.example.com';
+    const res = await post(
+      '/api/decisions/ban',
+      { origin: 'https://crowdsieve.example.com' },
+      { host: 'crowdsieve:3000' }
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it('lets requests without Origin nor Sec-Fetch-Site reach the auth checks', async () => {
+    const res = await post('/api/decisions/ban', {});
+
+    expect(res.status).toBe(401);
+  });
+
+  it('does not apply to safe methods', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await post('/api/alerts', { 'sec-fetch-site': 'cross-site' }, { method: 'GET' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('does not apply to the back-channel logout called by the IdP', async () => {
+    const res = await post('/api/auth/backchannel-logout', {
+      origin: 'https://sso.example.com',
+      'sec-fetch-site': 'cross-site',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-middleware-next')).toBe('1');
+  });
+});
