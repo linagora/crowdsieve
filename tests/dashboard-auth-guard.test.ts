@@ -27,6 +27,7 @@ vi.mock('next/headers', () => ({
 import { POST as banPost } from '../dashboard/app/api/decisions/ban/route.js';
 import { GET as alertsGet } from '../dashboard/app/api/alerts/route.js';
 import { GET as alertRawGet } from '../dashboard/app/api/alerts/[id]/raw/route.js';
+import { GET as statusGet } from '../dashboard/app/api/status/route.js';
 import { POST as analyzerRunPost } from '../dashboard/app/api/analyzers/[id]/run/route.js';
 import { DELETE as decisionDelete } from '../dashboard/app/api/decisions/[id]/route.js';
 import { GET as loginGet } from '../dashboard/app/api/auth/login/route.js';
@@ -122,6 +123,22 @@ describe('API route guard in OIDC mode', () => {
 
     expect(res.status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects GET /api/status without a session', async () => {
+    const res = await statusGet();
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a valid session read GET /api/status', async () => {
+    await setSessionCookie(liveSession());
+    const res = await statusGet();
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/status');
   });
 
   it('rejects GET /api/alerts with the login-flow cookie (no user)', async () => {

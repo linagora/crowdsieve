@@ -174,6 +174,12 @@ export interface BouncerNameRow {
   lapiServerName: string;
   bouncerName: string;
   bouncerType: string | null;
+  /** Unix ms of the latest report over all component kinds. */
+  lastSeenAt: number;
+  /** Version / OS as reported by the most recently seen component that knows them. */
+  version: string | null;
+  osName: string | null;
+  osVersion: string | null;
 }
 
 export interface StoreAlertsOptions {
@@ -1572,35 +1578,70 @@ export function createStorage(): AlertStorage {
       // The registry's PK includes componentKind, so a bouncer that emits
       // both `remediation` and `log_processor` rows (common for hybrid
       // crowdsec agents) appears twice in the table. The dashboard expects
-      // one row per bouncer, so we GROUP BY and pick MAX(bouncerType) — a
-      // deterministic non-null pick when available.
+      // one row per bouncer, so the rows are folded here: lastSeenAt is the
+      // latest of the kinds, bouncerType a deterministic non-null pick (max),
+      // and version / OS come from the most recently seen row that has them.
       const query = db
         .select({
           lapiServerName: schema.bouncers.lapiServerName,
           bouncerName: schema.bouncers.bouncerName,
-          bouncerType: sql<string | null>`max(${schema.bouncers.bouncerType})`,
+          bouncerType: schema.bouncers.bouncerType,
+          osName: schema.bouncers.osName,
+          osVersion: schema.bouncers.osVersion,
+          version: schema.bouncers.version,
+          lastSeenAt: schema.bouncers.lastSeenAt,
         })
         .from(schema.bouncers)
-        .groupBy(schema.bouncers.lapiServerName, schema.bouncers.bouncerName)
         .orderBy(schema.bouncers.lapiServerName, schema.bouncers.bouncerName);
 
-      if (isPostgres) {
-        return (await query) as Array<{
-          lapiServerName: string;
-          bouncerName: string;
-          bouncerType: string | null;
-        }>;
-      } else {
-        return (
-          query as unknown as {
-            all(): Array<{
-              lapiServerName: string;
-              bouncerName: string;
-              bouncerType: string | null;
-            }>;
-          }
-        ).all();
+      type Raw = {
+        lapiServerName: string;
+        bouncerName: string;
+        bouncerType: string | null;
+        osName: string | null;
+        osVersion: string | null;
+        version: string | null;
+        lastSeenAt: number;
+      };
+      const raw: Raw[] = isPostgres
+        ? ((await query) as Raw[])
+        : (query as unknown as { all(): Raw[] }).all();
+
+      // Most recently seen rows first so the first non-null wins.
+      raw.sort((a, b) => Number(b.lastSeenAt) - Number(a.lastSeenAt));
+      const folded = new Map<string, BouncerNameRow>();
+      for (const r of raw) {
+        const key = JSON.stringify([r.lapiServerName, r.bouncerName]);
+        const cur = folded.get(key);
+        if (!cur) {
+          folded.set(key, {
+            lapiServerName: r.lapiServerName,
+            bouncerName: r.bouncerName,
+            bouncerType: r.bouncerType,
+            lastSeenAt: Number(r.lastSeenAt),
+            version: r.version,
+            osName: r.osName,
+            osVersion: r.osVersion,
+          });
+          continue;
+        }
+        if (
+          r.bouncerType !== null &&
+          (cur.bouncerType === null || r.bouncerType > cur.bouncerType)
+        ) {
+          cur.bouncerType = r.bouncerType;
+        }
+        cur.version ??= r.version;
+        if (cur.osName === null && r.osName !== null) {
+          cur.osName = r.osName;
+          cur.osVersion = r.osVersion;
+        }
       }
+      return Array.from(folded.values()).sort(
+        (a, b) =>
+          a.lapiServerName.localeCompare(b.lapiServerName) ||
+          a.bouncerName.localeCompare(b.bouncerName)
+      );
     },
 
     async cleanupBouncerMetrics(retentionDays) {

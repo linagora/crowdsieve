@@ -1455,6 +1455,9 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
       }
     }
   );
+
+  // GET /api/status (inherits the API-key hook above)
+  await fastify.register(import('./status.js'));
 };
 
 export default apiRoutes;

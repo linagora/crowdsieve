@@ -20,6 +20,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Dashboard Authentication**: Two modes, both documented in [docs/oidc-authentication.md](./docs/oidc-authentication.md)
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
+- **Status Page**: Health of CAPI forwarding and of every LAPI server (periodic check), with a red banner on every page when something fails
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
 - **REST API**: Fully documented with OpenAPI ([interactive docs](https://linagora.github.io/crowdsieve/api/) · [openapi.json](https://linagora.github.io/crowdsieve/api/openapi.json))
@@ -351,6 +352,15 @@ The API serves them with `GET /api/alerts/:id` (adds `decisions`, `events`, `eve
 
 Next to the source IP of an alert and next to single-IP decisions, the dashboard shows a "CrowdSec CTI ↗" link to `https://app.crowdsec.net/cti/<ip>`, opened in a new tab. It is not shown for ranges (CIDR), nor for private, loopback, link-local, unique-local, CGNAT, multicast or reserved addresses. Set `CTI_LINKS_ENABLED=false` on the dashboard (read at runtime) to remove every CTI link, for example on air-gapped deployments.
 
+### Status Page
+
+The **Status** page (header entry) shows the health of the integrations CrowdSieve depends on, and refreshes every 30 seconds:
+
+- **CAPI forwarding**: enabled, disabled (`FORWARD_ENABLED=false`) or failing, the time of the last successful push, the alerts sent and failed in the last 24 hours, and the last error. Forwarding counts as failing when CAPI is unreachable or answers 5xx, 401, 403 or 429.
+- **Each LAPI server**: reachable (with the response time) or unreachable (with the error), checked every 60 seconds with `GET /v1/heartbeat` using the machine credentials when configured (else `GET /v1/decisions?ip=127.0.0.1` with the bouncer key), whether manual ban is available (machine credentials configured and accepted), and the last decision-replication error.
+
+When CAPI forwarding fails or a LAPI is unreachable, a red banner appears under the header on every page. The home page's "Forwarded" card reads "Forwarding disabled" when forwarding is off. The state is kept in memory and is reset at restart. It is served by `GET /api/status` and never contains API keys, passwords or URL credentials.
+
 ### Filter Rules
 
 Filter rules are YAML files in `config/filters.d/`. Each rule uses an expression-based syntax:
@@ -564,10 +574,12 @@ bouncer_metrics:
 | ---------------- | ------- | -------------------------------------------------------- |
 | `retention_days` | `30`    | Snapshots older than this are deleted by a daily cleanup |
 
+Each bouncer card also shows when it last reported, its version and OS (when its usage metrics carried them), and an **Active** / **Stale** badge: a bouncer that sent no usage metrics for more than 2 hours is flagged "Stale" (CrowdSec bouncers report every 30 minutes by default), and the "Bouncers" summary card counts them ("2 configured · 1 stale").
+
 ### Bouncer Metrics API Endpoints
 
 - `GET /api/bouncer-metrics` — Query stored snapshots, with filters `machine`, `bouncer`, `since`, `until`, `limit`
-- `GET /api/bouncer-metrics/names` — List distinct `(lapiServerName, bouncerName, bouncerType)` tuples for the dashboard dropdown
+- `GET /api/bouncer-metrics/names` — List distinct bouncers (`lapiServerName`, `bouncerName`, `bouncerType`) with their `lastSeenAt`, `version`, `osName` and `osVersion`
 
 ### Storage
 

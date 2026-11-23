@@ -15,6 +15,7 @@ import {
   getTrustedSourceMachineIds,
   ReplicationService,
 } from './replication/index.js';
+import { createStatusService } from './status/index.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/geoip-city.mmdb';
@@ -173,6 +174,9 @@ async function main() {
     logger.info('Analyzer engine initialized');
   }
 
+  // Health state of CAPI forwarding and LAPI servers (periodic LAPI check)
+  const statusService = createStatusService(config, logger);
+
   // Initialize replication service (if any servers have replicate_decisions enabled)
   let replicationService: ReplicationService | undefined;
   const replicationServers = (config.lapi_servers || []).filter((s) => s.replicate_decisions);
@@ -195,7 +199,7 @@ async function main() {
   }
 
   if (hasReplicationTargets) {
-    replicationService = createReplicationService(config, logger);
+    replicationService = createReplicationService(config, logger, statusService);
     const trustedSourceMachineIds = getTrustedSourceMachineIds(config);
     logger.info(
       {
@@ -253,12 +257,14 @@ async function main() {
     logger,
     clientValidator,
     replicationService,
+    statusService,
   });
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutting down...');
 
+    statusService.stop();
     await server.close();
     logger.info('HTTP server closed');
 
@@ -284,6 +290,8 @@ async function main() {
   await server.listen({ port, host: '0.0.0.0' });
 
   logger.info({ port, capiUrl: config.proxy.capi_url }, 'Proxy server started');
+
+  statusService.start();
 
   // Schedule cleanup job
   const cleanupInterval = 24 * 60 * 60 * 1000; // Daily

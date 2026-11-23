@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Header } from '@/components/Header';
 import { RuntimeConfigProvider } from '@/components/RuntimeConfigProvider';
+import { StatusBanner } from '@/components/StatusBanner';
 import { getRuntimeConfig } from '@/lib/runtimeConfig';
 import './globals.css';
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <RuntimeConfigProvider config={getRuntimeConfig()}>
           <div className="min-h-screen">
             <Header />
+            <StatusBanner />
             <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
           </div>
         </RuntimeConfigProvider>

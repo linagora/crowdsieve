@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Shield, Globe, Filter, Send, Ban } from 'lucide-react';
 import type { AlertStats } from '@/lib/types';
 import { fetchStats } from '@/lib/api';
+import { useStatus } from '@/components/hooks/useStatus';
 
 interface StatsPanelProps {
   stats: AlertStats;
@@ -17,6 +18,7 @@ export function StatsPanel({
   autoRefreshInterval = DEFAULT_AUTO_REFRESH_INTERVAL,
 }: StatsPanelProps) {
   const [stats, setStats] = useState<AlertStats>(initialStats);
+  const { status } = useStatus(60_000);
 
   // Auto-refresh stats
   useEffect(() => {
@@ -51,6 +53,7 @@ export function StatsPanel({
     {
       title: 'Forwarded',
       value: stats.forwarded.toLocaleString(),
+      subValue: status && !status.capi.enabled ? 'Forwarding disabled' : undefined,
       icon: Send,
       color: 'text-green-500',
       bgColor: 'bg-green-50',

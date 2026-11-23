@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Shield, Activity, Server, Ban } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { formatUtcDateTime } from '@/lib/dateTime';
+import { formatBouncerDetails, isStale } from '@/lib/bouncerStatus';
 import type { BouncerMetric, BouncerName } from '@/lib/types';
 
 interface BouncersContentProps {
@@ -120,6 +122,14 @@ export function BouncersContent({
   const [metrics, setMetrics] = useState<BouncerMetric[]>(initialMetrics);
   const [serverFilter, setServerFilter] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  // Relative times and the stale badge depend on the clock: computed after
+  // mount only, so the server markup and the first client render match.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Apply server filter on the metrics view; fetch fresh data when changed.
   useEffect(() => {
@@ -226,6 +236,9 @@ export function BouncersContent({
     [byBouncer]
   );
 
+  const staleCount =
+    now === null ? 0 : visibleBouncers.filter((b) => isStale(b.lastSeenAt, now)).length;
+
   return (
     <div className={`space-y-6 ${loading ? 'opacity-70' : ''}`}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -257,7 +270,9 @@ export function BouncersContent({
             <div>
               <p className="text-sm text-slate-500">Bouncers</p>
               <p className="text-2xl font-bold mt-1">{visibleBouncers.length}</p>
-              <p className="text-xs text-slate-400 mt-1">configured</p>
+              <p className="text-xs text-slate-400 mt-1">
+                configured{staleCount > 0 ? ` · ${staleCount} stale` : ''}
+              </p>
             </div>
             <div className="p-2 rounded-lg bg-blue-50">
               <Shield className="w-5 h-5 text-blue-500" />
@@ -322,19 +337,50 @@ export function BouncersContent({
             const key = `${b.lapiServerName}::${b.bouncerName}`;
             const rows = byBouncer.get(key) ?? [];
             const series = buildSeries(rows);
+            const stale = now !== null && isStale(b.lastSeenAt, now);
+            const details = formatBouncerDetails(
+              now === null ? { ...b, lastSeenAt: null } : b,
+              now ?? 0
+            );
+            const lastSeenAbsolute = formatUtcDateTime(new Date(b.lastSeenAt));
             return (
               <div key={key} className="card p-3 space-y-1">
                 <div className="flex flex-col gap-0.5">
-                  <h3
-                    className="text-sm font-semibold truncate"
-                    title={`${b.bouncerName}${b.bouncerType ? ` · ${b.bouncerType}` : ''}`}
-                  >
-                    {b.bouncerName}
-                  </h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3
+                      className="text-sm font-semibold truncate"
+                      title={`${b.bouncerName}${b.bouncerType ? ` · ${b.bouncerType}` : ''}`}
+                    >
+                      {b.bouncerName}
+                    </h3>
+                    {now !== null && (
+                      <span
+                        data-testid="bouncer-status-badge"
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
+                          stale ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
+                        }`}
+                        title={
+                          stale
+                            ? 'No usage metrics received for more than 2 hours: this bouncer may be stopped'
+                            : 'Usage metrics received within the last 2 hours'
+                        }
+                      >
+                        {stale ? 'Stale' : 'Active'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10px] text-slate-500 truncate" title={b.lapiServerName}>
                     {b.lapiServerName}
                     {b.bouncerType ? ` · ${b.bouncerType}` : ''}
                   </span>
+                  {details && (
+                    <span
+                      className="text-[10px] text-slate-500 truncate"
+                      title={lastSeenAbsolute ? `Last report: ${lastSeenAbsolute}` : undefined}
+                    >
+                      {details}
+                    </span>
+                  )}
                 </div>
                 <DualChart series={series} />
               </div>
