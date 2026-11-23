@@ -189,6 +189,8 @@ See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
+The operator who issued a manual ban is recorded on a local audit row at once. When the ban's alert later comes back from the LAPI through `/v2/signals` or `/v3/signals`, its `actor` event meta is only kept if this instance recorded a manual ban by that same operator on that same target within the last 24 hours. Any other `actor` meta received through signals is ignored (and logged), so a forged signal cannot appear as a ban by a named operator.
+
 ### Decision Replication
 
 CrowdSieve can optionally replicate received decisions to your LAPI servers. This is useful when you have multiple CrowdSec instances and want to share decisions across them without going through CAPI.
@@ -203,19 +205,48 @@ lapi_servers:
     machine_id: 'crowdsieve'
     password: 'your-machine-password'
     replicate_decisions: true
-    source_machine_ids: ['agent1', 'agent2'] # Machine IDs of agents connected to this LAPI
+    # Online API login of this LAPI (online_api_credentials.yaml), then its agents
+    source_machine_ids: ['4b1d0c2e...lapi1-online-api-login', 'agent1', 'agent2']
   - name: 'lapi2'
     url: 'http://192.168.1.10:8080'
     api_key: 'another-bouncer-key'
     machine_id: 'crowdsieve-2'
     password: 'another-password'
     replicate_decisions: true
-    source_machine_ids: ['agent3'] # Machine IDs of agents connected to this LAPI
+    source_machine_ids: ['9f3e7a51...lapi2-online-api-login', 'agent3']
+```
+
+**Who may have its decisions replicated:**
+
+Replication writes into the decision base of every target LAPI, so CrowdSieve only replicates decisions sent by a LAPI it knows:
+
+1. The sender must be **authenticated against CAPI**: CAPI must have accepted its `Authorization` header with a 2xx (now, or within `CLIENT_VALIDATION_CACHE_TTL`). This check runs even when `client_validation` is disabled, as soon as replication is configured; it then only decides about replication, not about accepting the request. A fail-open result (CAPI unavailable) does not count.
+2. The machine id of the sender's JWT (the `id` claim, i.e. the `login` of the LAPI's `/etc/crowdsec/online_api_credentials.yaml`) must be listed in the `source_machine_ids` of one of the `lapi_servers`. The allowlist is the **union** of all `source_machine_ids`, including servers without `replicate_decisions` (a LAPI may be a source only). The `machine_id` fields of the alerts themselves are never used to authorize a sender.
+
+Signals that fail either check are still stored and forwarded to CAPI as usual, but their decisions are not replicated, and a warning is logged (once per 15 minutes per sender).
+
+> **Upgrade note:** `source_machine_ids` used to be matched against the `machine_id` of the alerts only (the agents). Add the online API `login` of each LAPI to its `source_machine_ids`, or nothing will be replicated. To find it: `grep login /etc/crowdsec/online_api_credentials.yaml` on the LAPI host, or look for the warning `sender machine id is not listed in any lapi_servers[].source_machine_ids`, which carries the `machineId` CrowdSieve saw.
+
+**Which decisions are replicated:**
+
+Even from a trusted sender, only bounded IP remediations are replicated, with these limits:
+
+- scope `Ip` or `Range` only (any case); `Country`, `AS`, `Username` and other scopes are dropped;
+- type `ban` or `captcha` only; other remediations (`throttle`, custom types) are dropped;
+- ranges broader than an IPv4 `/16` or an IPv6 `/32` are dropped, as are IPv6 ranges covering the IPv4-mapped block `::ffff:0:0/96` or more than a `/16` of it;
+- the duration must be a positive Go duration (`4h`, `1h30m`...); longer than `replication.max_decision_duration` (default `168h`, 7 days), it is replicated with that maximum;
+- only `type`, `scope`, `value`, `duration`, `scenario` and `simulated` are copied, with `origin: crowdsieve-replication`.
+
+Dropped and capped decisions are logged at `warn` level. The cap is configured in `config/filters.yaml` (Go duration syntax, no `d` unit):
+
+```yaml
+replication:
+  max_decision_duration: '168h'
 ```
 
 **How it works:**
 
-- When CrowdSieve receives alerts with decisions (via `/v2/signals` or `/v3/signals`), it replicates those decisions to LAPI servers with `replicate_decisions: true`
+- When CrowdSieve receives alerts with decisions (via `/v2/signals` or `/v3/signals`) from a trusted sender (see above), it replicates those decisions to LAPI servers with `replicate_decisions: true`
 - Decisions are **not** replicated back to the server they originated from (based on `source_machine_ids`)
 - Replication is asynchronous and non-blocking (doesn't slow down the main request)
 - Errors during replication are logged but don't affect the response to the client
@@ -225,7 +256,7 @@ lapi_servers:
 
 CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
 
-1. **Source server exclusion**: Decisions are not replicated back to the server they originated from. Configure `source_machine_ids` with all machine IDs of agents connected to each LAPI server. The same `source_machine_ids` are also used to resolve the friendly server name when capturing `usage-metrics` from the LAPI's CAPI relay — if the LAPI's online API machine_id matches one of these entries, the row is tagged with this server's `name` instead of the raw machine_id.
+1. **Source server exclusion**: Decisions are not replicated back to the server they originated from: the server whose `source_machine_ids` holds the sender's online API machine id, and any server whose `source_machine_ids` holds the `machine_id` of one of the alerts (agent ids, which can only remove targets). The same `source_machine_ids` are also used to resolve the friendly server name when capturing `usage-metrics` from the LAPI's CAPI relay — if the LAPI's online API machine_id matches one of these entries, the row is tagged with this server's `name` instead of the raw machine_id.
 2. **Origin tagging**: Replicated decisions are marked with `origin: crowdsieve-replication`
 3. **Origin filtering**: Decisions with `crowdsieve` or `crowdsieve-replication` origins are never replicated
 4. **CAPI filtering**: Crowdsieve-originated alerts are not forwarded to CAPI
@@ -234,7 +265,7 @@ CrowdSieve includes multiple mechanisms to prevent infinite replication loops:
 
 - Machine credentials (`machine_id` and `password`) must be configured for replication to work
 - The machine must be registered on the target LAPI server (`cscli machines add crowdsieve`)
-- **Important**: Configure `source_machine_ids` with all agent machine IDs connected to each LAPI to prevent duplicate decisions
+- **Important**: Configure `source_machine_ids` with the online API machine id of each LAPI that sends decisions (required for replication at all), plus its agent machine IDs if you want them to exclude targets too
 
 ### Environment Variables in Config
 
@@ -364,11 +395,23 @@ Enable via environment variables:
 ```bash
 CLIENT_VALIDATION_ENABLED=true
 CLIENT_VALIDATION_CACHE_TTL=604800        # Cache valid clients for 1 week
-CLIENT_VALIDATION_CACHE_TTL_ERROR=3600    # Cache on CAPI errors for 1 hour
+CLIENT_VALIDATION_CACHE_TTL_ERROR=300     # Remember a fail-open result for 5 minutes
 CLIENT_VALIDATION_FAIL_CLOSED=false       # Set to true to reject when CAPI unavailable
 ```
 
 Validation uses a dual-layer cache (in-memory LRU + SQLite) for performance.
+
+How CAPI's answer to the validation request is interpreted:
+
+| CAPI answer                                | Result                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| 2xx                                        | Client **authenticated**, cached for `CLIENT_VALIDATION_CACHE_TTL` (memory + database)            |
+| 401, 403 and any other 4xx (400, 404, 429) | Request **rejected** (401), whatever the fail mode                                                |
+| 5xx, timeout, network error                | `FAIL_CLOSED=true`: rejected. `FAIL_CLOSED=false`: **let through, not authenticated** (see below) |
+
+A fail-open result is remembered in memory only, for `CLIENT_VALIDATION_CACHE_TTL_ERROR` seconds, so that a CAPI outage does not cost a round-trip on every request. A client let through this way is never treated as authenticated: its alerts are stored and forwarded, but its decisions are not replicated to your LAPIs (see [Decision Replication](#decision-replication)).
+
+`fail_closed` stays `false` by default, for backward compatibility. Only a genuine CAPI outage (5xx, timeout) can fail open, a client cannot cause one with a malformed token, and a fail-open client cannot trigger replication. The remaining exposure is that, during an outage, alerts from a token that is not already cached are stored in the local dashboard without having been authenticated. Set `CLIENT_VALIDATION_FAIL_CLOSED=true` if that is not acceptable for you: already-validated (cached) clients keep working during an outage either way.
 
 ## Log Analyzers
 
@@ -520,19 +563,20 @@ CrowdSec CAPI rejects requests whose **decompressed** body exceeds ~10 MiB. Afte
 
 ## Environment Variables
 
-| Variable                        | Default                  | Description                                           |
-| ------------------------------- | ------------------------ | ----------------------------------------------------- |
-| `CONFIG_PATH`                   | `./config/filters.yaml`  | Path to config file                                   |
-| `DATABASE_PATH`                 | `./data/crowdsieve.db`   | Path to SQLite database                               |
-| `GEOIP_DB_PATH`                 | `./data/geoip-city.mmdb` | Path to GeoIP database                                |
-| `PROXY_PORT`                    | `8080`                   | Proxy listen port                                     |
-| `DASHBOARD_PORT`                | `3000`                   | Dashboard listen port                                 |
-| `LOG_LEVEL`                     | `info`                   | Log level (debug, info, warn, error)                  |
-| `LOG_FORMAT`                    | `json`                   | Log format (json, pretty)                             |
-| `FORWARD_ENABLED`               | `true`                   | Set to `false` to disable CAPI forwarding (test mode) |
-| `CLIENT_VALIDATION_ENABLED`     | `false`                  | Enable client validation against CAPI                 |
-| `CLIENT_VALIDATION_CACHE_TTL`   | `604800`                 | Cache TTL for validated clients (seconds)             |
-| `CLIENT_VALIDATION_FAIL_CLOSED` | `false`                  | Reject requests when CAPI is unavailable              |
+| Variable                            | Default                  | Description                                           |
+| ----------------------------------- | ------------------------ | ----------------------------------------------------- |
+| `CONFIG_PATH`                       | `./config/filters.yaml`  | Path to config file                                   |
+| `DATABASE_PATH`                     | `./data/crowdsieve.db`   | Path to SQLite database                               |
+| `GEOIP_DB_PATH`                     | `./data/geoip-city.mmdb` | Path to GeoIP database                                |
+| `PROXY_PORT`                        | `8080`                   | Proxy listen port                                     |
+| `DASHBOARD_PORT`                    | `3000`                   | Dashboard listen port                                 |
+| `LOG_LEVEL`                         | `info`                   | Log level (debug, info, warn, error)                  |
+| `LOG_FORMAT`                        | `json`                   | Log format (json, pretty)                             |
+| `FORWARD_ENABLED`                   | `true`                   | Set to `false` to disable CAPI forwarding (test mode) |
+| `CLIENT_VALIDATION_ENABLED`         | `false`                  | Enable client validation against CAPI                 |
+| `CLIENT_VALIDATION_CACHE_TTL`       | `604800`                 | Cache TTL for validated clients (seconds)             |
+| `CLIENT_VALIDATION_CACHE_TTL_ERROR` | `300`                    | How long a fail-open result is remembered (seconds)   |
+| `CLIENT_VALIDATION_FAIL_CLOSED`     | `false`                  | Reject requests when CAPI is unavailable              |
 
 ## GeoIP Database
 

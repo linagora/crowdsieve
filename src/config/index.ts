@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
+import { DEFAULT_MAX_DECISION_DURATION, parseGoDuration } from '../replication/decisions.js';
 
 /**
  * Interpolate environment variables in a string
@@ -120,7 +121,11 @@ export type FilterRule = z.infer<typeof FilterRuleSchema>;
 // - api_key: for bouncer (read-only) operations like querying decisions
 // - machine_id + password: for machine (write) operations like posting alerts/bans
 // - replicate_decisions: if true, replicate received decisions to this LAPI server
-// - source_machine_ids: array of machine_ids that send alerts from this LAPI (for loop prevention)
+// - source_machine_ids: machine ids identifying signals sent by this LAPI: its online API
+//   (CAPI) login, as found in the `id` claim of its JWT, and optionally its agents' ids.
+//   The union of all source_machine_ids is the allowlist of senders whose decisions may be
+//   replicated (matched against the CAPI-validated JWT only); they also exclude this server
+//   from the targets of its own decisions (loop prevention).
 const LapiServerSchema = z.object({
   name: z.string().min(1),
   url: z.string().url(),
@@ -128,7 +133,7 @@ const LapiServerSchema = z.object({
   machine_id: z.string().min(1).optional(), // Machine ID for posting alerts
   password: z.string().min(1).optional(), // Machine password for posting alerts
   replicate_decisions: z.boolean().default(false), // Replicate decisions to this server
-  source_machine_ids: z.array(z.string().min(1)).optional(), // Machine IDs that send alerts from this LAPI (loop prevention)
+  source_machine_ids: z.array(z.string().min(1)).optional(), // Senders from this LAPI (replication allowlist + loop prevention)
 });
 
 export type LapiServer = z.infer<typeof LapiServerSchema>;
@@ -177,7 +182,7 @@ const ConfigSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       cache_ttl_seconds: z.number().positive().default(604800),
-      cache_ttl_error_seconds: z.number().positive().default(3600),
+      cache_ttl_error_seconds: z.number().positive().default(300),
       validation_timeout_ms: z.number().positive().default(5000),
       max_memory_entries: z.number().positive().default(1000),
       fail_closed: z.boolean().default(false),
@@ -203,6 +208,20 @@ const ConfigSchema = z.object({
           })
         )
         .default({}),
+    })
+    .prefault({}),
+  // Limits applied to decisions replicated to lapi_servers[] with
+  // replicate_decisions (see src/replication/decisions.ts).
+  replication: z
+    .object({
+      // Longer decisions are replicated with this duration instead. Go
+      // duration syntax (CrowdSec's), e.g. "168h" (7 days); no "d" unit.
+      max_decision_duration: z
+        .string()
+        .refine((value) => (parseGoDuration(value) ?? 0) > 0, {
+          message: 'must be a positive Go duration such as "168h" or "24h30m"',
+        })
+        .default(DEFAULT_MAX_DECISION_DURATION),
     })
     .prefault({}),
   // Bouncer metrics intercepted off the LAPI -> CAPI usage-metrics relay.
@@ -316,7 +335,7 @@ export function loadConfigFromEnv(): Partial<Config> {
       cache_ttl_seconds: readIntegerEnv('CLIENT_VALIDATION_CACHE_TTL', '604800', POSITIVE_BOUNDS),
       cache_ttl_error_seconds: readIntegerEnv(
         'CLIENT_VALIDATION_CACHE_TTL_ERROR',
-        '3600',
+        '300',
         POSITIVE_BOUNDS
       ),
       validation_timeout_ms: readIntegerEnv(

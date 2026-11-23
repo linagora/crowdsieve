@@ -364,9 +364,25 @@ describe('storeAlerts extracts actor from event meta', () => {
     sqlite.close();
   });
 
+  // The actor meta is only trusted for the round-trip of a manual ban this
+  // instance recorded (see tests/manual-ban-audit-event.test.ts for the
+  // forged cases), so each test records that ban first.
+  async function recordManualBan(actor: string): Promise<void> {
+    await storage.recordManualBanAuditEvent({
+      ip: '198.51.100.42',
+      scope: 'ip',
+      comment: 'Manual ban from test',
+      server: 'lapi',
+      duration: '4h',
+      actor,
+    });
+  }
+
   it('writes actor to the alerts.actor column when an event meta entry has key=actor', async () => {
+    await recordManualBan('carol@example.com');
     const alert = createBanAlert({
       uuid: 'with-actor',
+      scenario: 'crowdsieve/manual',
       events: [
         {
           timestamp: new Date().toISOString(),
@@ -400,8 +416,10 @@ describe('storeAlerts extracts actor from event meta', () => {
 
   it('truncates excessive actor values to MAX_ACTOR_LENGTH', async () => {
     const huge = 'x'.repeat(MAX_ACTOR_LENGTH + 100);
+    await recordManualBan(huge);
     const alert = createBanAlert({
       uuid: 'huge-actor',
+      scenario: 'crowdsieve/manual',
       events: [
         {
           timestamp: new Date().toISOString(),

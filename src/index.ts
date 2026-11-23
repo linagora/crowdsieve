@@ -10,7 +10,11 @@ import { initGeoIP, lookupIP, closeGeoIP } from './geoip/index.js';
 import { ClientValidator } from './validation/index.js';
 import { initializeAnalyzerEngine, getAnalyzerEngine } from './analyzers/index.js';
 import { createAnalyzerStorage } from './analyzers/storage.js';
-import { createReplicationService, ReplicationService } from './replication/index.js';
+import {
+  createReplicationService,
+  getTrustedSourceMachineIds,
+  ReplicationService,
+} from './replication/index.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/geoip-city.mmdb';
@@ -46,6 +50,7 @@ async function main() {
     client_validation: { ...fileConfig.client_validation, ...envConfig.client_validation },
     analyzers: fileConfig.analyzers, // Analyzers only from file
     bouncer_metrics: fileConfig.bouncer_metrics, // Bouncer metrics retention settings
+    replication: fileConfig.replication, // Replicated decision limits
   };
 
   // Initialize logger (with custom `notice` level wired in for audit-friendly
@@ -160,24 +165,6 @@ async function main() {
     });
   };
 
-  // Initialize client validator (if enabled)
-  let clientValidator: ClientValidator | undefined;
-  if (config.client_validation.enabled) {
-    clientValidator = new ClientValidator(
-      {
-        enabled: config.client_validation.enabled,
-        cacheTtlSeconds: config.client_validation.cache_ttl_seconds,
-        cacheTtlErrorSeconds: config.client_validation.cache_ttl_error_seconds,
-        validationTimeoutMs: config.client_validation.validation_timeout_ms,
-        maxMemoryEntries: config.client_validation.max_memory_entries,
-        failClosed: config.client_validation.fail_closed,
-      },
-      config.proxy.capi_url,
-      logger
-    );
-    logger.info({ failClosed: config.client_validation.fail_closed }, 'Client validation enabled');
-  }
-
   // Initialize analyzer engine (if enabled)
   if (config.analyzers?.enabled) {
     const analyzerStorage = createAnalyzerStorage();
@@ -209,12 +196,49 @@ async function main() {
 
   if (hasReplicationTargets) {
     replicationService = createReplicationService(config, logger);
+    const trustedSourceMachineIds = getTrustedSourceMachineIds(config);
     logger.info(
       {
         targets: replicationServers.filter((s) => s.machine_id && s.password).map((s) => s.name),
+        trustedSources: trustedSourceMachineIds.size,
       },
       'Replication service initialized'
     );
+    if (trustedSourceMachineIds.size === 0) {
+      logger.warn(
+        'Decision replication is enabled but no lapi_servers[].source_machine_ids is configured: ' +
+          'no decision will be replicated. List the online API machine_id (login of ' +
+          'online_api_credentials.yaml) of each LAPI allowed to have its decisions replicated.'
+      );
+    }
+  }
+
+  // Initialize client validator. It is needed when client validation is
+  // enabled, and also whenever replication is configured: decisions are only
+  // replicated from senders authenticated against CAPI, even if requests from
+  // unvalidated clients are otherwise accepted.
+  let clientValidator: ClientValidator | undefined;
+  if (config.client_validation.enabled || replicationService) {
+    clientValidator = new ClientValidator(
+      {
+        enabled: config.client_validation.enabled,
+        cacheTtlSeconds: config.client_validation.cache_ttl_seconds,
+        cacheTtlErrorSeconds: config.client_validation.cache_ttl_error_seconds,
+        validationTimeoutMs: config.client_validation.validation_timeout_ms,
+        maxMemoryEntries: config.client_validation.max_memory_entries,
+        failClosed: config.client_validation.fail_closed,
+      },
+      config.proxy.capi_url,
+      logger
+    );
+    if (config.client_validation.enabled) {
+      logger.info(
+        { failClosed: config.client_validation.fail_closed },
+        'Client validation enabled'
+      );
+    } else {
+      logger.info('Client validation disabled; senders are still validated for replication');
+    }
   }
 
   // Bouncer metrics are captured by the POST /v1/usage-metrics route

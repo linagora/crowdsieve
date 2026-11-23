@@ -283,13 +283,15 @@ crowdsieve:
     enabled: false
     # -- Cache TTL in seconds (default: 1 week)
     cacheTtl: 604800
-    # -- Cache TTL on CAPI errors in seconds (default: 1 hour)
-    cacheTtlError: 3600
+    # -- How long a fail-open result (CAPI 5xx/unreachable) is remembered, in
+    # seconds (default: 5 minutes). Fail-open clients are never authenticated.
+    cacheTtlError: 300
     # -- Validation request timeout in milliseconds
     timeoutMs: 5000
     # -- Max entries in memory LRU cache
     maxMemoryEntries: 1000
-    # -- Reject requests when CAPI is unavailable
+    # -- Reject requests when CAPI is unavailable (5xx/timeout). Other CAPI
+    # errors (400, 404, 429...) are always rejections.
     failClosed: false
 
   # ---------------------------------------------------------------------------
