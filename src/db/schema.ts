@@ -73,6 +73,11 @@ export const alerts = sqliteTable(
     // Identifier of the human user who triggered this alert/event (e.g. unban),
     // sourced from the dashboard OIDC session and forwarded as X-Crowdsieve-Actor.
     actor: text('actor'),
+    // Manual ban / unban audit rows only (null otherwise): LAPI server the
+    // action was sent to, remediation type and duration of a manual ban.
+    auditServer: text('audit_server'),
+    auditType: text('audit_type'),
+    auditDuration: text('audit_duration'),
 
     // Raw data
     rawJson: text('raw_json'),

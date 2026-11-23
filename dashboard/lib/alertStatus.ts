@@ -18,6 +18,14 @@ export function getAlertKind(alert: AlertKindSource): AlertKind {
 }
 
 /**
+ * Badge of a manual-ban audit row, naming its remediation type: "Manual ban",
+ * "Manual captcha". Rows recorded before the type was stored are bans.
+ */
+export function manualBanLabel(alert: Pick<StoredAlert, 'auditType'>): string {
+  return `Manual ${alert.auditType || 'ban'}`;
+}
+
+/**
  * Audit rows are stored with `filtered=true` defensively so they are never
  * forwarded to CAPI, but they were not rejected by the filter rules. Only real
  * alerts may display the Filtered badge.

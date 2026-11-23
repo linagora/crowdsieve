@@ -143,6 +143,9 @@ export const AlertResponse: TSchema = Type.Object({
   forwardedAt: Nullable(Type.String()),
   localAudit: Nullable(Type.Boolean()),
   actor: Nullable(Type.String()),
+  auditServer: Nullable(Type.String()),
+  auditType: Nullable(Type.String()),
+  auditDuration: Nullable(Type.String()),
 
   // Raw data
   rawJson: Nullable(Type.String()),
@@ -259,6 +262,36 @@ export const DecisionsResponse = Type.Object({
   ip: Type.String(),
   results: Type.Array(DecisionsServerResult),
   shared: Type.Array(LapiDecision),
+});
+
+/** Remediation type of a manual ban. */
+export const BanType = Type.Union([Type.Literal('ban'), Type.Literal('captcha')], {
+  description: 'Remediation type of the decision (default: ban)',
+});
+
+// --- Audit log (mirrors AuditLogPage in src/storage/audit.ts) ----------------
+
+export const AuditAction = Type.Union([Type.Literal('ban'), Type.Literal('unban')]);
+
+export const AuditLogItem = Type.Object({
+  id: Type.Integer({ description: 'Id of the audit row (alert detail page)' }),
+  at: Type.String({ description: 'When the action was recorded (ISO 8601)' }),
+  action: AuditAction,
+  actor: Nullable(Type.String()),
+  ip: Nullable(Type.String({ description: 'Targeted IP address or CIDR range' })),
+  server: Nullable(Type.String({ description: 'LAPI server the action was sent to' })),
+  type: Nullable(Type.String({ description: 'Remediation type of a ban; null for unbans' })),
+  duration: Nullable(Type.String({ description: 'Duration of a ban; null for unbans' })),
+  reason: Nullable(Type.String()),
+});
+
+export const AuditLogResponse = Type.Object({
+  items: Type.Array(AuditLogItem),
+  total: Type.Integer(),
+});
+
+export const AuditActorsResponse = Type.Object({
+  actors: Type.Array(Type.String()),
 });
 
 // --- IP info (matches IPInfo from src/ipinfo/index.ts) -----------------------

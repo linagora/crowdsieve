@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS alerts (
   forwarded_at TEXT,
   local_audit BOOLEAN DEFAULT FALSE,
   actor TEXT,
+  audit_server TEXT,
+  audit_type TEXT,
+  audit_duration TEXT,
   raw_json TEXT
 );
 
@@ -240,12 +243,12 @@ async function migrate() {
           geo_country_code, geo_country_name, geo_city, geo_region,
           geo_latitude, geo_longitude, geo_timezone, geo_isp, geo_org,
           filtered, filter_reasons, forwarded_to_capi, forwarded_at,
-          local_audit, actor, raw_json
+          local_audit, actor, audit_server, audit_type, audit_duration, raw_json
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
           $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
           $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37,
-          $38, $39, $40
+          $38, $39, $40, $41, $42, $43
         ) RETURNING id`,
         [
           alert.uuid,
@@ -287,6 +290,10 @@ async function migrate() {
           alert.forwarded_at,
           Boolean(alert.local_audit),
           alert.actor,
+          // Absent from SQLite databases created before the audit log page.
+          alert.audit_server ?? null,
+          alert.audit_type ?? null,
+          alert.audit_duration ?? null,
           alert.raw_json,
         ]
       );

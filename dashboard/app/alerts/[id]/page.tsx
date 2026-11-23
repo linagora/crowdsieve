@@ -8,7 +8,12 @@ import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { LocalDateTime } from '@/components/LocalDateTime';
 import { ApiError } from '@/components/ApiError';
 import { parseReturnPath, isValidAlertId } from '@/lib/alertFilters';
-import { getAlertKind, showsFilteredBadge, showsForwardedBadge } from '@/lib/alertStatus';
+import {
+  getAlertKind,
+  manualBanLabel,
+  showsFilteredBadge,
+  showsForwardedBadge,
+} from '@/lib/alertStatus';
 import { requirePageAuth } from '@/lib/auth/guard';
 
 // Read env vars inside functions to ensure they're evaluated at runtime (not build time)
@@ -146,7 +151,7 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
             )}
             {alertKind === 'manual-ban' && (
               <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium">
-                Manual ban
+                {manualBanLabel(alert)}
               </span>
             )}
             {alertKind === 'audit' && (

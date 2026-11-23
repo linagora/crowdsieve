@@ -133,6 +133,9 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       forwarded_at TEXT,
       local_audit INTEGER DEFAULT 0,
       actor TEXT,
+      audit_server TEXT,
+      audit_type TEXT,
+      audit_duration TEXT,
       raw_json TEXT
     );
 
@@ -277,6 +280,13 @@ function runSQLiteMigrations(sqlite: Database.Database) {
   const hasActorColumn = tableInfo.some((col) => col.name === 'actor');
   if (!hasActorColumn) {
     sqlite.exec('ALTER TABLE alerts ADD COLUMN actor TEXT');
+  }
+
+  // Migration: audit columns of manual ban / unban rows (audit log page).
+  for (const column of ['audit_server', 'audit_type', 'audit_duration']) {
+    if (!tableInfo.some((col) => col.name === column)) {
+      sqlite.exec(`ALTER TABLE alerts ADD COLUMN ${column} TEXT`);
+    }
   }
 
   sqlite.exec('CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit)');

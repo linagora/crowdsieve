@@ -13,7 +13,12 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { StoredAlert } from '@/lib/types';
-import { getAlertKind, showsFilteredBadge, showsForwardedBadge } from '@/lib/alertStatus';
+import {
+  getAlertKind,
+  manualBanLabel,
+  showsFilteredBadge,
+  showsForwardedBadge,
+} from '@/lib/alertStatus';
 import { clsx } from 'clsx';
 
 interface AlertCardProps {
@@ -108,7 +113,7 @@ export function AlertCard({ alert, onClick }: AlertCardProps) {
           ) : kind === 'manual-ban' ? (
             <span className="badge bg-orange-100 text-orange-800">
               <ShieldPlus className="w-3 h-3 mr-1" />
-              Manual ban
+              {manualBanLabel(alert)}
             </span>
           ) : kind === 'audit' ? (
             <span className="badge bg-slate-100 text-slate-800">

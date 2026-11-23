@@ -57,6 +57,9 @@ function setupTestDatabase() {
       forwarded_at TEXT,
       local_audit INTEGER DEFAULT 0,
       actor TEXT,
+      audit_server TEXT,
+      audit_type TEXT,
+      audit_duration TEXT,
       raw_json TEXT
     );
 

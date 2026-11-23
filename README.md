@@ -22,6 +22,8 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
 - **Decision Search**: Query active decisions for any IP across all your LAPI servers
 - **Manual Bans**: Ban IPs directly from the dashboard, pushing decisions to your local CrowdSec LAPI servers
+  - `ban` or `captcha` remediation, preset or custom duration (1 minute to 365 days), up to 100 IPs/ranges per submission
+- **Audit Log**: Who banned or unbanned what, when, on which server, for how long and why, filterable by user and exportable as CSV
 - **REST API**: Fully documented with OpenAPI ([interactive docs](https://linagora.github.io/crowdsieve/api/) · [openapi.json](https://linagora.github.io/crowdsieve/api/openapi.json))
 - **Transparent Proxy**: Forwards non-filtered alerts to CAPI
 - **GeoIP Enrichment**: Enrich alerts with geographic information
@@ -191,6 +193,14 @@ See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
+The **Manual Ban** card (home page and alert details) offers:
+
+- **Remediation**: `Ban` (default) or `Captcha`. It is the decision `type` sent to the LAPI; your bouncers must support it.
+- **Duration**: 1 hour, 4 hours (default), 24 hours, 7 days, 30 days, or **Custom…** (a number of minutes, hours or days, from 1 minute to 365 days; the proxy enforces the same bounds).
+- **Several IPs**: paste IP addresses or CIDR ranges, one per line or separated by commas or spaces (at most 100 per submission). Invalid values are listed and block the submission, duplicates are removed. One ban request is sent per value (5 at a time), each with its own audit row and the same reason; the values that failed stay in the field for a retry.
+
+The REST endpoint is `POST /api/decisions/ban` with `{ server, ip, duration, reason, type? }`, where `type` is `ban` (default) or `captcha` and `duration` must be between `1m` and `8760h`.
+
 The operator who issued a manual ban is recorded on a local audit row at once. When the ban's alert later comes back from the LAPI through `/v2/signals` or `/v3/signals`, its `actor` event meta is only kept if this instance recorded a manual ban by that same operator on that same target within the last 24 hours. Any other `actor` meta received through signals is ignored (and logged), so a forged signal cannot appear as a ban by a named operator.
 
 ### Decision Replication
@@ -324,6 +334,14 @@ AUTH_LOGOUT_URL=https://portal.example.com/logout
 ```
 
 > **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [docs/oidc-authentication.md](./docs/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
+
+### Audit Log
+
+The **Audit log** page (`/audit`) lists every manual ban and unban issued from the dashboard, newest first: when, user, action, IP or range, LAPI server, remediation type and duration of a ban, and reason. It can be filtered by user, action, IP or range and period (all written in the URL, so a filtered view can be shared), paged 50 rows at a time, and exported as CSV (`crowdsieve-audit-<YYYYMMDD-HHmm>.csv`, every row matching the filters). Clicking a row opens its detail page. Every signed-in user can read it; nobody can edit or delete it from the dashboard. Its rows follow the alerts' retention (`storage.retention_days`).
+
+Only rows recorded by CrowdSieve itself when a ban or an unban succeeds are listed, never alerts received through signals. The same rows still appear in the alert lists.
+
+API: `GET /api/audit` (`actor`, `action` = `ban`|`unban`, `ip`, `since`, `until`, `limit` (default 50, max 1000), `offset`; answers `{ items: [{ id, at, action, actor, ip, server, type, duration, reason }], total }`) and `GET /api/audit/actors` (`{ actors: [...] }`).
 
 ### Decision Search
 

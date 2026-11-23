@@ -58,6 +58,10 @@ export interface StoredAlert {
    */
   localAudit?: boolean;
   actor?: string;
+  /** Audit rows only: LAPI server, remediation type and duration of a manual ban. */
+  auditServer?: string | null;
+  auditType?: string | null;
+  auditDuration?: string | null;
 }
 
 export interface AlertStats {
@@ -188,4 +192,27 @@ export interface BouncerName {
   lapiServerName: string;
   bouncerName: string;
   bouncerType: string | null;
+}
+
+export type AuditAction = 'ban' | 'unban';
+
+/** One manual ban or unban of the audit log (GET /api/audit). */
+export interface AuditLogItem {
+  /** Id of the audit row, shown by the alert detail page. */
+  id: number;
+  at: string;
+  action: AuditAction;
+  actor: string | null;
+  ip: string | null;
+  server: string | null;
+  /** Remediation type of a ban (`ban`, `captcha`); null for unbans. */
+  type: string | null;
+  /** Duration of a ban (e.g. `4h`); null for unbans. */
+  duration: string | null;
+  reason: string | null;
+}
+
+export interface AuditLogPage {
+  items: AuditLogItem[];
+  total: number;
 }
