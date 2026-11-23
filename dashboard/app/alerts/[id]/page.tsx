@@ -1,12 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { User } from 'lucide-react';
-import type { StoredAlert } from '@/lib/types';
+import type { AlertDetail } from '@/lib/types';
 import { IPInfoPanel } from '@/components/IPInfoPanel';
 import { BanIPForm } from '@/components/BanIPForm';
 import { IPAlertHistory } from '@/components/IPAlertHistory';
 import { LocalDateTime } from '@/components/LocalDateTime';
 import { ApiError } from '@/components/ApiError';
+import { CtiLink } from '@/components/CtiLink';
+import { AlertDecisionsCard } from '@/components/AlertDecisionsCard';
+import { AlertEventsCard } from '@/components/AlertEventsCard';
+import { AlertRawJson } from '@/components/AlertRawJson';
+import { manualBanDecisionFromRaw } from '@/lib/alertDetail';
 import { parseReturnPath, isValidAlertId } from '@/lib/alertFilters';
 import { getAlertKind, showsFilteredBadge, showsForwardedBadge } from '@/lib/alertStatus';
 import { requirePageAuth } from '@/lib/auth/guard';
@@ -36,7 +41,7 @@ type ApiResult<T> =
       details?: string;
     };
 
-async function getAlert(id: string): Promise<ApiResult<StoredAlert>> {
+async function getAlert(id: string): Promise<ApiResult<AlertDetail>> {
   const { apiBase, apiKey } = getApiConfig();
 
   if (!apiKey) {
@@ -111,6 +116,14 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
 
   const alert = result.data;
   const alertKind = getAlertKind(alert);
+  // Manual-ban audit rows store no decision rows: rebuild theirs from raw_json
+  const storedDecisions = alert.decisions ?? [];
+  const manualBanDecision =
+    alertKind === 'manual-ban' && storedDecisions.length === 0
+      ? manualBanDecisionFromRaw(alert.rawJson)
+      : null;
+  const decisions = manualBanDecision ? [manualBanDecision] : storedDecisions;
+  const showsDecisions = alertKind === 'alert' || alertKind === 'manual-ban';
 
   return (
     <div className="space-y-6">
@@ -190,6 +203,7 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
                     View decisions
                   </Link>
                 )}
+                <CtiLink ip={alert.sourceIp || alert.sourceValue} />
               </dd>
             </div>
             <div className="flex justify-between">
@@ -298,6 +312,12 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
         </div>
       </div>
 
+      {/* Decisions and events of this alert (audit rows have no stored events) */}
+      {showsDecisions && <AlertDecisionsCard decisions={decisions} now={Date.now()} />}
+      {!alert.localAudit && (
+        <AlertEventsCard events={alert.events ?? []} total={alert.eventsTotal ?? 0} />
+      )}
+
       {/* IP Network Information (Reverse DNS + WHOIS) and Manual Ban */}
       {(alert.sourceIp || alert.sourceValue) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -331,6 +351,9 @@ export default async function AlertDetailPage({ params, searchParams }: AlertDet
           </div>
         </div>
       )}
+
+      {/* Raw payload, loaded on demand */}
+      {alert.rawJson && <AlertRawJson alertId={alert.id} />}
 
       {/* UUID */}
       {alert.uuid && (

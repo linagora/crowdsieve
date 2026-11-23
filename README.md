@@ -335,6 +335,21 @@ Features:
 - Results grouped by server
 - Shared decisions (from CAPI/blocklists) are deduplicated and shown separately
 - Direct link from alert details to view decisions for the source IP
+- A "CrowdSec CTI ↗" link next to single public IPs (see below)
+
+### Alert Details
+
+The alert detail page shows, besides the source, location, scenario and timing cards:
+
+- **Decisions**: the decisions CrowdSec took for the alert (type, value, duration, expiry, origin) with a "Check live status" link to the Decisions page. Manual-ban audit entries show the ban they recorded.
+- **Events (N)**: the events that triggered the alert (timestamp and meta such as `service`, `user`, `target_fqdn`). The first 10 are shown, "Show all" expands to the first 50 returned by the API. Events are read from the alert payload stored in `raw_json`, so alerts stored by an older version show them too.
+- **Raw JSON**: the stored payload, loaded on demand, with a Copy button.
+
+The API serves them with `GET /api/alerts/:id` (adds `decisions`, `events`, `eventsTotal`) and `GET /api/alerts/:id/raw` (404 when no raw data is stored).
+
+### CrowdSec CTI Links
+
+Next to the source IP of an alert and next to single-IP decisions, the dashboard shows a "CrowdSec CTI ↗" link to `https://app.crowdsec.net/cti/<ip>`, opened in a new tab. It is not shown for ranges (CIDR), nor for private, loopback, link-local, unique-local, CGNAT, multicast or reserved addresses. Set `CTI_LINKS_ENABLED=false` on the dashboard (read at runtime) to remove every CTI link, for example on air-gapped deployments.
 
 ### Filter Rules
 
@@ -572,20 +587,21 @@ CrowdSec CAPI rejects requests whose **decompressed** body exceeds ~10 MiB. Afte
 
 ## Environment Variables
 
-| Variable                            | Default                  | Description                                           |
-| ----------------------------------- | ------------------------ | ----------------------------------------------------- |
-| `CONFIG_PATH`                       | `./config/filters.yaml`  | Path to config file                                   |
-| `DATABASE_PATH`                     | `./data/crowdsieve.db`   | Path to SQLite database                               |
-| `GEOIP_DB_PATH`                     | `./data/geoip-city.mmdb` | Path to GeoIP database                                |
-| `PROXY_PORT`                        | `8080`                   | Proxy listen port                                     |
-| `DASHBOARD_PORT`                    | `3000`                   | Dashboard listen port                                 |
-| `LOG_LEVEL`                         | `info`                   | Log level (debug, info, warn, error)                  |
-| `LOG_FORMAT`                        | `json`                   | Log format (json, pretty)                             |
-| `FORWARD_ENABLED`                   | `true`                   | Set to `false` to disable CAPI forwarding (test mode) |
-| `CLIENT_VALIDATION_ENABLED`         | `false`                  | Enable client validation against CAPI                 |
-| `CLIENT_VALIDATION_CACHE_TTL`       | `604800`                 | Cache TTL for validated clients (seconds)             |
-| `CLIENT_VALIDATION_CACHE_TTL_ERROR` | `300`                    | How long a fail-open result is remembered (seconds)   |
-| `CLIENT_VALIDATION_FAIL_CLOSED`     | `false`                  | Reject requests when CAPI is unavailable              |
+| Variable                            | Default                  | Description                                               |
+| ----------------------------------- | ------------------------ | --------------------------------------------------------- |
+| `CONFIG_PATH`                       | `./config/filters.yaml`  | Path to config file                                       |
+| `DATABASE_PATH`                     | `./data/crowdsieve.db`   | Path to SQLite database                                   |
+| `GEOIP_DB_PATH`                     | `./data/geoip-city.mmdb` | Path to GeoIP database                                    |
+| `PROXY_PORT`                        | `8080`                   | Proxy listen port                                         |
+| `DASHBOARD_PORT`                    | `3000`                   | Dashboard listen port                                     |
+| `CTI_LINKS_ENABLED`                 | `true`                   | Set to `false` to hide the CrowdSec CTI links (dashboard) |
+| `LOG_LEVEL`                         | `info`                   | Log level (debug, info, warn, error)                      |
+| `LOG_FORMAT`                        | `json`                   | Log format (json, pretty)                                 |
+| `FORWARD_ENABLED`                   | `true`                   | Set to `false` to disable CAPI forwarding (test mode)     |
+| `CLIENT_VALIDATION_ENABLED`         | `false`                  | Enable client validation against CAPI                     |
+| `CLIENT_VALIDATION_CACHE_TTL`       | `604800`                 | Cache TTL for validated clients (seconds)                 |
+| `CLIENT_VALIDATION_CACHE_TTL_ERROR` | `300`                    | How long a fail-open result is remembered (seconds)       |
+| `CLIENT_VALIDATION_FAIL_CLOSED`     | `false`                  | Reject requests when CAPI is unavailable                  |
 
 ## GeoIP Database
 

@@ -386,3 +386,38 @@ export const BouncerNameRow = Type.Object({
 export const BouncerNamesResponse = Type.Object({
   bouncers: Type.Array(BouncerNameRow),
 });
+
+/** A decision of an alert, as shown on the alert detail. */
+export const AlertDecisionResponse = Type.Object({
+  id: Type.Integer(),
+  type: Type.String(),
+  scope: Type.String(),
+  value: Type.String(),
+  duration: Nullable(Type.String()),
+  origin: Nullable(Type.String()),
+  scenario: Nullable(Type.String()),
+  until: Nullable(Type.String()),
+  simulated: Nullable(Type.Boolean()),
+});
+
+/** One event of an alert: timestamp and meta key/value pairs. */
+export const AlertEventResponse = Type.Object({
+  timestamp: Nullable(Type.String()),
+  meta: Type.Array(Type.Object({ key: Type.String(), value: Type.String() })),
+});
+
+/**
+ * Single alert with its decisions and its first events. Every field of
+ * {@link AlertResponse} is kept; `events` holds at most 50 entries and
+ * `eventsTotal` the number of events in the stored payload.
+ */
+export const AlertDetailResponse: TSchema = Type.Object({
+  ...(AlertResponse as unknown as { properties: Record<string, TSchema> }).properties,
+  decisions: Type.Array(AlertDecisionResponse),
+  events: Type.Array(AlertEventResponse),
+  eventsTotal: Type.Integer(),
+});
+
+export const AlertRawResponse = Type.Object({
+  rawJson: Type.String(),
+});

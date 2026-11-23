@@ -134,7 +134,12 @@ export interface DecisionStats {
 }
 
 // Import schema types - use SQLite schema types as canonical (they're compatible)
-import type { SelectAlert, SelectBouncerMetric, InsertBouncerMetric } from '../db/schema.js';
+import type {
+  SelectAlert,
+  SelectDecision,
+  SelectBouncerMetric,
+  InsertBouncerMetric,
+} from '../db/schema.js';
 
 // Public bouncer-metric shape: counters + collectedAt + the bouncer metadata
 // joined back from the `bouncers` table. Storage hides the normalization from
@@ -238,6 +243,8 @@ export interface AlertStorage {
   recordManualBanAuditEvent(input: RecordManualBanAuditEventInput): Promise<number>;
   queryAlerts(query: AlertQuery): Promise<SelectAlert[]>;
   getAlertById(id: number): Promise<SelectAlert | null>;
+  /** All decisions stored for an alert, oldest first. */
+  getAlertDecisions(alertId: number): Promise<SelectDecision[]>;
   hasAlertsNewerThan(timestamp: Date): Promise<boolean>;
   getStats(since?: Date): Promise<AlertStats>;
   getTimeDistributionStats(since?: Date): Promise<TimeDistributionStats>;
@@ -763,6 +770,21 @@ export function createStorage(): AlertStorage {
       } else {
         const result = (query as unknown as { get(): SelectAlert | undefined }).get();
         return result || null;
+      }
+    },
+
+    async getAlertDecisions(alertId) {
+      const { db, schema, isPostgres } = getDatabaseContext();
+      const query = db
+        .select()
+        .from(schema.decisions)
+        .where(eq(schema.decisions.alertId, alertId))
+        .orderBy(schema.decisions.id);
+
+      if (isPostgres) {
+        return (await query) as SelectDecision[];
+      } else {
+        return (query as unknown as { all(): SelectDecision[] }).all();
       }
     },
 
