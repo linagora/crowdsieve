@@ -5,6 +5,53 @@ All notable changes to CrowdSieve will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-23
+
+### Upgrade notes
+
+- **Decision replication**: decisions are replicated only when the sender was authenticated by CAPI and the machine id of its JWT is listed in a LAPI's `source_machine_ids` (the `login` of that LAPI's `online_api_credentials.yaml`). Until it is listed, nothing is replicated and a warning names the machine id seen. Replicated decisions are limited to `Ip`/`Range` scopes, `ban`/`captcha` types, ranges no wider than /16 (IPv4) or /32 (IPv6), and a duration capped by the new `replication.max_decision_duration` (default `168h`).
+- **Client validation**: only a CAPI 2xx validates a client; every other 4xx is now a rejection, and only 5xx, timeouts and network errors fail open. `cache_ttl_error_seconds` now defaults to 300 seconds (was 3600).
+- **OIDC**: `SESSION_SECRET` (at least 32 characters) is now required in production; there is no built-in fallback secret any more. Sessions end when the IdP access token expires (1 h when the IdP gives no lifetime), and the dashboard API answers 401 instead of redirecting when the session is invalid.
+- **Headers mode**: set `AUTH_PROXY_SECRET` and have the authenticating proxy send it in `X-Auth-Proxy-Secret`. `TRUSTED_PROXY_IPS` now uses the right-most `X-Forwarded-For` entry and cannot by itself prevent direct access to the dashboard.
+- **Reverse proxies**: state-changing dashboard API calls are rejected when `Origin` does not match the dashboard host. A reverse proxy that rewrites `Host` must send `X-Forwarded-Host`, or `NEXTAUTH_URL` must be set.
+- **docker-compose**: the dashboard port is now published on `127.0.0.1` by default (`DASHBOARD_BIND` to change it).
+- **Manual bans**: durations below 1 minute are now rejected.
+- **Roles**: with `AUTH_OPERATOR_GROUPS` set, sessions opened before the upgrade are read-only until the user signs in again. In headers mode, the authenticating proxy must set or strip the groups header (`AUTH_GROUPS_HEADER`, default `X-Forwarded-Groups`).
+- Database: new nullable columns `alerts.filter_rules`, `alerts.audit_server`, `alerts.audit_type` and `alerts.audit_duration`, added automatically at startup (SQLite and PostgreSQL).
+
+### Added
+
+- Decisions: an **Active decisions** table lists the current blocklist of every LAPI, with filters kept in the URL, community blocklists hidden by default, and bulk unban with a required reason (#129).
+- Decisions: each decision shows its expiry date; a CIDR search also finds the decisions inside the range (#140).
+- Alerts: search by IP or CIDR range and by country, and "Load more alerts" past the first page; clicking a map cluster selects its country (#130).
+- Statistics: the Top Countries and Top Scenarios bars open the matching alerts (#139).
+- Export of the alert list and of decision search results to CSV and JSON (#135).
+- Alert detail: the alert's decisions, its events and the raw JSON payload (#133).
+- "CrowdSec CTI ↗" links next to public IPs, disabled with `CTI_LINKS_ENABLED=false` (#141).
+- Manual ban: captcha remediation, custom durations (1 minute to 365 days) and up to 100 IPs or ranges at once (#136).
+- **Audit log** page of manual bans and unbans, filterable by user, action, IP and period, with CSV export (#137).
+- **Filters** page: the filter rules with the number of alerts each one filtered, and a test of a stored alert against the current rules; alerts can be filtered by rule (#134).
+- **Status** page for CAPI forwarding and LAPI connectivity, with a banner on every page when something fails (#138).
+- Bouncers: last report time, version, OS and an Active/Stale badge (#142).
+- Read-only **Viewer** role for users outside the SSO groups listed in `AUTH_OPERATOR_GROUPS` (new `OIDC_GROUPS_CLAIM`, `OIDC_SCOPES` and `AUTH_GROUPS_HEADER` settings); without it, every signed-in user stays an operator (#132).
+- Webhook and Slack-compatible notifications for new alerts, manual bans and unbans, CAPI forwarding failures and LAPI errors, configured under `notifications` in `filters.yaml`, with digests, retries and a "Send test" button on the Status page (#131).
+
+### Fixed
+
+- Dashboard: decision ids are validated before being sent to the proxy, and the `/v2`/`/v3` passthrough no longer forwards the dashboard API key or actor header to CAPI.
+- Validation cache entries written by earlier versions are purged once at upgrade.
+- Scenario search with `_` or `%` now works on SQLite.
+
+### Security
+
+- GHSA-w3hg-mhhx-fp6w (critical): in OIDC mode, the session cookie is now unsealed and validated by the middleware, and every dashboard API route and data page checks the session (expiry, revocation).
+- GHSA-q3f5-wwm8-6j5v (high): stored XSS through the alert scenario in the map popup. The popup is built from DOM nodes, stored scenarios are stripped of markup, and the dashboard sends a Content-Security-Policy and other security headers.
+- GHSA-rjx9-mrqq-772w (high): in headers mode, a client-written `X-Forwarded-For` entry no longer passes the `TRUSTED_PROXY_IPS` check; new `AUTH_PROXY_SECRET` shared secret.
+- GHSA-8gp7-jp8p-g9xr (medium): decisions received on `/v2/signals` were replicated verbatim to LAPIs and client validation failed open on any non-401/403 status (see upgrade notes). A signal can no longer appear as a manual ban by a named operator.
+- GHSA-8hgc-3vpr-6r43 (medium): no public fallback `SESSION_SECRET`; OIDC sign-in fails closed without a strong secret. The Helm chart keeps the generated secret across upgrades.
+- GHSA-2q3x-9jxw-8c7h (low): cross-origin state-changing requests to the dashboard API are rejected, and JSON routes require `Content-Type: application/json`.
+- GHSA-x9j8-8c9m-cmpp (low): a loud warning is logged when the dashboard runs without authentication, and docker-compose no longer publishes the dashboard on all interfaces.
+
 ## [0.6.10] - 2026-11-19
 
 ### Changed
