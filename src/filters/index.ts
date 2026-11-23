@@ -1,5 +1,5 @@
 import type { Alert } from '../models/alert.js';
-import type { FilterRule } from '../config/index.js';
+import type { LoadedFilterRule } from '../config/index.js';
 import type { Filter, FilterContext, FilterResult, FilterEngineResult } from './types.js';
 import { ExpressionFilter } from './implementations/expression.js';
 
@@ -21,9 +21,11 @@ function extractSourceIp(alert: Alert): string | undefined {
 export class FilterEngine {
   private filters: Filter[] = [];
   private mode: 'block' | 'allow';
+  private readonly rules: readonly LoadedFilterRule[];
 
-  constructor(mode: 'block' | 'allow', rules: FilterRule[]) {
+  constructor(mode: 'block' | 'allow', rules: LoadedFilterRule[]) {
     this.mode = mode;
+    this.rules = rules;
     this.filters = rules.map((rule) => new ExpressionFilter(rule.name, rule.enabled, rule.filter));
   }
 
@@ -90,6 +92,15 @@ export class FilterEngine {
 
   getFilters(): Filter[] {
     return this.filters;
+  }
+
+  getMode(): 'block' | 'allow' {
+    return this.mode;
+  }
+
+  /** The rule definitions the engine was built from, in evaluation order. */
+  getRules(): readonly LoadedFilterRule[] {
+    return this.rules;
   }
 }
 

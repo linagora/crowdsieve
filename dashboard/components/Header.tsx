@@ -10,6 +10,7 @@ const navLinks = [
   { href: '/', label: 'Dashboard' },
   { href: '/alerts', label: 'Alerts' },
   { href: '/stats', label: 'Statistics' },
+  { href: '/filters', label: 'Filters' },
   { href: '/decisions', label: 'Decisions' },
   { href: '/analyzers', label: 'Analyzers' },
   { href: '/bouncers', label: 'Bouncers' },

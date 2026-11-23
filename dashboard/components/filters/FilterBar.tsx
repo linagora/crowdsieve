@@ -1,6 +1,6 @@
 'use client';
 
-import { RotateCcw, Loader2 } from 'lucide-react';
+import { RotateCcw, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TimeRangeSlider } from './TimeRangeSlider';
 import { ScenarioFilter } from './ScenarioFilter';
@@ -68,6 +68,25 @@ export function FilterBar({
           )}
         </div>
       </div>
+
+      {/* Rule (set from the Filters page) */}
+      {filters.rule && (
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs font-medium text-slate-700">
+            Rule: {filters.rule}
+            <button
+              type="button"
+              onClick={() => onFiltersChange({ rule: null })}
+              disabled={isLoading}
+              aria-label={`Remove the filter Rule: ${filters.rule}`}
+              title="Remove"
+              className="rounded-full p-0.5 hover:bg-slate-200"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Time Range */}
       <div>

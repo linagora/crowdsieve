@@ -139,6 +139,7 @@ export const AlertResponse: TSchema = Type.Object({
   // Processing status
   filtered: Nullable(Type.Boolean()),
   filterReasons: Nullable(Type.String()),
+  filterRules: Nullable(Type.String()),
   forwardedToCapi: Nullable(Type.Boolean()),
   forwardedAt: Nullable(Type.String()),
   localAudit: Nullable(Type.Boolean()),
@@ -221,6 +222,44 @@ export const DecisionStatsResponse = Type.Object({
   byDurationCategory: Type.Array(DurationBucket),
   topScenarios: Type.Array(ScenarioCount),
   byCountry: Type.Array(CountryWithName),
+});
+
+// --- Filter rules ------------------------------------------------------------
+
+/** A filter rule as loaded at startup (operator configuration). */
+const FilterRuleInfo = Type.Object({
+  name: Type.String(),
+  description: Nullable(Type.String()),
+  enabled: Type.Boolean(),
+  file: Nullable(Type.String({ description: 'Name of the file the rule was loaded from' })),
+  condition: Type.String({ description: 'The rule condition, as YAML' }),
+});
+
+export const FilterRulesResponse = Type.Object({
+  mode: Type.Union([Type.Literal('block'), Type.Literal('allow')]),
+  rules: Type.Array(FilterRuleInfo),
+});
+
+export const FilterRuleStatsResponse = Type.Object({
+  total: Type.Integer(),
+  filtered: Type.Integer(),
+  byRule: Type.Array(
+    Type.Object({
+      name: Type.String(),
+      count: Type.Integer(),
+      lastMatchedAt: Nullable(Type.String()),
+    })
+  ),
+});
+
+export const FilterTestBody = Type.Object(
+  { alertId: Type.Integer({ minimum: 1 }) },
+  { additionalProperties: false }
+);
+
+export const FilterTestResponse = Type.Object({
+  filtered: Type.Boolean(),
+  matched: Type.Array(Type.Object({ name: Type.String(), reason: Nullable(Type.String()) })),
 });
 
 // --- LAPI server / decisions schemas -----------------------------------------

@@ -81,6 +81,7 @@ const POSTGRES_MIGRATIONS = `
     geo_org TEXT,
     filtered BOOLEAN DEFAULT FALSE,
     filter_reasons TEXT,
+    filter_rules TEXT,
     forwarded_to_capi BOOLEAN DEFAULT FALSE,
     forwarded_at TEXT,
     local_audit BOOLEAN DEFAULT FALSE,
@@ -276,6 +277,20 @@ export async function initializePostgres(
           WHERE table_name = 'alerts' AND column_name = 'actor'
         ) THEN
           ALTER TABLE alerts ADD COLUMN actor TEXT;
+        END IF;
+      END $$;
+    `);
+
+    // Migration: Add filter_rules column (JSON array of the names of the
+    // filter rules an alert matched). Older alerts keep NULL.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'alerts' AND column_name = 'filter_rules'
+        ) THEN
+          ALTER TABLE alerts ADD COLUMN filter_rules TEXT;
         END IF;
       END $$;
     `);

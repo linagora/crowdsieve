@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { createLogger } from './logging.js';
 import { loadConfig, loadConfigFromEnv, loadFiltersFromDirectory, Config } from './config/index.js';
 import { initializeDatabase, closeDatabase } from './db/index.js';
@@ -112,8 +112,13 @@ async function main() {
     logger.warn({ file, error }, 'Failed to load filter file');
   }
 
-  // Merge filters: config rules first, then directory filters
-  const allFilters = [...config.filters.rules, ...dirFilters];
+  // Merge filters: config rules first, then directory filters. Each rule
+  // keeps the name (not the path) of its file, shown on the dashboard.
+  const configFile = basename(CONFIG_PATH);
+  const allFilters = [
+    ...config.filters.rules.map((rule) => ({ ...rule, file: configFile })),
+    ...dirFilters,
+  ];
 
   // Initialize filter engine
   const filterEngine = new FilterEngine(config.filters.mode, allFilters);

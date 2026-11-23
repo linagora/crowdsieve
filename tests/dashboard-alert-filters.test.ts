@@ -35,6 +35,7 @@ describe('filter query string', () => {
       range: null,
       scenario: 'crowdsecurity/ssh-bf',
       machineId: 'srv-01',
+      rule: 'internal-ips',
       status: 'filtered',
     };
     const params = new URLSearchParams();

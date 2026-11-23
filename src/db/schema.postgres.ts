@@ -64,6 +64,7 @@ export const alerts = pgTable(
     // Processing status
     filtered: boolean('filtered').default(false),
     filterReasons: text('filter_reasons'), // JSON array
+    filterRules: text('filter_rules'), // JSON array of matched rule names
     forwardedToCapi: boolean('forwarded_to_capi').default(false),
     forwardedAt: text('forwarded_at'),
     // Locally-recorded audit event flag. Set on rows inserted by CrowdSieve to

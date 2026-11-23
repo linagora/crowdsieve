@@ -6,6 +6,7 @@ import net from 'net';
 import { getIPInfo, extractIpFromValue } from '../../ipinfo/index.js';
 import type { LapiServer } from '../../config/index.js';
 import { getAnalyzerEngine } from '../../analyzers/index.js';
+import filterRoutes from './filters.js';
 import { getMachineToken, CROWDSIEVE_VERSION } from '../../auth/machineToken.js';
 import { MANUAL_BAN_SCENARIO } from '../../storage/index.js';
 import { extractAlertEvents } from '../../storage/alertEvents.js';
@@ -141,6 +142,9 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
     }
   });
 
+  // Filter rules views (/api/filters*), behind the API key hook above
+  await fastify.register(filterRoutes);
+
   // Reasonable date bounds: not before 2020, not more than 1 day in the future.
   // Schema validates `format: date-time` parseability; this enforces semantic bounds.
   const minAllowedDate = new Date('2020-01-01T00:00:00Z');
@@ -166,6 +170,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           scenario: Type.Optional(Type.String({ maxLength: MAX_SCENARIO_LENGTH })),
           country: Type.Optional(CountryCode),
           machineId: Type.Optional(MachineId),
+          rule: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_SCENARIO_LENGTH })),
           ip: Type.Optional(Type.String()),
           since: Type.Optional(IsoDate),
           until: Type.Optional(IsoDate),
@@ -189,6 +194,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           scenario,
           country,
           machineId,
+          rule,
           ip,
           since: sinceStr,
           until: untilStr,
@@ -259,6 +265,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           sourceCountry: country,
           sourceIp,
           machineId,
+          rule,
           since,
           until,
         };
