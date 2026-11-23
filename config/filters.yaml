@@ -53,3 +53,30 @@ filters:
 # Only retention is configurable.
 # bouncer_metrics:
 #   retention_days: 30
+
+# Webhook notifications (see README "Notifications")
+# Each target receives one or more events: alert, manual_ban, unban,
+# forwarding_error (CAPI), lapi_error (LAPI unreachable/recovered, replication
+# failures). Within min_interval (Go duration, default "5m"), further events of
+# the same target and type are grouped into one digest message.
+# Use ${VAR} to keep secrets (tokens, webhook URLs) out of this file.
+# notifications:
+#   dashboard_url: "https://crowdsieve.example.com" # used for the links
+#   targets:
+#     - name: soc-chat
+#       type: slack # Slack-compatible incoming webhook (Mattermost, Rocket.Chat)
+#       url: "${SOC_CHAT_WEBHOOK_URL}"
+#       events: [alert, manual_ban, unban]
+#       match: # alerts only; every list is optional
+#         scenarios: [ssh-bf, smtp] # substrings of the scenario
+#         countries: [FR]
+#         machines: [mail-agent]
+#         status: forwarded # forwarded (default), filtered or any
+#       min_interval: 5m
+#     - name: incidents
+#       type: webhook # generic JSON POST
+#       url: "https://incidents.example.com/hooks/crowdsieve"
+#       headers:
+#         Authorization: "Bearer ${INCIDENTS_TOKEN}"
+#       events: [forwarding_error, lapi_error]
+#       min_interval: 15m

@@ -1100,8 +1100,9 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // alert is intentional: the audit row is filtered out of stats and
         // never forwarded to CAPI ("pas grave pour le doublon").
         // Failures must not bubble: the LAPI ban already succeeded.
+        let auditId: number | null = null;
         try {
-          await storage.recordManualBanAuditEvent({
+          auditId = await storage.recordManualBanAuditEvent({
             ip: targetValue,
             scope: targetScope,
             comment: trimmedReason,
@@ -1116,6 +1117,22 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             { err: recordErr, server: lapiServer.name, target: targetValue },
             'Failed to record manual ban audit event (LAPI ban already succeeded)'
           );
+        }
+
+        // The ban happened even if the audit row could not be recorded.
+        try {
+          fastify.notificationService?.notifyManualBan({
+            actor,
+            ip: targetValue,
+            scope: targetScope,
+            type,
+            duration,
+            server: lapiServer.name,
+            reason: trimmedReason,
+            auditId: typeof auditId === 'number' ? auditId : null,
+          });
+        } catch (notifyErr) {
+          logger.error({ err: notifyErr }, 'Failed to queue manual ban notification');
         }
 
         return reply.send({
@@ -1354,8 +1371,9 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
 
         // Record a local unban event for audit & timeline visibility.
         // Failures here must not bubble: the LAPI delete already succeeded.
+        let auditId: number | null = null;
         try {
-          await storage.recordUnbanEvent({
+          auditId = await storage.recordUnbanEvent({
             ip: decisionTarget.value,
             scope: decisionTarget.scope,
             comment: trimmedReason,
@@ -1368,6 +1386,20 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             { err: recordErr, server: lapiServer.name, decisionId },
             'Failed to record unban event (LAPI delete already succeeded)'
           );
+        }
+
+        try {
+          fastify.notificationService?.notifyUnban({
+            actor,
+            ip: decisionTarget.value,
+            scope: decisionTarget.scope,
+            server: lapiServer.name,
+            reason: trimmedReason,
+            decisionId,
+            auditId: typeof auditId === 'number' ? auditId : null,
+          });
+        } catch (notifyErr) {
+          logger.error({ err: notifyErr }, 'Failed to queue unban notification');
         }
 
         return reply.send({
@@ -1713,6 +1745,9 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
 
   // GET /api/status (inherits the API-key hook above)
   await fastify.register(import('./status.js'));
+
+  // GET /api/notifications, POST /api/notifications/:name/test (same hook)
+  await fastify.register(import('./notifications.js'));
 };
 
 export default apiRoutes;

@@ -16,6 +16,7 @@ import {
   ReplicationService,
 } from './replication/index.js';
 import { createStatusService } from './status/index.js';
+import { createNotificationService } from './notifications/index.js';
 
 const CONFIG_PATH = process.env.CONFIG_PATH || './config/filters.yaml';
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || './data/geoip-city.mmdb';
@@ -52,6 +53,7 @@ async function main() {
     analyzers: fileConfig.analyzers, // Analyzers only from file
     bouncer_metrics: fileConfig.bouncer_metrics, // Bouncer metrics retention settings
     replication: fileConfig.replication, // Replicated decision limits
+    notifications: fileConfig.notifications, // Webhook notification targets
   };
 
   // Initialize logger (with custom `notice` level wired in for audit-friendly
@@ -182,6 +184,29 @@ async function main() {
   // Health state of CAPI forwarding and LAPI servers (periodic LAPI check)
   const statusService = createStatusService(config, logger);
 
+  // Webhook notifications: alerts, manual bans/unbans, CAPI and LAPI failures
+  const notificationService = createNotificationService(config.notifications, logger);
+  const unsubscribeNotifications = statusService.onEvent((event) =>
+    notificationService.handleStatusEvent(event)
+  );
+  if (notificationService.enabled) {
+    logger.info(
+      {
+        targets: config.notifications.targets.map((t) => ({
+          name: t.name,
+          type: t.type,
+          events: t.events,
+        })),
+      },
+      'Notifications enabled'
+    );
+    if (!config.notifications.dashboard_url) {
+      logger.warn(
+        'notifications.dashboard_url is not set: notification messages will carry no link to the dashboard'
+      );
+    }
+  }
+
   // Initialize replication service (if any servers have replicate_decisions enabled)
   let replicationService: ReplicationService | undefined;
   const replicationServers = (config.lapi_servers || []).filter((s) => s.replicate_decisions);
@@ -263,6 +288,7 @@ async function main() {
     clientValidator,
     replicationService,
     statusService,
+    notificationService,
   });
 
   // Graceful shutdown
@@ -270,6 +296,8 @@ async function main() {
     logger.info({ signal }, 'Shutting down...');
 
     statusService.stop();
+    unsubscribeNotifications();
+    notificationService.stop();
     await server.close();
     logger.info('HTTP server closed');
 

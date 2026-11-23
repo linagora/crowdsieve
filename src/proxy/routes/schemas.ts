@@ -588,3 +588,73 @@ export const StatusResponse = Type.Object({
   ),
   generatedAt: Type.Integer(),
 });
+
+// --- Notifications (webhook targets) ---------------------------------------------
+
+const NotificationEvent = Type.Union([
+  Type.Literal('alert'),
+  Type.Literal('manual_ban'),
+  Type.Literal('unban'),
+  Type.Literal('forwarding_error'),
+  Type.Literal('lapi_error'),
+]);
+
+export const NotificationTargetName = Type.String({
+  minLength: 1,
+  maxLength: 64,
+  pattern: '^[a-zA-Z0-9_-]+$',
+  description: 'Name of a notification target',
+});
+
+export const NotificationsResponse = Type.Object({
+  enabled: Type.Boolean(),
+  dashboardUrl: Nullable(Type.String()),
+  targets: Type.Array(
+    Type.Object({
+      name: Type.String(),
+      type: Type.Union([Type.Literal('webhook'), Type.Literal('slack')]),
+      host: Type.String({ description: 'Host of the target URL (no path, query or credentials)' }),
+      events: Type.Array(NotificationEvent),
+      minInterval: Type.String(),
+      minIntervalMs: Type.Integer(),
+      match: Nullable(
+        Type.Object({
+          scenarios: Type.Array(Type.String()),
+          countries: Type.Array(Type.String()),
+          machines: Type.Array(Type.String()),
+          status: Type.Union([
+            Type.Literal('forwarded'),
+            Type.Literal('filtered'),
+            Type.Literal('any'),
+          ]),
+        })
+      ),
+      lastResult: Nullable(
+        Type.Object({
+          at: Type.Integer(),
+          ok: Type.Boolean(),
+          event: Type.Union([NotificationEvent, Type.Literal('test')]),
+          message: Type.String(),
+          attempts: Type.Integer(),
+        })
+      ),
+      lastSuccessAt: Nullable(Type.Integer()),
+      retrying: Nullable(
+        Type.Object({
+          attempt: Type.Integer(),
+          maxAttempts: Type.Integer(),
+          nextAttemptAt: Type.Integer(),
+          message: Type.String(),
+        })
+      ),
+      queued: Type.Integer(),
+      buffered: Type.Integer(),
+      dropped: Type.Integer(),
+    })
+  ),
+});
+
+export const NotificationTestResponse = Type.Object({
+  ok: Type.Boolean(),
+  message: Type.String(),
+});

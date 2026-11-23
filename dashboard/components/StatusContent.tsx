@@ -3,10 +3,16 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Server, Send } from 'lucide-react';
 import { useStatus } from '@/components/hooks/useStatus';
+import { NotificationsCard } from '@/components/NotificationsCard';
 import { formatAgo } from '@/lib/relativeTime';
 import { summaryLabel, type CapiStatus, type LapiStatus } from '@/lib/status';
 
 const REFRESH_INTERVAL_MS = 30_000;
+/**
+ * Show the "Send test" button of the notification targets. Single switch to
+ * hide it from users who may not trigger outgoing messages.
+ */
+const CAN_SEND_TEST_NOTIFICATION = true;
 
 type Tone = 'green' | 'red' | 'slate' | 'amber';
 
@@ -190,6 +196,8 @@ export function StatusContent() {
           </div>
         </>
       )}
+
+      {!unauthorized && <NotificationsCard now={clock} canSendTest={CAN_SEND_TEST_NOTIFICATION} />}
     </div>
   );
 }

@@ -290,9 +290,29 @@ export interface StoreAlertsOptions {
   logger?: { warn: (obj: object, msg: string) => void };
 }
 
+/** An alert inserted by {@link AlertStorage.storeAlerts}, as stored. */
+export interface StoredAlertSummary {
+  /** Index of the alert in the batch. */
+  index: number;
+  id: number;
+  /** Sanitised scenario (see {@link sanitizeScenario}). */
+  scenario: string | null;
+  /** source.ip, else source.value. */
+  ip: string | null;
+  /** GeoIP country code, else source.cn. */
+  country: string | null;
+  machineId: string | null;
+  filtered: boolean;
+}
+
 export interface StoreAlertsResult {
   /** Indices of alerts that have replicable decisions (for marking as replicated after success) */
   replicableIndices: number[];
+  /**
+   * Alerts inserted by this call, in batch order. Skipped alerts (replicated
+   * ones, duplicates) are not listed.
+   */
+  stored: StoredAlertSummary[];
 }
 
 export interface RecordUnbanEventInput {
@@ -605,6 +625,7 @@ export function createStorage(): AlertStorage {
       const geoipLookup = options?.geoipLookup;
       lastInsertedIdMap = new Map();
       const replicableIndices: number[] = [];
+      const stored: StoredAlertSummary[] = [];
 
       for (let i = 0; i < alerts.length; i++) {
         const alert = alerts[i];
@@ -732,6 +753,18 @@ export function createStorage(): AlertStorage {
 
         if (result) {
           lastInsertedIdMap.set(i, result.id);
+          const storedScenario = sanitizeScenario(alert.scenario);
+          const storedCountry = geoip?.countryCode || alert.source?.cn;
+          stored.push({
+            index: i,
+            id: result.id,
+            scenario: typeof storedScenario === 'string' ? storedScenario : null,
+            ip: typeof rawIpValue === 'string' && rawIpValue !== '' ? rawIpValue : null,
+            country:
+              typeof storedCountry === 'string' && storedCountry !== '' ? storedCountry : null,
+            machineId: typeof alert.machine_id === 'string' ? alert.machine_id : null,
+            filtered: Boolean(detail.filtered),
+          });
 
           // Store decisions
           if (alert.decisions && alert.decisions.length > 0) {
@@ -759,7 +792,7 @@ export function createStorage(): AlertStorage {
         }
       }
 
-      return { replicableIndices };
+      return { replicableIndices, stored };
     },
 
     async markAlertsForwarded(indices) {
