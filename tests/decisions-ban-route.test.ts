@@ -75,6 +75,7 @@ interface RecordManualBanAuditCall {
   comment: string;
   server: string;
   duration: string;
+  type?: string;
   decisionId?: number;
   actor?: string | null;
 }
@@ -104,6 +105,7 @@ function buildMockStorage(): AlertStorage {
         comment: input.comment,
         server: input.server,
         duration: input.duration,
+        type: input.type,
         decisionId: input.decisionId,
         actor: input.actor ?? null,
       });
@@ -113,15 +115,15 @@ function buildMockStorage(): AlertStorage {
     getAlertById: notImplemented as unknown as AlertStorage['getAlertById'],
     hasAlertsNewerThan: notImplemented as unknown as AlertStorage['hasAlertsNewerThan'],
     getStats: notImplemented as unknown as AlertStorage['getStats'],
-    getTimeDistributionStats:
-      notImplemented as unknown as AlertStorage['getTimeDistributionStats'],
+    getTimeDistributionStats: notImplemented as unknown as AlertStorage['getTimeDistributionStats'],
     getDecisionStats: notImplemented as unknown as AlertStorage['getDecisionStats'],
     cleanup: notImplemented as unknown as AlertStorage['cleanup'],
     saveBouncerMetrics: notImplemented as unknown as AlertStorage['saveBouncerMetrics'],
     getBouncerMetrics: notImplemented as unknown as AlertStorage['getBouncerMetrics'],
     getBouncerNames: notImplemented as unknown as AlertStorage['getBouncerNames'],
-    cleanupBouncerMetrics:
-      notImplemented as unknown as AlertStorage['cleanupBouncerMetrics'],
+    cleanupBouncerMetrics: notImplemented as unknown as AlertStorage['cleanupBouncerMetrics'],
+    queryAuditLog: notImplemented as unknown as AlertStorage['queryAuditLog'],
+    getAuditActors: notImplemented as unknown as AlertStorage['getAuditActors'],
   };
 }
 
@@ -461,4 +463,99 @@ describe('POST /api/decisions/ban — LAPI alert payload shape', () => {
     });
     expect(body[0].decisions[0]).toMatchObject({ scope: 'range', value: '10.0.0.0/24' });
   });
+});
+
+describe('POST /api/decisions/ban — remediation type and duration bounds', () => {
+  function lastDecision(): { type: string; duration: string; value: string } {
+    for (let i = mockFetch.mock.calls.length - 1; i >= 0; i--) {
+      const [url, init] = mockFetch.mock.calls[i] as [string | URL, RequestInit?];
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/v1/alerts') && typeof init?.body === 'string') {
+        return JSON.parse(init.body)[0].decisions[0];
+      }
+    }
+    throw new Error('no /v1/alerts fetch captured');
+  }
+
+  function ban(payload: Record<string, unknown>) {
+    return app.inject({
+      method: 'POST',
+      url: '/api/decisions/ban',
+      headers: {
+        'X-API-Key': TEST_API_KEY,
+        'X-Crowdsieve-Actor': 'alice@example.com',
+        'Content-Type': 'application/json',
+      },
+      payload: { server: 'test-lapi', reason: 'incident', ...payload },
+    });
+  }
+
+  it('defaults to a ban decision and records type=ban', async () => {
+    const res = await ban({ ip: '198.51.100.240', duration: '4h' });
+
+    expect(res.statusCode).toBe(200);
+    expect(lastDecision()).toMatchObject({ type: 'ban', duration: '4h' });
+    expect(recordManualBanAuditCalls[0]).toMatchObject({ type: 'ban', duration: '4h' });
+    expect(res.json().message).toBe('198.51.100.240 banned for 4h');
+  });
+
+  it('sends a captcha decision and records it in the audit row', async () => {
+    const res = await ban({ ip: '198.51.100.241', duration: '2h', type: 'captcha' });
+
+    expect(res.statusCode).toBe(200);
+    expect(lastDecision()).toMatchObject({
+      type: 'captcha',
+      duration: '2h',
+      value: '198.51.100.241',
+    });
+    expect(recordManualBanAuditCalls[0]).toMatchObject({
+      type: 'captcha',
+      duration: '2h',
+      server: 'test-lapi',
+      actor: 'alice@example.com',
+    });
+    expect(res.json().message).toBe('198.51.100.241: captcha for 2h');
+  });
+
+  it.each(['throttle', 'BAN', '', 'captcha ', 'ban;drop'])(
+    'rejects the remediation type %j',
+    async (type) => {
+      const calls = mockFetch.mock.calls.length;
+      const res = await ban({ ip: '198.51.100.242', duration: '4h', type });
+
+      expect(res.statusCode).toBe(400);
+      expect(mockFetch.mock.calls.length).toBe(calls);
+      expect(recordManualBanAuditCalls).toHaveLength(0);
+    }
+  );
+
+  it.each(['1m', '60s', '90m', '8760h', '525600m'])('accepts the duration %s', async (duration) => {
+    const res = await ban({ ip: '198.51.100.243', duration });
+
+    expect(res.statusCode).toBe(200);
+    expect(lastDecision().duration).toBe(duration);
+  });
+
+  it.each(['0m', '0h', '59s', '8761h', '525601m', '99999999999999999999h'])(
+    'rejects the out-of-range duration %s',
+    async (duration) => {
+      const calls = mockFetch.mock.calls.length;
+      const res = await ban({ ip: '198.51.100.244', duration });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('Duration must be between 1 minute and 365 days');
+      expect(mockFetch.mock.calls.length).toBe(calls);
+      expect(recordManualBanAuditCalls).toHaveLength(0);
+    }
+  );
+
+  it.each(['4d', '4', 'h', '-1h', '1.5h'])(
+    'rejects the malformed duration %s',
+    async (duration) => {
+      const res = await ban({ ip: '198.51.100.245', duration });
+
+      expect(res.statusCode).toBe(400);
+      expect(recordManualBanAuditCalls).toHaveLength(0);
+    }
+  );
 });

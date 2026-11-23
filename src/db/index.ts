@@ -134,6 +134,9 @@ function runSQLiteMigrations(sqlite: Database.Database) {
       forwarded_at TEXT,
       local_audit INTEGER DEFAULT 0,
       actor TEXT,
+      audit_server TEXT,
+      audit_type TEXT,
+      audit_duration TEXT,
       raw_json TEXT
     );
 
@@ -284,6 +287,13 @@ function runSQLiteMigrations(sqlite: Database.Database) {
   // rules an alert matched). Older alerts keep NULL and count under no rule.
   if (!tableInfo.some((col) => col.name === 'filter_rules')) {
     sqlite.exec('ALTER TABLE alerts ADD COLUMN filter_rules TEXT');
+  }
+
+  // Migration: audit columns of manual ban / unban rows (audit log page).
+  for (const column of ['audit_server', 'audit_type', 'audit_duration']) {
+    if (!tableInfo.some((col) => col.name === column)) {
+      sqlite.exec(`ALTER TABLE alerts ADD COLUMN ${column} TEXT`);
+    }
   }
 
   sqlite.exec('CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit)');

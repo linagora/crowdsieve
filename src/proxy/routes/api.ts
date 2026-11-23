@@ -18,6 +18,10 @@ import {
   AnalyzerRunTriggerResponse,
   AnalyzerRunsResponse,
   AnalyzersListResponse,
+  AuditAction,
+  AuditActorsResponse,
+  AuditLogResponse,
+  BanType,
   BouncerMetricResponse,
   BouncerNamesResponse,
   CountryCode,
@@ -50,6 +54,27 @@ export const MAX_ACTOR_LENGTH = 256;
 export const DURATION_REGEX = /^\d+[smh]$/;
 export const SERVER_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 export const MACHINE_ID_REGEX = /^[a-zA-Z0-9_\-.:]+$/;
+
+/** Bounds of a manual ban duration: 1 minute to 365 days (8760h). */
+export const MIN_BAN_DURATION_SECONDS = 60;
+export const MAX_BAN_DURATION_SECONDS = 365 * 24 * 60 * 60;
+export const BAN_DURATION_RANGE_ERROR = 'Duration must be between 1 minute and 365 days';
+const DURATION_UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600 };
+
+/** Seconds of a `<digits>[smh]` duration, or null when it does not match. */
+export function parseDurationSeconds(duration: string): number | null {
+  const match = /^(\d+)([smh])$/.exec(duration);
+  if (!match) return null;
+  return Number(match[1]) * DURATION_UNIT_SECONDS[match[2]];
+}
+
+/** Whether a manual ban may use `duration` (1 minute to 365 days). */
+export function isValidBanDuration(duration: string): boolean {
+  const seconds = parseDurationSeconds(duration);
+  return (
+    seconds !== null && seconds >= MIN_BAN_DURATION_SECONDS && seconds <= MAX_BAN_DURATION_SECONDS
+  );
+}
 
 /**
  * Read the X-Crowdsieve-Actor header propagated by the dashboard proxy.
@@ -754,6 +779,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           ip: Type.String({ minLength: 1 }),
           duration: Duration,
           reason: Type.String({ minLength: 1, maxLength: MAX_REASON_LENGTH }),
+          type: Type.Optional(BanType),
         }),
         response: {
           200: SuccessResponse,
@@ -771,7 +797,11 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // Authentication for all /api/* routes, including this one, is enforced by the
         // plugin-wide onRequest API key hook before the handler is reached.
 
-        const { server, ip, duration, reason } = request.body;
+        const { server, ip, duration, reason, type = 'ban' } = request.body;
+
+        if (!isValidBanDuration(duration)) {
+          return reply.code(400).send({ error: BAN_DURATION_RANGE_ERROR });
+        }
 
         // Validate IP address or CIDR — schema can't reliably validate CIDR.
         const parsed = parseIpOrCidr(ip);
@@ -863,7 +893,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             decisions: [
               {
                 duration,
-                type: 'ban',
+                type,
                 scope: targetScope,
                 value: targetValue,
                 origin: 'crowdsieve',
@@ -876,7 +906,14 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         // Post to LAPI /v1/alerts
         const lapiUrl = `${lapiServer.url}/v1/alerts`;
         logger.info(
-          { server: lapiServer.name, target: targetValue, scope: targetScope, duration, actor },
+          {
+            server: lapiServer.name,
+            target: targetValue,
+            scope: targetScope,
+            type,
+            duration,
+            actor,
+          },
           'Posting manual ban alert to LAPI'
         );
 
@@ -942,6 +979,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             server: lapiServer.name,
             target: targetValue,
             scope: targetScope,
+            type,
             duration,
             reason: trimmedReason,
             decisionId: lapiDecisionId,
@@ -962,6 +1000,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
             comment: trimmedReason,
             server: lapiServer.name,
             duration,
+            type,
             decisionId: lapiDecisionId,
             actor,
           });
@@ -974,7 +1013,10 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
 
         return reply.send({
           success: true,
-          message: `${targetValue} banned for ${duration}`,
+          message:
+            type === 'ban'
+              ? `${targetValue} banned for ${duration}`
+              : `${targetValue}: ${type} for ${duration}`,
           server: lapiServer.name,
         });
       } catch (err) {
@@ -1229,6 +1271,105 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
       } catch (err) {
         logger.error({ err }, 'Failed to delete decision');
         return reply.code(500).send({ error: 'Failed to delete decision' });
+      }
+    }
+  );
+
+  // ============== Audit log API Endpoints ==============
+
+  // Manual bans and unbans recorded by this instance (local audit rows only,
+  // never regular alerts), newest first.
+  fastify.get(
+    '/api/audit',
+    {
+      schema: {
+        tags: ['audit'],
+        summary: 'List manual bans and unbans (audit log)',
+        querystring: Type.Object({
+          actor: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_ACTOR_LENGTH })),
+          action: Type.Optional(AuditAction),
+          ip: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+          since: Type.Optional(IsoDate),
+          until: Type.Optional(IsoDate),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_LIMIT, default: 50 })),
+          offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+        }),
+        response: {
+          200: AuditLogResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          500: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const {
+          actor,
+          action,
+          ip,
+          since: sinceStr,
+          until: untilStr,
+          limit,
+          offset,
+        } = request.query;
+
+        let targetIp: string | undefined;
+        if (ip) {
+          const parsed = parseIpOrCidr(ip);
+          if (!parsed.valid) {
+            return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
+          }
+          targetIp = parsed.value;
+        }
+
+        const since = sinceStr ? new Date(sinceStr) : undefined;
+        if (since && (isNaN(since.getTime()) || !checkDateInRange(since))) {
+          return reply.code(400).send({ error: 'Since date out of acceptable range' });
+        }
+        const until = untilStr ? new Date(untilStr) : undefined;
+        if (until && (isNaN(until.getTime()) || !checkDateInRange(until))) {
+          return reply.code(400).send({ error: 'Until date out of acceptable range' });
+        }
+
+        const page = await storage.queryAuditLog({
+          actor: actor?.trim() || undefined,
+          action,
+          ip: targetIp,
+          since,
+          until,
+          limit,
+          offset,
+        });
+        return reply.send(page);
+      } catch (err) {
+        logger.error({ err }, 'Failed to query audit log');
+        return reply.code(500).send({ error: 'Failed to query audit log' });
+      }
+    }
+  );
+
+  // Distinct users found in the audit log (User filter of the audit page).
+  fastify.get(
+    '/api/audit/actors',
+    {
+      schema: {
+        tags: ['audit'],
+        summary: 'List the users who issued manual bans or unbans',
+        response: {
+          200: AuditActorsResponse,
+          401: ErrorResponse,
+          500: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const actors = await storage.getAuditActors();
+        return reply.send({ actors });
+      } catch (err) {
+        logger.error({ err }, 'Failed to list audit actors');
+        return reply.code(500).send({ error: 'Failed to list audit actors' });
       }
     }
   );

@@ -97,6 +97,9 @@ const ALERT_COLUMNS = [
   'forwardedAt',
   'localAudit',
   'actor',
+  'auditServer',
+  'auditType',
+  'auditDuration',
   'rawJson',
 ];
 

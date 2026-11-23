@@ -86,6 +86,9 @@ const POSTGRES_MIGRATIONS = `
     forwarded_at TEXT,
     local_audit BOOLEAN DEFAULT FALSE,
     actor TEXT,
+    audit_server TEXT,
+    audit_type TEXT,
+    audit_duration TEXT,
     raw_json TEXT
   );
 
@@ -293,6 +296,13 @@ export async function initializePostgres(
           ALTER TABLE alerts ADD COLUMN filter_rules TEXT;
         END IF;
       END $$;
+    `);
+
+    // Migration: audit columns of manual ban / unban rows (audit log page).
+    await pool.query(`
+      ALTER TABLE alerts ADD COLUMN IF NOT EXISTS audit_server TEXT;
+      ALTER TABLE alerts ADD COLUMN IF NOT EXISTS audit_type TEXT;
+      ALTER TABLE alerts ADD COLUMN IF NOT EXISTS audit_duration TEXT;
     `);
 
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_local_audit ON alerts(local_audit);`);

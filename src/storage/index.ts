@@ -240,6 +240,8 @@ export interface RecordManualBanAuditEventInput {
   server: string;
   /** Duration of the original ban (e.g. "4h"). Recorded in `raw_json`. */
   duration: string;
+  /** Remediation type of the decision (`ban` when omitted). */
+  type?: ManualBanType;
   /**
    * LAPI-returned decision id, when the LAPI response carried one. Recorded
    * in `raw_json` for forensic linking; omitted otherwise.
@@ -249,6 +251,9 @@ export interface RecordManualBanAuditEventInput {
   actor?: string | null;
   geoipLookup?: (ip: string) => GeoIPInfo | null;
 }
+
+/** Remediation types a manual ban may apply. */
+export type ManualBanType = 'ban' | 'captcha';
 
 export interface AlertStorage {
   storeAlerts(
@@ -274,10 +279,14 @@ export interface AlertStorage {
   getBouncerMetrics(filters: BouncerMetricsQuery): Promise<BouncerMetric[]>;
   getBouncerNames(): Promise<BouncerNameRow[]>;
   cleanupBouncerMetrics(retentionDays: number): Promise<number>;
+  // Audit log of manual bans and unbans (see ./audit.ts)
+  queryAuditLog(query: AuditLogQuery): Promise<AuditLogPage>;
+  getAuditActors(): Promise<string[]>;
 }
 
 // Import shared replication constants
 import { REPLICATION_ORIGIN } from '../replication/index.js';
+import { queryAuditLog, getAuditActors, type AuditLogQuery, type AuditLogPage } from './audit.js';
 
 /**
  * Check if an alert has decisions from crowdsieve-replication origin
@@ -403,6 +412,8 @@ interface RecordLocalAuditEventInput {
   decisionId?: number;
   /** Defined for manual-ban audits only. */
   duration?: string;
+  /** Defined for manual-ban audits only. */
+  type?: ManualBanType;
   actor?: string | null;
   geoipLookup?: (ip: string) => GeoIPInfo | null;
 }
@@ -421,7 +432,7 @@ interface RecordLocalAuditEventInput {
  */
 async function recordLocalAuditEvent(input: RecordLocalAuditEventInput): Promise<number> {
   const { db, schema, isPostgres } = getDatabaseContext();
-  const { scenario, ip, scope, comment, server, decisionId, duration, geoipLookup } = input;
+  const { scenario, ip, scope, comment, server, decisionId, duration, type, geoipLookup } = input;
   // Normalize actor: trim, truncate to MAX_ACTOR_LENGTH, and treat empty
   // / whitespace-only strings as NULL so audit logs never carry padding or
   // oversized values from upstream callers.
@@ -464,11 +475,15 @@ async function recordLocalAuditEvent(input: RecordLocalAuditEventInput): Promise
       forwardedToCapi: false,
       localAudit: true,
       actor,
+      auditServer: server,
+      auditType: type ?? null,
+      auditDuration: duration ?? null,
       rawJson: JSON.stringify({
         kind,
         server,
         decisionId: decisionId ?? null,
         duration: duration ?? null,
+        type: type ?? null,
         comment,
         ip,
         scope,
@@ -730,6 +745,7 @@ export function createStorage(): AlertStorage {
         server: input.server,
         decisionId: input.decisionId,
         duration: input.duration,
+        type: input.type ?? 'ban',
         actor: input.actor,
         geoipLookup: input.geoipLookup,
       });
@@ -1757,5 +1773,8 @@ export function createStorage(): AlertStorage {
         return result.changes;
       }
     },
+
+    queryAuditLog,
+    getAuditActors,
   };
 }

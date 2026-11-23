@@ -132,11 +132,7 @@ describePostgres('PostgreSQL Integration', () => {
         source: { scope: 'ip', value: '10.0.0.1', ip: '10.0.0.1', cn: 'FR' },
       });
 
-      await storage.storeAlerts(
-        [alert],
-        [{ filtered: false, matchedFilters: [] }],
-        undefined
-      );
+      await storage.storeAlerts([alert], [{ filtered: false, matchedFilters: [] }], undefined);
 
       const results = await storage.queryAlerts({ sourceIp: '10.0.0.1' });
       expect(results.length).toBeGreaterThanOrEqual(1);
@@ -619,6 +615,61 @@ describePostgres('PostgreSQL Integration', () => {
 
       expect(stats).toHaveProperty('totalDecisions');
       expect(typeof stats.totalDecisions).toBe('number');
+    });
+  });
+
+  describe('Audit log', () => {
+    const storage = createStorage();
+    const actor = `audit-${Date.now()}@example.com`;
+    const ip = '198.51.100.250';
+
+    it('records and lists manual bans and unbans with server, type and duration', async () => {
+      const banId = await storage.recordManualBanAuditEvent({
+        ip,
+        scope: 'ip',
+        comment: 'pg ban',
+        server: 'lapi-pg',
+        duration: '2h',
+        type: 'captcha',
+        actor,
+      });
+      const unbanId = await storage.recordUnbanEvent({
+        ip,
+        scope: 'ip',
+        comment: 'pg unban',
+        server: 'lapi-pg',
+        decisionId: 1,
+        actor,
+      });
+      // A regular alert on the same IP never shows up in the audit log.
+      await storage.storeAlerts(
+        [createTestAlert({ source: { scope: 'ip', value: ip, ip } })],
+        [{ filtered: false, matchedFilters: [] }]
+      );
+
+      const page = await storage.queryAuditLog({ actor, limit: 10 });
+      expect(page.total).toBe(2);
+      expect(typeof page.total).toBe('number');
+      expect(page.items.map((i) => i.id).sort()).toEqual([banId, unbanId].sort());
+      expect(page.items.find((i) => i.id === banId)).toMatchObject({
+        action: 'ban',
+        ip,
+        server: 'lapi-pg',
+        type: 'captcha',
+        duration: '2h',
+        reason: 'pg ban',
+      });
+      expect(page.items.find((i) => i.id === unbanId)).toMatchObject({
+        action: 'unban',
+        server: 'lapi-pg',
+        type: null,
+        duration: null,
+      });
+
+      const unbans = await storage.queryAuditLog({ actor, action: 'unban', ip });
+      expect(unbans.items.map((i) => i.id)).toEqual([unbanId]);
+
+      expect(await storage.getAuditActors()).toContain(actor);
     });
   });
 });

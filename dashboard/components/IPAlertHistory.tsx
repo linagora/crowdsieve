@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { StoredAlert } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
 import { alertDetailHref } from '@/lib/alertFilters';
+import { manualBanLabel } from '@/lib/alertStatus';
 
 const PAGE_SIZE = 5;
 
@@ -169,7 +170,7 @@ export function IPAlertHistory({ ip, currentAlertId, returnPath }: IPAlertHistor
                     </span>
                   ) : alert.localAudit && alert.scenario === 'crowdsieve/manual-audit' ? (
                     <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded">
-                      Manual ban
+                      {manualBanLabel(alert)}
                     </span>
                   ) : (
                     <>

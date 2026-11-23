@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/stats', label: 'Statistics' },
   { href: '/filters', label: 'Filters' },
   { href: '/decisions', label: 'Decisions' },
+  { href: '/audit', label: 'Audit log' },
   { href: '/analyzers', label: 'Analyzers' },
   { href: '/bouncers', label: 'Bouncers' },
   { href: '/status', label: 'Status' },

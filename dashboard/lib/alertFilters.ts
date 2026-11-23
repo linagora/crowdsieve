@@ -43,6 +43,7 @@ const PARAM_STATUS = 'status';
 const RETURN_PATHS: Record<string, string> = {
   '/': 'Dashboard',
   '/alerts': 'Alerts',
+  '/audit': 'Audit log',
 };
 
 function parseDate(value: string | null): Date | null {
