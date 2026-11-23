@@ -3,6 +3,7 @@ import { DashboardContent } from '@/components/DashboardContent';
 import { BanIPForm } from '@/components/BanIPForm';
 import { ApiError } from '@/components/ApiError';
 import type { StoredAlert, AlertStats } from '@/lib/types';
+import { requirePageAuth } from '@/lib/auth/guard';
 
 // Force dynamic rendering to read env vars at runtime
 export const dynamic = 'force-dynamic';
@@ -89,6 +90,8 @@ async function getStats(): Promise<ApiResult<AlertStats>> {
 }
 
 export default async function DashboardPage() {
+  await requirePageAuth();
+
   const [alertsResult, statsResult] = await Promise.all([getAlerts(), getStats()]);
 
   // Check for errors - prioritize showing the first error

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
 import { getSessionUser, resolveActor } from '@/lib/oidc/session';
+import { requireAuth } from '@/lib/auth/guard';
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireAuth();
+  if (denied) return denied;
+
   const { apiBase } = getApiConfig();
   const { id } = await params;
   const server = request.nextUrl.searchParams.get('server');

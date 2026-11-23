@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIP } from 'net';
 import { getApiConfig, getApiHeaders } from '@/lib/api-config';
+import { requireAuth } from '@/lib/auth/guard';
 
 /**
  * Extract the base IP from a value that may be an IP or CIDR notation.
@@ -20,6 +21,9 @@ function extractIpFromValue(value: string): string {
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ ip: string }> }) {
+  const denied = await requireAuth();
+  if (denied) return denied;
+
   const { apiBase } = getApiConfig();
   const { ip: rawIp } = await params;
 

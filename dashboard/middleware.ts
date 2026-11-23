@@ -10,17 +10,20 @@ import { isSafeRedirect } from '@/lib/oidc/validation';
  *
  * Three modes are supported (selected via AUTH_MODE or auto-detected):
  *   - 'none'    : allow everything.
- *   - 'oidc'    : check the iron-session cookie, redirect to /login when absent.
+ *   - 'oidc'    : unseal the iron-session cookie and require a signed-in,
+ *                 unexpired session; otherwise redirect pages to /login and
+ *                 answer 401 to API calls.
  *   - 'headers' : require a valid `Auth-Sub` header from a trusted upstream.
  *
- * Edge runtime caveat: full session validation (expiration, revocation) for
- * OIDC mode happens in page/API routes — middleware only checks cookie
- * presence as a first gate (defense in depth).
+ * Edge runtime caveat: the back-channel revocation store lives in the
+ * Node.js server, so revocation is checked again by `requireAuth()` /
+ * `requirePageAuth()` (lib/auth/guard.ts) in every API route and data page.
  */
 
 import { getAuthMode } from '@/lib/auth/mode';
 import { getClientIp, isTrustedProxy } from '@/lib/auth/trust';
 import { parseAuthHeaders } from '@/lib/auth/headers';
+import { isLiveSession, SESSION_COOKIE_NAME, unsealSessionCookie } from '@/lib/oidc/session-cookie';
 
 // Public paths that don't require authentication
 // SECURITY: Be careful adding paths - they bypass authentication
@@ -37,6 +40,10 @@ const PUBLIC_PATHS = [
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(path + '/'));
+}
+
+function isApiPath(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/');
 }
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
@@ -79,24 +86,29 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
-  // OIDC mode (existing behavior).
-  const sessionCookie = request.cookies.get('crowdsieve-session');
-  if (!sessionCookie) {
-    // Redirect to login with the original path and query string, so a shared
-    // link such as /decisions?ip=... lands on the requested page after sign-in.
-    const loginUrl = new URL('/login', request.url);
-    const returnPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-    // SECURITY: Validate the return path before adding it to the redirect
-    // parameter. The login page and the OIDC callback validate it again.
-    if (isSafeRedirect(returnPath) && returnPath !== '/') {
-      loginUrl.searchParams.set('redirect', returnPath);
-    }
-    return NextResponse.redirect(loginUrl);
+  // OIDC mode: the cookie must unseal with SESSION_SECRET and hold a
+  // signed-in, unexpired session. The cookie saved by the public
+  // /api/auth/login (login in progress, no `user`) does not qualify.
+  const session = await unsealSessionCookie(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+  if (isLiveSession(session)) {
+    return NextResponse.next();
   }
 
-  // Session cookie exists - allow the request
-  // Full session validation happens in the page/API routes
-  return NextResponse.next();
+  // API calls get a JSON 401 instead of an HTML login page.
+  if (isApiPath(request.nextUrl.pathname)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Redirect to login with the original path and query string, so a shared
+  // link such as /decisions?ip=... lands on the requested page after sign-in.
+  const loginUrl = new URL('/login', request.url);
+  const returnPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  // SECURITY: Validate the return path before adding it to the redirect
+  // parameter. The login page and the OIDC callback validate it again.
+  if (isSafeRedirect(returnPath) && returnPath !== '/') {
+    loginUrl.searchParams.set('redirect', returnPath);
+  }
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

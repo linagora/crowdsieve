@@ -1,0 +1,181 @@
+/**
+ * Server-side session guard of the dashboard API routes (GHSA-w3hg-mhhx-fp6w).
+ *
+ * The middleware is not the only gate: every API route outside `/api/auth`
+ * and `/api/jwks` calls `requireAuth()`, which validates the session for the
+ * configured auth mode (including back-channel revocation in OIDC mode).
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+import { sealData } from 'iron-session';
+
+const state = vi.hoisted(() => ({
+  cookies: new Map<string, string>(),
+  headers: new Headers(),
+}));
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({
+    get: (name: string) =>
+      state.cookies.has(name) ? { name, value: state.cookies.get(name) } : undefined,
+    set: vi.fn(),
+    delete: vi.fn(),
+  })),
+  headers: vi.fn(async () => state.headers),
+}));
+
+import { POST as banPost } from '../dashboard/app/api/decisions/ban/route.js';
+import { GET as alertsGet } from '../dashboard/app/api/alerts/route.js';
+import { revokeSession } from '../dashboard/lib/oidc/revocation.js';
+
+const originalEnv = { ...process.env };
+const SESSION_SECRET = 'guard-test-session-secret-0123456789abcdef';
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
+async function setSessionCookie(data: Record<string, unknown> | string): Promise<void> {
+  const value =
+    typeof data === 'string' ? data : await sealData(data, { password: SESSION_SECRET });
+  state.cookies.set('crowdsieve-session', value);
+}
+
+function liveSession(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    user: { sub: 'user-1', email: 'alice@example.com' },
+    expiresAt: Date.now() + 3600_000,
+    sid: `sid-${Math.random()}`,
+    ...overrides,
+  };
+}
+
+function banRequest(): NextRequest {
+  return new NextRequest('http://localhost:3000/api/decisions/ban', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ server: 'lapi', ip: '0.0.0.0/0', duration: '4h', reason: 'x' }),
+  });
+}
+
+function alertsRequest(): NextRequest {
+  return new NextRequest('http://localhost:3000/api/alerts?limit=10');
+}
+
+beforeEach(() => {
+  process.env = {
+    ...originalEnv,
+    AUTH_MODE: 'oidc',
+    SESSION_SECRET,
+    DASHBOARD_API_KEY: 'k',
+  };
+  state.cookies.clear();
+  state.headers = new Headers();
+  fetchMock = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  process.env = { ...originalEnv };
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('API route guard in OIDC mode', () => {
+  it('rejects POST /api/decisions/ban without a session cookie', async () => {
+    const res = await banPost(banRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects POST /api/decisions/ban with an arbitrary cookie', async () => {
+    await setSessionCookie('anything');
+    const res = await banPost(banRequest());
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Unauthorized' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects POST /api/decisions/ban with the login-flow cookie (no user)', async () => {
+    await setSessionCookie({ state: 's', nonce: 'n', codeVerifier: 'v' });
+    const res = await banPost(banRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects GET /api/alerts with an arbitrary cookie', async () => {
+    await setSessionCookie('anything');
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects GET /api/alerts with the login-flow cookie (no user)', async () => {
+    await setSessionCookie({ state: 's', nonce: 'n', codeVerifier: 'v' });
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired session', async () => {
+    await setSessionCookie(liveSession({ expiresAt: Date.now() - 1 }));
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a session revoked by back-channel logout', async () => {
+    await setSessionCookie(liveSession({ sid: 'sid-revoked', user: { sub: 'user-revoked' } }));
+    revokeSession('sid-revoked', 'user-revoked');
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a valid session through and records the actor', async () => {
+    await setSessionCookie(liveSession());
+    const res = await banPost(banRequest());
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)['X-Crowdsieve-Actor']).toBe('user-1');
+  });
+});
+
+describe('API route guard in other modes', () => {
+  it('headers mode: rejects a request without Auth-Sub', async () => {
+    process.env.AUTH_MODE = 'headers';
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('headers mode: lets a request with Auth-Sub through', async () => {
+    process.env.AUTH_MODE = 'headers';
+    state.headers = new Headers({ 'Auth-Sub': 'user-1' });
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('none mode: no session is required', async () => {
+    process.env.AUTH_MODE = 'none';
+    const res = await alertsGet(alertsRequest());
+
+    expect(res.status).toBe(200);
+  });
+});

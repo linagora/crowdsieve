@@ -1,6 +1,7 @@
 import { AlertsContent } from '@/components/AlertsContent';
 import { ApiError } from '@/components/ApiError';
 import type { StoredAlert, AlertStats } from '@/lib/types';
+import { requirePageAuth } from '@/lib/auth/guard';
 
 // Force dynamic rendering to read env vars at runtime
 export const dynamic = 'force-dynamic';
@@ -86,6 +87,8 @@ async function getStats(): Promise<ApiResult<AlertStats>> {
 }
 
 export default async function AlertsPage() {
+  await requirePageAuth();
+
   const [alertsResult, statsResult] = await Promise.all([getAlerts(), getStats()]);
 
   if (!alertsResult.success) {

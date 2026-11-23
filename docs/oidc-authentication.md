@@ -46,6 +46,13 @@ sequenceDiagram
     Dashboard->>User: 10. Authenticated
 ```
 
+### Session validation
+
+The session is stored in the encrypted `crowdsieve-session` cookie (iron-session, sealed with `SESSION_SECRET`). It is checked on every request:
+
+- The middleware unseals the cookie and requires a signed-in user and an expiry (`expiresAt`, taken from the access token lifetime) in the future. Otherwise pages are redirected to `/login` and API calls get `401 {"error":"Unauthorized"}`. The cookie that `/api/auth/login` saves while a login is in progress does not qualify.
+- Every API route (except `/api/auth/*` and `/api/jwks`) and every server page that loads data checks the session again, adding the [back-channel logout](#back-channel-logout) revocation check, which the Edge middleware cannot see.
+
 ## Configuration
 
 ### Environment Variables
