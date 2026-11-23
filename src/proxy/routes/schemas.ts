@@ -381,8 +381,68 @@ export const BouncerNameRow = Type.Object({
   lapiServerName: Type.String(),
   bouncerName: Type.String(),
   bouncerType: Nullable(Type.String()),
+  /** Unix ms of the last usage-metrics report (any component kind). */
+  lastSeenAt: Type.Integer(),
+  version: Nullable(Type.String()),
+  osName: Nullable(Type.String()),
+  osVersion: Nullable(Type.String()),
 });
 
 export const BouncerNamesResponse = Type.Object({
   bouncers: Type.Array(BouncerNameRow),
+});
+
+// --- Status (CAPI forwarding and LAPI connectivity) ------------------------------
+
+const TimedError = Nullable(Type.Object({ at: Type.Integer(), message: Type.String() }));
+
+export const StatusResponse = Type.Object({
+  ok: Type.Boolean(),
+  problems: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal('capi'), Type.Literal('lapi')]),
+      server: Type.Optional(Type.String()),
+      since: Nullable(Type.Integer()),
+      message: Type.String(),
+    })
+  ),
+  capi: Type.Object({
+    enabled: Type.Boolean(),
+    state: Type.Union([
+      Type.Literal('disabled'),
+      Type.Literal('idle'),
+      Type.Literal('ok'),
+      Type.Literal('failing'),
+    ]),
+    lastSuccessAt: Nullable(Type.Integer()),
+    lastError: TimedError,
+    failingSince: Nullable(Type.Integer()),
+    sent24h: Type.Integer(),
+    failed24h: Type.Integer(),
+  }),
+  lapis: Type.Array(
+    Type.Object({
+      name: Type.String(),
+      host: Type.String(),
+      reachable: Nullable(Type.Boolean()),
+      responseTimeMs: Nullable(Type.Integer()),
+      error: Nullable(Type.String()),
+      checkedAt: Nullable(Type.Integer()),
+      unreachableSince: Nullable(Type.Integer()),
+      machineCredentials: Type.Boolean(),
+      machineAuth: Type.Union([
+        Type.Literal('not_configured'),
+        Type.Literal('ok'),
+        Type.Literal('failed'),
+        Type.Literal('unknown'),
+      ]),
+      manualBanAvailable: Type.Boolean(),
+      replication: Type.Object({
+        enabled: Type.Boolean(),
+        lastError: TimedError,
+        lastSuccessAt: Nullable(Type.Integer()),
+      }),
+    })
+  ),
+  generatedAt: Type.Integer(),
 });

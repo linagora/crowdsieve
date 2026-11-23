@@ -13,6 +13,7 @@ const navLinks = [
   { href: '/decisions', label: 'Decisions' },
   { href: '/analyzers', label: 'Analyzers' },
   { href: '/bouncers', label: 'Bouncers' },
+  { href: '/status', label: 'Status' },
 ];
 
 export function Header() {

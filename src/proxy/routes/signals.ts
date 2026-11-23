@@ -11,6 +11,11 @@ import {
   SignalsResponse,
 } from './schemas.js';
 
+/** CAPI answers meaning that forwarding does not work (credentials, quota, outage). */
+export function isCapiFailureStatus(status: number): boolean {
+  return status >= 500 || status === 401 || status === 403 || status === 429;
+}
+
 // Maximum number of alerts allowed per batch to prevent DoS
 export const MAX_ALERTS_PER_BATCH = 1000;
 
@@ -75,6 +80,7 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     proxyLogger: logger,
     clientValidator,
     replicationService,
+    statusService,
   } = fastify;
 
   /**
@@ -289,6 +295,17 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
 
       const responseBody = await response.text();
 
+      // Health tracking: CAPI rejecting our credentials, throttling or failing
+      // counts as a forwarding failure, any other answer as a success.
+      if (isCapiFailureStatus(response.status)) {
+        statusService?.recordCapiFailure(
+          crowdsieveFilterResult.alerts.length,
+          new Error(`CAPI answered HTTP ${response.status}`)
+        );
+      } else {
+        statusService?.recordCapiSuccess(crowdsieveFilterResult.alerts.length);
+      }
+
       logger.info(
         { count: crowdsieveFilterResult.alerts.length, status: response.status, apiVersion },
         'Forwarded signals to CAPI'
@@ -316,6 +333,7 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
       return reply.send(responseBody);
     } catch (err) {
       logger.error({ err }, 'Failed to forward to CAPI');
+      statusService?.recordCapiFailure(crowdsieveFilterResult.alerts.length, err);
       return reply.code(502).send({ error: 'Failed to forward to CAPI' });
     }
   };

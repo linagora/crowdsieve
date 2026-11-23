@@ -1074,6 +1074,67 @@ describe('Bouncer metrics storage', () => {
     expect(names[0].bouncerType).toBe('fw');
   });
 
+  it('getBouncerNames exposes lastSeenAt, version and OS from the latest report', async () => {
+    const now = Date.now();
+    await storage.saveBouncerMetrics([
+      makeRow({
+        bouncerName: 'fw',
+        collectedAt: now - 5000,
+        version: '1.0.0',
+        osName: 'Linux',
+        osVersion: 'Debian 11',
+      }),
+      makeRow({
+        bouncerName: 'fw',
+        collectedAt: now,
+        version: '1.6.4',
+        osName: 'Linux',
+        osVersion: 'Debian 12',
+      }),
+      // Registration-only bouncer: nothing known besides its name.
+      makeRow({
+        bouncerName: 'bare',
+        collectedAt: now - 60_000,
+        version: null,
+        osName: null,
+        osVersion: null,
+      }),
+    ]);
+
+    const names = await storage.getBouncerNames();
+    const fw = names.find((n) => n.bouncerName === 'fw')!;
+    expect(fw.lastSeenAt).toBe(now);
+    expect(fw.version).toBe('1.6.4');
+    expect(fw.osName).toBe('Linux');
+    expect(fw.osVersion).toBe('Debian 12');
+    const bare = names.find((n) => n.bouncerName === 'bare')!;
+    expect(bare.lastSeenAt).toBe(now - 60_000);
+    expect(bare.version).toBeNull();
+    expect(bare.osName).toBeNull();
+    expect(bare.osVersion).toBeNull();
+  });
+
+  it('getBouncerNames takes the latest lastSeenAt across component kinds', async () => {
+    const now = Date.now();
+    await storage.saveBouncerMetrics([
+      makeRow({ bouncerName: 'hy', componentKind: 'remediation', collectedAt: now - 3_600_000 }),
+      makeRow({
+        bouncerName: 'hy',
+        componentKind: 'log_processor',
+        collectedAt: now - 1000,
+        version: null,
+        osName: null,
+        osVersion: null,
+      }),
+    ]);
+
+    const [hy] = await storage.getBouncerNames();
+    expect(hy.lastSeenAt).toBe(now - 1000);
+    // Version/OS fall back to the other component that knows them.
+    expect(hy.version).toBe('0.1.0');
+    expect(hy.osName).toBe('linux');
+  });
+
   it('getStats blockedRequests sums per-window dropped counters across the retention window', async () => {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;

@@ -54,6 +54,12 @@ export interface ReplicationSender {
  */
 export type ReplicationOutcome = 'replicated' | 'nothing_to_do' | 'refused';
 
+/** Minimal sink for replication outcomes (implemented by the status service). */
+export interface ReplicationStatusSink {
+  recordReplicationSuccess(server: string): void;
+  recordReplicationFailure(server: string, error: unknown): void;
+}
+
 export interface ReplicationService {
   /**
    * Replicate decisions from alerts to configured LAPI servers.
@@ -95,7 +101,8 @@ const MAX_LOGGED_DECISIONS = 20;
  */
 export function createReplicationService(
   config: Config,
-  logger: ReplicationLogger
+  logger: ReplicationLogger,
+  status?: ReplicationStatusSink
 ): ReplicationService {
   const timeoutMs = config.proxy.timeout_ms;
   const maxDuration = config.replication?.max_decision_duration ?? DEFAULT_MAX_DECISION_DURATION;
@@ -289,6 +296,7 @@ export function createReplicationService(
       const token = await getMachineToken(server, timeoutMs, logger);
       if (!token) {
         logger.warn({ server: server.name }, 'Failed to get machine token for replication');
+        status?.recordReplicationFailure(server.name, 'Machine login failed');
         return false;
       }
 
@@ -309,6 +317,7 @@ export function createReplicationService(
           { server: server.name, status: response.status, error: errorBody },
           'Failed to replicate decisions to LAPI'
         );
+        status?.recordReplicationFailure(server.name, `LAPI answered HTTP ${response.status}`);
         return false;
       }
 
@@ -316,9 +325,11 @@ export function createReplicationService(
         { server: server.name, alertCount: payload.length },
         'Successfully replicated decisions to LAPI'
       );
+      status?.recordReplicationSuccess(server.name);
       return true;
     } catch (err) {
       logger.error({ server: server.name, err }, 'Error replicating decisions to LAPI');
+      status?.recordReplicationFailure(server.name, err);
       return false;
     }
   }

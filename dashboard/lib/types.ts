@@ -188,4 +188,9 @@ export interface BouncerName {
   lapiServerName: string;
   bouncerName: string;
   bouncerType: string | null;
+  /** Unix ms of the last usage-metrics report. */
+  lastSeenAt: number;
+  version: string | null;
+  osName: string | null;
+  osVersion: string | null;
 }
