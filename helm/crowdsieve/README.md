@@ -122,11 +122,15 @@ cat /etc/crowdsec/online_api_credentials.yaml
 | `crowdsieve.proxy.forwardEnabled`                   | Forward alerts to CAPI                                | `true`                     |
 | `crowdsieve.dashboard.port`                         | Dashboard port                                        | `3000`                     |
 | `crowdsieve.dashboard.apiKey`                       | API key for dashboard auth                            | `""`                       |
+| `crowdsieve.dashboard.auth.operatorGroups`          | Groups that may write, others read-only               | `""` (everyone writes)     |
+| `crowdsieve.dashboard.auth.headers.groupsHeader`    | Headers mode: header with the user's groups           | `X-Forwarded-Groups`       |
 | `crowdsieve.dashboard.oidc.enabled`                 | Enable OIDC authentication                            | `false`                    |
 | `crowdsieve.dashboard.oidc.issuer`                  | OIDC Issuer URL                                       | `""`                       |
 | `crowdsieve.dashboard.oidc.clientId`                | OIDC Client ID                                        | `""`                       |
 | `crowdsieve.dashboard.oidc.clientSecret`            | OIDC Client Secret                                    | `""`                       |
 | `crowdsieve.dashboard.oidc.existingSecret`          | Use existing secret for OIDC                          | `""`                       |
+| `crowdsieve.dashboard.oidc.groupsClaim`             | Claim with the groups (ID token, else userinfo)       | `groups`                   |
+| `crowdsieve.dashboard.oidc.scopes`                  | Scopes requested at sign-in                           | `openid email profile`     |
 | `crowdsieve.dashboard.oidc.session.secret`          | Session secret, 32+ chars (auto-generated if empty)   | `""`                       |
 | `crowdsieve.dashboard.oidc.session.cookieSecure`    | Session cookie secure flag                            | `true`                     |
 | `crowdsieve.dashboard.oidc.keys.jwsEnabled`         | Enable private_key_jwt auth (replaces client_secret)  | `false`                    |
@@ -740,6 +744,25 @@ kubectl create secret generic my-session-secret \
   --from-literal=session-secret='32-chars-minimum-secret-here!!' \
   -n security
 ```
+
+#### Read-only users (operator groups)
+
+By default every signed-in user can ban, unban and run analyzers. List the groups allowed to do so in `auth.operatorGroups`: everyone else gets read-only access (the Manual Ban form, the unban buttons and "Run Now" are hidden, and the write API routes answer 403).
+
+```yaml
+crowdsieve:
+  dashboard:
+    auth:
+      operatorGroups: 'secops'
+    oidc:
+      enabled: true
+      issuer: 'https://dex.example.com'
+      clientId: 'crowdsieve-dashboard'
+      groupsClaim: 'groups' # default
+      scopes: 'openid email profile groups' # Dex releases groups for this scope only
+```
+
+The role is computed at sign-in from the groups claim and kept until the next sign-in; sessions opened before `operatorGroups` was set are read-only until the user signs in again. In headers mode the groups come from `auth.headers.groupsHeader` on every request. See [docs/oidc-authentication.md](../../docs/oidc-authentication.md#read-only-users-and-operator-groups).
 
 #### OIDC Provider Configuration
 

@@ -6,6 +6,7 @@ import { checkTrustedUpstream } from '@/lib/auth/trust';
 import { getLogoutUrl } from '@/lib/auth/logout';
 import { getSession, isSessionValid, SessionUser } from '@/lib/oidc/session';
 import { SessionSecretError } from '@/lib/oidc/config';
+import { roleFromHeaders, roleFromSession, type UserRole } from '@/lib/auth/roles';
 
 export interface SessionResponse {
   authenticated: boolean;
@@ -16,6 +17,12 @@ export interface SessionResponse {
    * should be hidden (e.g. headers mode without an external logout URL).
    */
   logoutUrl: string | null;
+  /**
+   * Role of the signed-in user, computed on the server ('operator' may write,
+   * 'viewer' is read-only). Always 'operator' in 'none' mode; null when not
+   * authenticated. Never taken from a user claim.
+   */
+  role: UserRole | null;
 }
 
 export async function GET(): Promise<NextResponse<SessionResponse>> {
@@ -30,6 +37,7 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
       user: null,
       expiresAt: null,
       logoutUrl: null,
+      role: 'operator',
     });
   }
 
@@ -44,6 +52,7 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
         user,
         expiresAt: null,
         logoutUrl,
+        role: user !== null ? roleFromHeaders(h) : null,
       });
     } catch (error) {
       console.error('Headers session check error:', error);
@@ -52,6 +61,7 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
         user: null,
         expiresAt: null,
         logoutUrl,
+        role: null,
       });
     }
   }
@@ -64,6 +74,7 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
         user: null,
         expiresAt: null,
         logoutUrl,
+        role: null,
       });
     }
 
@@ -74,6 +85,7 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
       user: session.user ?? null,
       expiresAt: session.expiresAt ?? null,
       logoutUrl,
+      role: roleFromSession(session),
     });
   } catch (error) {
     // A missing SESSION_SECRET is logged once by getSessionSecret().
@@ -85,6 +97,7 @@ export async function GET(): Promise<NextResponse<SessionResponse>> {
       user: null,
       expiresAt: null,
       logoutUrl,
+      role: null,
     });
   }
 }

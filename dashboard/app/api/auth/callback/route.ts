@@ -5,6 +5,7 @@ import { isOidcEnabled, getBaseUrl } from '@/lib/oidc/config';
 import { getSession, SessionUser } from '@/lib/oidc/session';
 import { resolvePostLoginPath } from '@/lib/oidc/loginRedirect';
 import { checkSessionSecret } from '@/lib/auth/guard';
+import { resolveSignInRole } from '@/lib/auth/roles';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Return 404 if OIDC is not enabled
@@ -58,6 +59,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       picture: claims.picture as string | undefined,
     };
 
+    // Role from the groups of the ID token, or of the userinfo response when
+    // the ID token has no groups claim. Computed here, on the server, and
+    // sealed in the session: it is refreshed at the next sign-in.
+    const accessToken = tokens.access_token;
+    const { role, operatorGroups } = await resolveSignInRole(
+      claims as Record<string, unknown>,
+      async () =>
+        (await client.fetchUserInfo(oidcClient, accessToken, claims.sub)) as Record<string, unknown>
+    );
+
     // Calculate session expiration (use access token expiry or default to 1 hour)
     const expiresIn = tokens.expiresIn() ?? 3600;
     const expiresAt = Date.now() + expiresIn * 1000;
@@ -70,6 +81,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     session.expiresAt = expiresAt;
     // Store session ID for back-channel logout support
     session.sid = claims.sid as string | undefined;
+    session.role = role;
+    session.operatorGroups = operatorGroups;
     // Clear temporary auth state
     session.state = undefined;
     session.nonce = undefined;

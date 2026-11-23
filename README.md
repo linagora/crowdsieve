@@ -339,6 +339,20 @@ AUTH_LOGOUT_URL=https://portal.example.com/logout
 
 > **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [docs/oidc-authentication.md](./docs/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
 
+**Read-only users** — by default every signed-in user can ban, unban and run analyzers. To open the dashboard to more people without that risk, list the groups allowed to write in `AUTH_OPERATOR_GROUPS`; everyone else is a **Viewer**: they see all alerts, details, statistics, bouncers and decisions, but the Manual Ban form, the unban buttons and "Run Now" are hidden and the write API routes answer `403 {"error":"Your account is read-only"}`. The user menu shows "Operator" or "Viewer (read-only)".
+
+```bash
+AUTH_OPERATOR_GROUPS=secops,crowdsieve-admins
+# OIDC: claim with the groups (ID token, else userinfo), default "groups".
+OIDC_GROUPS_CLAIM=groups
+# Dex only releases groups for the "groups" scope.
+OIDC_SCOPES="openid email profile groups"
+# Headers mode: header with the groups, default X-Forwarded-Groups.
+AUTH_GROUPS_HEADER=X-Forwarded-Groups
+```
+
+In OIDC mode the role is computed at sign-in and kept in the session until the next sign-in (sessions opened before `AUTH_OPERATOR_GROUPS` was set are read-only until then). In headers mode it follows the groups header on every request. With `AUTH_MODE=none` everyone can write. See [Read-only users and operator groups](./docs/oidc-authentication.md#read-only-users-and-operator-groups).
+
 ### Audit Log
 
 The **Audit log** page (`/audit`) lists every manual ban and unban issued from the dashboard, newest first: when, user, action, IP or range, LAPI server, remediation type and duration of a ban, and reason. It can be filtered by user, action, IP or range and period (all written in the URL, so a filtered view can be shared), paged 50 rows at a time, and exported as CSV (`crowdsieve-audit-<YYYYMMDD-HHmm>.csv`, every row matching the filters). Clicking a row opens its detail page. Every signed-in user can read it; nobody can edit or delete it from the dashboard. Its rows follow the alerts' retention (`storage.retention_days`).

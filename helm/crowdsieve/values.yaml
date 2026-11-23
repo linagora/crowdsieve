@@ -137,6 +137,11 @@ crowdsieve:
       # accepted (e.g. "sub", "email", "preferredUsername", "familyName").
       # Defaults to "sub". Takes precedence over OIDC_ACTOR_CLAIM.
       actorClaim: ""
+      # -- Comma-separated groups whose members may ban, unban and run
+      # analyzers (Operators). Other signed-in users get read-only access
+      # (Viewers). Empty = every signed-in user is an Operator.
+      # Example: "secops,crowdsieve-admins"
+      operatorGroups: ""
       headers:
         # -- Shared secret that the authenticating proxy must send in the
         # X-Auth-Proxy-Secret request header (recommended). Requests without
@@ -160,6 +165,11 @@ crowdsieve:
         # -- Optional: external login URL surfaced as a "Go to login portal"
         # button on the headers-mode 401 page.
         loginUrl: ""
+        # -- Request header that carries the user's groups (separated by
+        # commas, semicolons or pipes), read on each request when operatorGroups is
+        # set. The proxy MUST set or remove it on every request. Defaults to
+        # "X-Forwarded-Groups".
+        groupsHeader: ""
 
     # ---------------------------------------------------------------------------
     # OIDC Configuration (Optional)
@@ -179,6 +189,14 @@ crowdsieve:
       existingSecret: ""
       # -- Key in existing secret for client secret
       clientSecretKey: "client-secret"
+      # -- Claim of the ID token (or userinfo) that lists the user's groups,
+      # used with auth.operatorGroups. Defaults to "groups". A dotted path
+      # (e.g. "realm_access.roles") reads a nested claim.
+      groupsClaim: ""
+      # -- Scopes requested at sign-in. Defaults to "openid email profile".
+      # Dex only releases groups for the "groups" scope:
+      # "openid email profile groups"
+      scopes: ""
 
       # Session configuration
       session:

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { AnalyzersData, AnalyzerStatus } from '@/app/analyzers/page';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { useCanWrite } from '@/components/UserRoleProvider';
 
 interface AnalyzersContentProps {
   data: AnalyzersData;
@@ -55,10 +56,13 @@ function AnalyzerCard({
   analyzer,
   onTrigger,
   triggering,
+  triggerError,
 }: {
   analyzer: AnalyzerStatus;
-  onTrigger: (id: string) => void;
+  /** Run the analyzer now; omitted for read-only users (no button). */
+  onTrigger?: (id: string) => void;
   triggering: boolean;
+  triggerError?: string | null;
 }) {
   const lastRun = analyzer.lastRun;
   const isSuccess = lastRun?.status === 'success';
@@ -137,23 +141,30 @@ function AnalyzerCard({
         <div className="mt-3 text-xs text-gray-500">Next run: {formatDate(analyzer.nextRun)}</div>
       )}
 
-      <button
-        onClick={() => onTrigger(analyzer.id)}
-        disabled={triggering}
-        className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-crowdsec-primary text-white rounded hover:bg-crowdsec-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {triggering ? (
-          <>
-            <RefreshCw className="w-4 h-4 animate-spin" />
-            Running...
-          </>
-        ) : (
-          <>
-            <Play className="w-4 h-4" />
-            Run Now
-          </>
-        )}
-      </button>
+      {onTrigger && (
+        <button
+          onClick={() => onTrigger(analyzer.id)}
+          disabled={triggering}
+          className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-crowdsec-primary text-white rounded hover:bg-crowdsec-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {triggering ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Running...
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4" />
+              Run Now
+            </>
+          )}
+        </button>
+      )}
+      {triggerError && (
+        <p role="alert" className="mt-2 text-xs text-red-600">
+          {triggerError}
+        </p>
+      )}
     </div>
   );
 }
@@ -161,9 +172,17 @@ function AnalyzerCard({
 export function AnalyzersContent({ data }: AnalyzersContentProps) {
   const [analyzers, setAnalyzers] = useState(data.analyzers);
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [triggerErrors, setTriggerErrors] = useState<Record<string, string>>({});
+  // "Run Now" is a write action: not rendered for read-only users.
+  const canWrite = useCanWrite();
 
   const handleTrigger = async (id: string) => {
     setTriggeringId(id);
+    setTriggerErrors((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     try {
       const res = await fetchWithAuth(`/api/analyzers/${id}/run`, {
         method: 'POST',
@@ -185,7 +204,15 @@ export function AnalyzersContent({ data }: AnalyzersContentProps) {
               : a
           )
         );
+      } else {
+        const body = await res.json().catch(() => null);
+        const message =
+          (body && typeof body.error === 'string' && body.error) ||
+          'Failed to trigger analyzer run';
+        setTriggerErrors((prev) => ({ ...prev, [id]: message }));
       }
+    } catch {
+      setTriggerErrors((prev) => ({ ...prev, [id]: 'Failed to trigger analyzer run' }));
     } finally {
       setTriggeringId(null);
     }
@@ -248,8 +275,9 @@ export function AnalyzersContent({ data }: AnalyzersContentProps) {
           <AnalyzerCard
             key={analyzer.id}
             analyzer={analyzer}
-            onTrigger={handleTrigger}
+            onTrigger={canWrite ? handleTrigger : undefined}
             triggering={triggeringId === analyzer.id}
+            triggerError={triggerErrors[analyzer.id]}
           />
         ))}
       </div>

@@ -9,6 +9,7 @@
 import { getAuthMode, isAuthModeExplicit } from './mode';
 import { getSessionSecret } from '../oidc/config';
 import { getAuthProxySecret, getTrustedProxyIps } from './trust';
+import { getGroupsClaim, getGroupsHeader, getOperatorGroups } from './roles';
 
 /** Recommended minimum length of AUTH_PROXY_SECRET. */
 const MIN_PROXY_SECRET_LENGTH = 32;
@@ -77,5 +78,36 @@ export function checkAuthConfiguration(): void {
           'use a random value (openssl rand -hex 32).'
       );
     }
+  }
+
+  checkRoleConfiguration(mode);
+}
+
+/** Log how roles are derived, and warn about AUTH_OPERATOR_GROUPS pitfalls. */
+function checkRoleConfiguration(mode: ReturnType<typeof getAuthMode>): void {
+  const operatorGroups = getOperatorGroups();
+  if (operatorGroups.length === 0) return;
+
+  if (mode === 'none') {
+    console.warn(
+      '[auth] AUTH_OPERATOR_GROUPS is ignored when authentication is disabled: ' +
+        'everyone can ban and unban.'
+    );
+    return;
+  }
+
+  const source =
+    mode === 'oidc'
+      ? `the "${getGroupsClaim()}" claim (ID token, else userinfo)`
+      : `the ${getGroupsHeader()} request header`;
+  console.info(
+    `[auth] Users in ${operatorGroups.join(', ')} (from ${source}) are operators; ` +
+      'other signed-in users are read-only.'
+  );
+  if (mode === 'headers') {
+    console.info(
+      `[auth] The authenticating proxy must set or remove the ${getGroupsHeader()} header on ` +
+        'every request: a value sent by the client would otherwise grant the operator role.'
+    );
   }
 }
