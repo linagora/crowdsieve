@@ -157,6 +157,25 @@ describe('Storage Deduplication', () => {
       expect(count.count).toBe(1);
     });
 
+    it('should list the decisions of one alert only', async () => {
+      await storage.storeAlerts(
+        [createMockAlert('uuid-a'), createMockAlert('uuid-b', 'capi'), createMockAlert('uuid-c', 'x', false)],
+        createMockFilterDetails(3)
+      );
+      const rows = sqlite.prepare('SELECT id FROM alerts ORDER BY id').all() as { id: number }[];
+
+      const a = await storage.getAlertDecisions(rows[0].id);
+      expect(a).toHaveLength(1);
+      expect(a[0]).toMatchObject({ origin: 'crowdsec', type: 'ban', value: '192.168.1.100', duration: '4h' });
+
+      const b = await storage.getAlertDecisions(rows[1].id);
+      expect(b).toHaveLength(1);
+      expect(b[0].origin).toBe('capi');
+
+      expect(await storage.getAlertDecisions(rows[2].id)).toEqual([]);
+      expect(await storage.getAlertDecisions(99999)).toEqual([]);
+    });
+
     it('should store alerts with non-replication origin decisions', async () => {
       const alerts = [
         createMockAlert('uuid-1', 'crowdsec'),

@@ -6,6 +6,7 @@ import { Search, Loader2, Shield, ShieldAlert, Globe, Server, Trash2 } from 'luc
 import { Button } from '@/components/ui/button';
 import type { DecisionSearchResponse, Decision } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { CtiLink } from '@/components/CtiLink';
 
 interface DecisionCardProps {
   decision: Decision;
@@ -84,6 +85,7 @@ function DecisionCard({ decision, server, onDelete, canDelete }: DecisionCardPro
             {decision.scope}
           </span>
           <span className="font-mono">{decision.value}</span>
+          <CtiLink ip={decision.value} />
         </div>
         <div className="flex gap-4">
           <span>Duration: {decision.duration}</span>

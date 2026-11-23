@@ -286,6 +286,11 @@ describePostgres('PostgreSQL Integration', () => {
       const retrieved = await storage.getAlertById(results[0].id);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.uuid).toBe(alert.uuid);
+
+      // The alert's own decisions are readable by alert id
+      const decisions = await storage.getAlertDecisions(results[0].id);
+      expect(decisions.length).toBe(alert.decisions?.length ?? 0);
+      expect(decisions[0]?.type).toBe(alert.decisions?.[0]?.type);
     });
 
     it('should cleanup old alerts', async () => {

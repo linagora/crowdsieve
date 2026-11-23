@@ -8,7 +8,10 @@ import type { LapiServer } from '../../config/index.js';
 import { getAnalyzerEngine } from '../../analyzers/index.js';
 import { getMachineToken, CROWDSIEVE_VERSION } from '../../auth/machineToken.js';
 import { MANUAL_BAN_SCENARIO } from '../../storage/index.js';
+import { extractAlertEvents } from '../../storage/alertEvents.js';
 import {
+  AlertDetailResponse,
+  AlertRawResponse,
   AlertResponse,
   AnalyzerDetailResponse,
   AnalyzerRunTriggerResponse,
@@ -280,7 +283,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           id: Type.Integer({ minimum: 1 }),
         }),
         response: {
-          200: AlertResponse,
+          200: AlertDetailResponse,
           400: ErrorResponse,
           401: ErrorResponse,
           404: ErrorResponse,
@@ -298,10 +301,68 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           return reply.code(404).send({ error: 'Alert not found' });
         }
 
-        return reply.send(alert);
+        const decisions = await storage.getAlertDecisions(id);
+        const { events, total } = extractAlertEvents(alert.rawJson);
+
+        return reply.send({
+          ...alert,
+          decisions: decisions.map((d) => ({
+            id: d.id,
+            type: d.type,
+            scope: d.scope,
+            value: d.value,
+            duration: d.duration ?? null,
+            origin: d.origin ?? null,
+            scenario: d.scenario ?? null,
+            until: d.until ?? null,
+            simulated: d.simulated ?? null,
+          })),
+          events,
+          eventsTotal: total,
+        });
       } catch (err) {
         logger.error({ err }, 'Failed to get alert');
         return reply.code(500).send({ error: 'Failed to get alert' });
+      }
+    }
+  );
+
+  // Get the raw payload stored for an alert
+  fastify.get(
+    '/api/alerts/:id/raw',
+    {
+      schema: {
+        tags: ['alerts'],
+        summary: 'Get the raw JSON stored for an alert',
+        params: Type.Object({
+          id: Type.Integer({ minimum: 1 }),
+        }),
+        response: {
+          200: AlertRawResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          500: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+
+        const alert = await storage.getAlertById(id);
+
+        if (!alert) {
+          return reply.code(404).send({ error: 'Alert not found' });
+        }
+        if (!alert.rawJson) {
+          return reply.code(404).send({ error: 'Raw data not stored' });
+        }
+
+        return reply.send({ rawJson: alert.rawJson });
+      } catch (err) {
+        logger.error({ err }, 'Failed to get raw alert');
+        return reply.code(500).send({ error: 'Failed to get raw alert' });
       }
     }
   );

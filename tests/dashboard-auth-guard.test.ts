@@ -26,6 +26,7 @@ vi.mock('next/headers', () => ({
 
 import { POST as banPost } from '../dashboard/app/api/decisions/ban/route.js';
 import { GET as alertsGet } from '../dashboard/app/api/alerts/route.js';
+import { GET as alertRawGet } from '../dashboard/app/api/alerts/[id]/raw/route.js';
 import { POST as analyzerRunPost } from '../dashboard/app/api/analyzers/[id]/run/route.js';
 import { DELETE as decisionDelete } from '../dashboard/app/api/decisions/[id]/route.js';
 import { GET as loginGet } from '../dashboard/app/api/auth/login/route.js';
@@ -129,6 +130,24 @@ describe('API route guard in OIDC mode', () => {
 
     expect(res.status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects GET /api/alerts/:id/raw without a valid session', async () => {
+    const params = { params: Promise.resolve({ id: '1' }) };
+    const req = () => new NextRequest('http://localhost:3000/api/alerts/1/raw');
+
+    expect((await alertRawGet(req(), params)).status).toBe(401);
+    await setSessionCookie('anything');
+    expect((await alertRawGet(req(), params)).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await setSessionCookie(liveSession());
+    const res = await alertRawGet(req(), params);
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8080/api/alerts/1/raw');
+    expect(
+      (await alertRawGet(req(), { params: Promise.resolve({ id: '../x' }) })).status
+    ).toBe(400);
   });
 
   it('rejects an expired session', async () => {

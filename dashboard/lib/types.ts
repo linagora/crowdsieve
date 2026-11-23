@@ -60,6 +60,33 @@ export interface StoredAlert {
   actor?: string;
 }
 
+/** A decision stored for an alert (alert detail). */
+export interface AlertDetailDecision {
+  id: number;
+  type: string;
+  scope: string;
+  value: string;
+  duration: string | null;
+  origin: string | null;
+  scenario: string | null;
+  until: string | null;
+  simulated: boolean | null;
+}
+
+/** An event of an alert; meta keys and values are attacker-controlled text. */
+export interface AlertDetailEvent {
+  timestamp: string | null;
+  meta: Array<{ key: string; value: string }>;
+}
+
+/** `GET /api/alerts/:id`: the alert plus its decisions and first events. */
+export interface AlertDetail extends StoredAlert {
+  rawJson?: string | null;
+  decisions: AlertDetailDecision[];
+  events: AlertDetailEvent[];
+  eventsTotal: number;
+}
+
 export interface AlertStats {
   total: number;
   filtered: number;
