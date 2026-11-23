@@ -41,6 +41,12 @@ filters:
 #     replicate_decisions: true
 #     source_machine_ids: ["online-api-login-of-server2"]
 
+# Limits on replicated decisions (only Ip/Range scopes, ban/captcha types,
+# no range broader than IPv4 /16 or IPv6 /32 are ever replicated).
+# Longer decisions are replicated with this duration (Go syntax, no "d" unit).
+# replication:
+#   max_decision_duration: "168h"
+
 # Bouncer metrics (always-on capture)
 # CrowdSieve intercepts the usage-metrics that CrowdSec LAPI relays to CAPI,
 # stores them locally, and forwards the payload upstream unchanged.

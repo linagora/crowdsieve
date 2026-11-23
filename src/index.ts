@@ -50,6 +50,7 @@ async function main() {
     client_validation: { ...fileConfig.client_validation, ...envConfig.client_validation },
     analyzers: fileConfig.analyzers, // Analyzers only from file
     bouncer_metrics: fileConfig.bouncer_metrics, // Bouncer metrics retention settings
+    replication: fileConfig.replication, // Replicated decision limits
   };
 
   // Initialize logger (with custom `notice` level wired in for audit-friendly

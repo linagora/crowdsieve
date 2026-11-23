@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
+import { DEFAULT_MAX_DECISION_DURATION, parseGoDuration } from '../replication/decisions.js';
 
 /**
  * Interpolate environment variables in a string
@@ -207,6 +208,20 @@ const ConfigSchema = z.object({
           })
         )
         .default({}),
+    })
+    .prefault({}),
+  // Limits applied to decisions replicated to lapi_servers[] with
+  // replicate_decisions (see src/replication/decisions.ts).
+  replication: z
+    .object({
+      // Longer decisions are replicated with this duration instead. Go
+      // duration syntax (CrowdSec's), e.g. "168h" (7 days); no "d" unit.
+      max_decision_duration: z
+        .string()
+        .refine((value) => (parseGoDuration(value) ?? 0) > 0, {
+          message: 'must be a positive Go duration such as "168h" or "24h30m"',
+        })
+        .default(DEFAULT_MAX_DECISION_DURATION),
     })
     .prefault({}),
   // Bouncer metrics intercepted off the LAPI -> CAPI usage-metrics relay.

@@ -542,3 +542,37 @@ describe('loadConfigFromEnv numeric validation', () => {
     expect(() => loadConfigFromEnv()).toThrowError(new RegExp(`${name}.*"${value}"`));
   });
 });
+
+describe('replication config', () => {
+  const dir = join(process.cwd(), 'tests', 'fixtures', 'config-replication');
+
+  beforeEach(() => {
+    mkdirSync(dir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function load(yaml: string) {
+    const configPath = join(dir, 'config.yaml');
+    writeFileSync(configPath, `proxy: {}\nstorage: {}\n${yaml}`);
+    return loadConfig(configPath);
+  }
+
+  it('defaults max_decision_duration to 7 days', () => {
+    expect(load('').replication).toEqual({ max_decision_duration: '168h' });
+  });
+
+  it('accepts a Go duration', () => {
+    expect(load('replication:\n  max_decision_duration: 24h30m\n').replication).toEqual({
+      max_decision_duration: '24h30m',
+    });
+  });
+
+  it.each(['7d', '0s', '-1h', 'forever', ''])('rejects max_decision_duration "%s"', (value) => {
+    expect(() => load(`replication:\n  max_decision_duration: "${value}"\n`)).toThrow(
+      /max_decision_duration/
+    );
+  });
+});

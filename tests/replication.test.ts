@@ -7,6 +7,7 @@ import {
   ReplicationSender,
   REPLICATION_ORIGIN,
 } from '../src/replication/index.js';
+import { parseGoDuration, prepareDecisionForReplication } from '../src/replication/decisions.js';
 import type { Config } from '../src/config/index.js';
 import type { Alert } from '../src/models/alert.js';
 import { clearTokenCache } from '../src/auth/machineToken.js';
@@ -689,8 +690,8 @@ describe('ReplicationService', () => {
       // Should skip without fetching token because no replicable decisions after filtering
       expect(mockFetch).toHaveBeenCalledTimes(0);
       expect(logger.debug).toHaveBeenCalledWith(
-        { server: 'server1' },
-        'No replicable decisions after filtering (all from crowdsieve origin)'
+        {},
+        'No replicable decisions after filtering'
       );
     });
 
@@ -736,8 +737,8 @@ describe('ReplicationService', () => {
       // Should skip without fetching token because no replicable decisions after filtering
       expect(mockFetch).toHaveBeenCalledTimes(0);
       expect(logger.debug).toHaveBeenCalledWith(
-        { server: 'server1' },
-        'No replicable decisions after filtering (all from crowdsieve origin)'
+        {},
+        'No replicable decisions after filtering'
       );
     });
 
@@ -1031,6 +1032,224 @@ describe('ReplicationService', () => {
 
     it('is empty when no server lists source_machine_ids', () => {
       expect(getTrustedSourceMachineIds({ lapi_servers: [REPLICATION_TARGET] }).size).toBe(0);
+    });
+  });
+
+  describe('replicated decision limits (GHSA-8gp7-jp8p-g9xr)', () => {
+    function alertWith(decisions: Array<Record<string, unknown>>): Alert {
+      const alert = createMockAlert(false);
+      alert.decisions = decisions.map((d) => ({
+        origin: 'crowdsec',
+        type: 'ban',
+        scope: 'Ip',
+        value: '192.0.2.1',
+        duration: '4h',
+        scenario: 'crowdsecurity/ssh-bf',
+        ...d,
+      })) as Alert['decisions'];
+      return alert;
+    }
+
+    async function replicatedDecisions(
+      alerts: Alert[],
+      config: Config = createMockConfig([REPLICATION_TARGET])
+    ): Promise<Array<Record<string, unknown>> | undefined> {
+      service = createReplicationService(config, logger);
+      await service.replicateDecisions(alerts, TRUSTED_SENDER);
+      const call = mockFetch.mock.calls.find((c) => String(c[0]).endsWith('/v1/alerts'));
+      if (!call) return undefined;
+      const body = JSON.parse(call[1].body as string) as Array<{
+        decisions: Array<Record<string, unknown>>;
+      }>;
+      return body.flatMap((a) => a.decisions);
+    }
+
+    beforeEach(() => {
+      mockLapiOk();
+    });
+
+    it('does not replicate 0.0.0.0/0 or ::/0, even from a trusted sender', async () => {
+      const decisions = await replicatedDecisions([
+        alertWith([
+          { scope: 'Range', value: '0.0.0.0/0' },
+          { scope: 'Range', value: '::/0' },
+        ]),
+      ]);
+
+      expect(decisions).toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ droppedCount: 2 }),
+        'Dropped decisions that may not be replicated (scope, type, range width or duration)'
+      );
+    });
+
+    it('drops over-broad ranges and keeps the others', async () => {
+      const decisions = await replicatedDecisions([
+        alertWith([
+          { scope: 'Range', value: '10.0.0.0/8' },
+          { scope: 'Range', value: '10.0.0.0/15' },
+          { scope: 'Range', value: '10.1.0.0/16' },
+          { scope: 'range', value: '198.51.100.0/24' },
+          { scope: 'Range', value: '2000::/3' },
+          { scope: 'Range', value: '2001:db8::/31' },
+          { scope: 'Range', value: '2001:db8::/32' },
+          { scope: 'Range', value: '::ffff:0:0/96' },
+          { scope: 'Range', value: '::/32' },
+          { scope: 'Range', value: '::ffff:10.0.0.0/104' },
+          { scope: 'Range', value: '::ffff:10.1.0.0/112' },
+        ]),
+      ]);
+
+      expect(decisions?.map((d) => d.value)).toEqual([
+        '10.1.0.0/16',
+        '198.51.100.0/24',
+        '2001:db8::/32',
+        '::ffff:10.1.0.0/112',
+      ]);
+      expect(decisions?.every((d) => d.scope === 'Range')).toBe(true);
+    });
+
+    it('only replicates Ip and Range scopes and ban/captcha types', async () => {
+      const decisions = await replicatedDecisions([
+        alertWith([
+          { scope: 'Country', value: 'FR' },
+          { scope: 'AS', value: '64496' },
+          { scope: 'Username', value: 'root' },
+          { type: 'throttle', value: '192.0.2.2' },
+          { type: 'custom-remediation', value: '192.0.2.3' },
+          { type: 'captcha', value: '192.0.2.4' },
+          { type: 'BAN', scope: 'ip', value: '192.0.2.5' },
+          { scope: 'Ip', value: '192.0.2.0/24' },
+          { scope: 'Ip', value: 'not-an-ip' },
+        ]),
+      ]);
+
+      expect(decisions).toEqual([
+        expect.objectContaining({ type: 'captcha', scope: 'Ip', value: '192.0.2.4' }),
+        expect.objectContaining({ type: 'ban', scope: 'Ip', value: '192.0.2.5' }),
+      ]);
+    });
+
+    it('caps excessive durations to the default 168h and drops invalid ones', async () => {
+      const decisions = await replicatedDecisions([
+        alertWith([
+          { value: '192.0.2.1', duration: '87600h' },
+          { value: '192.0.2.2', duration: '168h0m1s' },
+          { value: '192.0.2.3', duration: '167h59m59.5s' },
+          { value: '192.0.2.4', duration: '7d' },
+          { value: '192.0.2.5', duration: '-3s' },
+          { value: '192.0.2.6', duration: 3600 },
+        ]),
+      ]);
+
+      expect(decisions?.map((d) => [d.value, d.duration])).toEqual([
+        ['192.0.2.1', '168h'],
+        ['192.0.2.2', '168h'],
+        ['192.0.2.3', '167h59m59.5s'],
+      ]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ maxDuration: '168h' }),
+        'Capped the duration of replicated decisions'
+      );
+    });
+
+    it('honours replication.max_decision_duration', async () => {
+      const config = {
+        ...createMockConfig([REPLICATION_TARGET]),
+        replication: { max_decision_duration: '24h' },
+      };
+      const decisions = await replicatedDecisions(
+        [alertWith([{ duration: '48h' }, { value: '192.0.2.9', duration: '4h' }])],
+        config
+      );
+
+      expect(decisions?.map((d) => d.duration)).toEqual(['24h', '4h']);
+    });
+
+    it('copies only the fields a LAPI needs', async () => {
+      const decisions = await replicatedDecisions([
+        alertWith([
+          {
+            id: 42,
+            uuid: 'sender-uuid',
+            until: '2999-01-01T00:00:00Z',
+            simulated: true,
+            extra: 'ignored',
+          },
+        ]),
+      ]);
+
+      expect(decisions).toEqual([
+        {
+          type: 'ban',
+          scope: 'Ip',
+          value: '192.0.2.1',
+          duration: '4h',
+          origin: REPLICATION_ORIGIN,
+          scenario: 'crowdsecurity/ssh-bf',
+          simulated: true,
+        },
+      ]);
+    });
+  });
+
+  describe('parseGoDuration', () => {
+    it.each([
+      ['4h', 4 * 3_600_000],
+      ['1h30m', 5_400_000],
+      ['3h59m58.5s', (3 * 3600 + 59 * 60 + 58.5) * 1000],
+      ['1.5h', 5_400_000],
+      ['250ms', 250],
+      ['1us', 0.001],
+      ['-12s', -12_000],
+      ['0', 0],
+    ])('parses %s', (input, expected) => {
+      expect(parseGoDuration(input)).toBeCloseTo(expected, 6);
+    });
+
+    it.each(['', '4', '7d', 'h', '1h-30m', '4 h', ' 4h', 'abc', '1e3s'])(
+      'rejects "%s"',
+      (input) => {
+        expect(parseGoDuration(input)).toBeNull();
+      }
+    );
+
+    it('rejects non-strings', () => {
+      expect(parseGoDuration(3600)).toBeNull();
+      expect(parseGoDuration(undefined)).toBeNull();
+    });
+  });
+
+  describe('prepareDecisionForReplication', () => {
+    const limits = { maxDuration: '168h', maxDurationMs: 168 * 3_600_000 };
+
+    it.each([null, 'ban', 42])('rejects a non-object decision (%s)', (decision) => {
+      expect(prepareDecisionForReplication(decision, 's', 'o', limits)).toEqual({
+        ok: false,
+        reason: 'not an object',
+      });
+    });
+
+    it('falls back to the alert scenario', () => {
+      const check = prepareDecisionForReplication(
+        { type: 'ban', scope: 'Ip', value: '192.0.2.1', duration: '1h' },
+        'crowdsecurity/http-probing',
+        'o',
+        limits
+      );
+      expect(check).toMatchObject({ ok: true, decision: { scenario: 'crowdsecurity/http-probing' } });
+    });
+
+    it('rejects a range value without a prefix', () => {
+      expect(
+        prepareDecisionForReplication(
+          { type: 'ban', scope: 'Range', value: '192.0.2.1', duration: '1h' },
+          's',
+          'o',
+          limits
+        )
+      ).toEqual({ ok: false, reason: 'invalid range value' });
     });
   });
 });

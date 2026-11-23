@@ -225,6 +225,23 @@ Signals that fail either check are still stored and forwarded to CAPI as usual, 
 
 > **Upgrade note:** `source_machine_ids` used to be matched against the `machine_id` of the alerts only (the agents). Add the online API `login` of each LAPI to its `source_machine_ids`, or nothing will be replicated. To find it: `grep login /etc/crowdsec/online_api_credentials.yaml` on the LAPI host, or look for the warning `sender machine id is not listed in any lapi_servers[].source_machine_ids`, which carries the `machineId` CrowdSieve saw.
 
+**Which decisions are replicated:**
+
+Even from a trusted sender, only bounded IP remediations are replicated, with these limits:
+
+- scope `Ip` or `Range` only (any case); `Country`, `AS`, `Username` and other scopes are dropped;
+- type `ban` or `captcha` only; other remediations (`throttle`, custom types) are dropped;
+- ranges broader than an IPv4 `/16` or an IPv6 `/32` are dropped, as are IPv6 ranges covering the IPv4-mapped block `::ffff:0:0/96` or more than a `/16` of it;
+- the duration must be a positive Go duration (`4h`, `1h30m`...); longer than `replication.max_decision_duration` (default `168h`, 7 days), it is replicated with that maximum;
+- only `type`, `scope`, `value`, `duration`, `scenario` and `simulated` are copied, with `origin: crowdsieve-replication`.
+
+Dropped and capped decisions are logged at `warn` level. The cap is configured in `config/filters.yaml` (Go duration syntax, no `d` unit):
+
+```yaml
+replication:
+  max_decision_duration: '168h'
+```
+
 **How it works:**
 
 - When CrowdSieve receives alerts with decisions (via `/v2/signals` or `/v3/signals`) from a trusted sender (see above), it replicates those decisions to LAPI servers with `replicate_decisions: true`

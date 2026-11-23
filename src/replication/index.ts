@@ -1,6 +1,13 @@
 import type { Alert, Decision } from '../models/alert.js';
 import type { LapiServer, Config } from '../config/index.js';
 import { getMachineToken, CROWDSIEVE_VERSION } from '../auth/machineToken.js';
+import {
+  DEFAULT_MAX_DECISION_DURATION,
+  parseGoDuration,
+  prepareDecisionForReplication,
+  type DecisionLimits,
+  type ReplicatedDecision,
+} from './decisions.js';
 
 // Origin used for replicated decisions - used to prevent replication loops
 export const REPLICATION_ORIGIN = 'crowdsieve-replication';
@@ -80,6 +87,8 @@ export function getTrustedSourceMachineIds(config: Pick<Config, 'lapi_servers'>)
 const REFUSAL_LOG_INTERVAL_MS = 15 * 60 * 1000;
 // Bound on the number of distinct senders remembered for log rate limiting.
 const REFUSAL_LOG_MAX_KEYS = 1000;
+// Bound on the number of dropped/capped decisions detailed in a log entry.
+const MAX_LOGGED_DECISIONS = 20;
 
 /**
  * Create a ReplicationService that replicates decisions to LAPI servers
@@ -89,6 +98,14 @@ export function createReplicationService(
   logger: ReplicationLogger
 ): ReplicationService {
   const timeoutMs = config.proxy.timeout_ms;
+  const maxDuration = config.replication?.max_decision_duration ?? DEFAULT_MAX_DECISION_DURATION;
+  const decisionLimits: DecisionLimits = {
+    maxDuration,
+    maxDurationMs: parseGoDuration(maxDuration) ?? 0,
+  };
+  if (decisionLimits.maxDurationMs <= 0) {
+    throw new Error(`Invalid replication.max_decision_duration: "${maxDuration}"`);
+  }
   const trustedMachineIds = getTrustedSourceMachineIds(config);
   const refusalLoggedAt = new Map<string, number>();
 
@@ -184,32 +201,46 @@ export function createReplicationService(
    * Check if a decision should be excluded from replication (to prevent loops)
    */
   function shouldExcludeDecision(decision: Decision): boolean {
-    const origin = decision.origin?.toLowerCase() || '';
+    const origin = typeof decision?.origin === 'string' ? decision.origin.toLowerCase() : '';
     return EXCLUDED_ORIGINS.some((excluded) => origin.includes(excluded.toLowerCase()));
   }
 
   /**
-   * Filter decisions that should be replicated (exclude crowdsieve origins to prevent loops)
-   */
-  function filterReplicableDecisions(decisions: Decision[]): Decision[] {
-    return decisions.filter((d) => !shouldExcludeDecision(d));
-  }
-
-  /**
-   * Build the alert payload for POST /v1/alerts
-   * - Filters out decisions that shouldn't be replicated (crowdsieve origins)
-   * - Changes origin to 'crowdsieve-replication' to prevent loops
+   * Build the alert payload for POST /v1/alerts, once for all targets:
+   * - drops decisions from crowdsieve origins (loop prevention);
+   * - keeps only bounded IP remediations (see prepareDecisionForReplication)
+   *   and caps their duration, logging what was dropped or capped;
+   * - marks replicated decisions with origin 'crowdsieve-replication'.
    */
   function buildAlertPayload(alerts: Alert[]): object[] {
-    return alerts
+    const dropped: Array<{ scope: unknown; value: unknown; type: unknown; reason: string }> = [];
+    let droppedCount = 0;
+    const capped: Array<{ value: string; duration: unknown }> = [];
+
+    const payload = alerts
       .map((alert) => {
-        // Filter decisions and change their origin
-        const replicableDecisions = filterReplicableDecisions(alert.decisions || []).map(
-          (decision) => ({
-            ...decision,
-            origin: REPLICATION_ORIGIN, // Mark as replicated to prevent loops
-          })
-        );
+        const replicableDecisions: ReplicatedDecision[] = [];
+        for (const decision of alert.decisions || []) {
+          if (shouldExcludeDecision(decision)) continue;
+          const check = prepareDecisionForReplication(
+            decision,
+            alert.scenario,
+            REPLICATION_ORIGIN, // Mark as replicated to prevent loops
+            decisionLimits
+          );
+          if (!check.ok) {
+            droppedCount++;
+            if (dropped.length < MAX_LOGGED_DECISIONS) {
+              const d = (decision ?? {}) as Partial<Decision>;
+              dropped.push({ scope: d.scope, value: d.value, type: d.type, reason: check.reason });
+            }
+            continue;
+          }
+          if (check.capped && capped.length < MAX_LOGGED_DECISIONS) {
+            capped.push({ value: check.decision.value, duration: decision.duration });
+          }
+          replicableDecisions.push(check.decision);
+        }
 
         // Skip alerts with no replicable decisions
         if (replicableDecisions.length === 0) {
@@ -234,25 +265,27 @@ export function createReplicationService(
         };
       })
       .filter((alert): alert is NonNullable<typeof alert> => alert !== null);
+
+    if (droppedCount > 0) {
+      logger.warn(
+        { droppedCount, dropped },
+        'Dropped decisions that may not be replicated (scope, type, range width or duration)'
+      );
+    }
+    if (capped.length > 0) {
+      logger.warn(
+        { maxDuration: decisionLimits.maxDuration, capped },
+        'Capped the duration of replicated decisions'
+      );
+    }
+    return payload;
   }
 
   /**
    * Replicate alerts to a single LAPI server
    */
-  async function replicateToServer(server: LapiServer, alerts: Alert[]): Promise<boolean> {
+  async function replicateToServer(server: LapiServer, payload: object[]): Promise<boolean> {
     try {
-      // Build payload first to avoid unnecessary token fetch if nothing to replicate
-      const payload = buildAlertPayload(alerts);
-
-      // Skip if no alerts to replicate (all decisions were filtered out)
-      if (payload.length === 0) {
-        logger.debug(
-          { server: server.name },
-          'No replicable decisions after filtering (all from crowdsieve origin)'
-        );
-        return true; // Not a failure, just nothing to do
-      }
-
       const token = await getMachineToken(server, timeoutMs, logger);
       if (!token) {
         logger.warn({ server: server.name }, 'Failed to get machine token for replication');
@@ -319,9 +352,16 @@ export function createReplicationService(
         return 'nothing_to_do';
       }
 
+      // Build the payload once, before fetching any token
+      const payload = buildAlertPayload(alertsWithDecisions);
+      if (payload.length === 0) {
+        logger.debug({}, 'No replicable decisions after filtering');
+        return 'nothing_to_do';
+      }
+
       logger.info(
         {
-          alertCount: alertsWithDecisions.length,
+          alertCount: payload.length,
           targetCount: targets.length,
           targets: targets.map((t) => t.name),
         },
@@ -330,7 +370,7 @@ export function createReplicationService(
 
       // Replicate to all targets in parallel
       const results = await Promise.allSettled(
-        targets.map((server) => replicateToServer(server, alertsWithDecisions))
+        targets.map((server) => replicateToServer(server, payload))
       );
 
       // Log summary
