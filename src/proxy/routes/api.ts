@@ -7,6 +7,7 @@ import { getIPInfo, extractIpFromValue } from '../../ipinfo/index.js';
 import type { LapiServer } from '../../config/index.js';
 import { getAnalyzerEngine } from '../../analyzers/index.js';
 import { getMachineToken, CROWDSIEVE_VERSION } from '../../auth/machineToken.js';
+import { MANUAL_BAN_SCENARIO } from '../../storage/index.js';
 import {
   AlertResponse,
   AnalyzerDetailResponse,
@@ -749,7 +750,7 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
 
         // Build the alert payload with embedded decision (like LemonLDAP does)
         const timestamp = new Date().toISOString();
-        const scenario = 'crowdsieve/manual';
+        const scenario = MANUAL_BAN_SCENARIO;
         const scenarioHash = createHash('sha256').update(scenario).digest('hex');
         const message = trimmedReason;
 

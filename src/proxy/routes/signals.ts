@@ -182,7 +182,9 @@ const signalsRoute: FastifyPluginAsyncTypebox = async (fastify) => {
     // Note: Alerts with crowdsieve-replication origin are automatically skipped by storage
     let replicableIndices: number[] = [];
     try {
-      const storeResult = await storage.storeAlerts(alerts, filterResult.filterDetails);
+      const storeResult = await storage.storeAlerts(alerts, filterResult.filterDetails, {
+        logger,
+      });
       replicableIndices = storeResult.replicableIndices;
     } catch (err) {
       logger.error({ err }, 'Failed to store alerts');

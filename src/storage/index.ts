@@ -1,4 +1,4 @@
-import { eq, desc, and, or, gt, gte, lte, like, sql } from 'drizzle-orm';
+import { eq, desc, and, or, gt, gte, lte, like, inArray, sql } from 'drizzle-orm';
 import net from 'net';
 import type { Alert } from '../models/alert.js';
 import type { FilterEngineResult } from '../filters/types.js';
@@ -41,6 +41,14 @@ function sanitizeActor(value: unknown): string | null {
 export const UNBAN_AUDIT_SCENARIO = 'crowdsieve/unban';
 /** Scenario string for manual ban audit rows recorded after a manual LAPI ban. */
 export const MANUAL_BAN_AUDIT_SCENARIO = 'crowdsieve/manual-audit';
+/** Scenario of the alert POST /api/decisions/ban sends to the LAPI. */
+export const MANUAL_BAN_SCENARIO = 'crowdsieve/manual';
+
+/**
+ * How long after a manual ban its alert may come back through signals and
+ * still be attributed to the operator who issued it.
+ */
+export const MANUAL_BAN_ACTOR_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface AlertQuery {
   filtered?: boolean;
@@ -146,6 +154,8 @@ export interface BouncerNameRow {
 export interface StoreAlertsOptions {
   geoipLookup?: (ip: string) => GeoIPInfo | null;
   replicationEnabled?: boolean;
+  /** Used to report ignored data (e.g. an unverifiable `actor` meta). */
+  logger?: { warn: (obj: object, msg: string) => void };
 }
 
 export interface StoreAlertsResult {
@@ -250,6 +260,72 @@ function hasReplicableDecisions(alert: Alert): boolean {
     const origin = decision.origin?.toLowerCase() || '';
     return !excludedOrigins.some((excluded) => origin.includes(excluded.toLowerCase()));
   });
+}
+
+/**
+ * Read the `actor` entry of an alert's `events[].meta`, as injected by
+ * POST /api/decisions/ban into the alert it sends to the LAPI.
+ */
+function extractActorFromMeta(alert: Alert): string | null {
+  if (!Array.isArray(alert.events)) return null;
+  for (const ev of alert.events) {
+    if (ev && Array.isArray(ev.meta)) {
+      const found = ev.meta.find((m) => m && m.key === 'actor');
+      if (found?.value !== undefined && found.value !== null) {
+        const sanitized = sanitizeActor(String(found.value));
+        if (sanitized) return sanitized;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Decide whether an alert received through signals may be attributed to
+ * `actor`.
+ *
+ * Signals are written by whoever can reach the proxy, so an `actor` meta
+ * proves nothing by itself. It is only kept for the round-trip of a manual
+ * ban this instance issued: a `crowdsieve/manual` alert for which a local
+ * manual-ban audit row (written by POST /api/decisions/ban, never by the
+ * signals path) exists with the same actor and target, recorded within
+ * {@link MANUAL_BAN_ACTOR_WINDOW_MS}.
+ */
+async function isActorOfLocalManualBan(alert: Alert, actor: string): Promise<boolean> {
+  if (alert.scenario !== MANUAL_BAN_SCENARIO) return false;
+
+  const targets = new Set<string>();
+  const addTarget = (value: unknown) => {
+    if (typeof value === 'string' && value.trim().length > 0) targets.add(value.trim());
+  };
+  addTarget(alert.source?.value);
+  addTarget(alert.source?.ip);
+  addTarget(alert.source?.range);
+  if (Array.isArray(alert.decisions)) {
+    for (const decision of alert.decisions.slice(0, 50)) addTarget(decision?.value);
+  }
+  if (targets.size === 0) return false;
+
+  const { db, schema, isPostgres } = getDatabaseContext();
+  const since = new Date(Date.now() - MANUAL_BAN_ACTOR_WINDOW_MS).toISOString();
+  const query = db
+    .select({ id: schema.alerts.id })
+    .from(schema.alerts)
+    .where(
+      and(
+        eq(schema.alerts.localAudit, true),
+        eq(schema.alerts.scenario, MANUAL_BAN_AUDIT_SCENARIO),
+        eq(schema.alerts.actor, actor),
+        inArray(schema.alerts.sourceValue, [...targets]),
+        gte(schema.alerts.receivedAt, since)
+      )
+    )
+    .limit(1);
+
+  if (isPostgres) {
+    return (await query).length > 0;
+  }
+  return (query as unknown as { get(): { id: number } | undefined }).get() !== undefined;
 }
 
 /**
@@ -403,21 +479,16 @@ export function createStorage(): AlertStorage {
         // Extract actor from event meta if propagated by the dashboard ban path.
         // The /api/decisions/ban handler injects { key: 'actor', value: <login> }
         // into the alert payload's events[].meta so the human identity survives
-        // the LAPI -> signals roundtrip and lands in the alerts table.
-        let actorFromMeta: string | null = null;
-        if (alert.events && alert.events.length > 0) {
-          for (const ev of alert.events) {
-            if (ev.meta && Array.isArray(ev.meta)) {
-              const found = ev.meta.find((m) => m && m.key === 'actor');
-              if (found?.value !== undefined && found.value !== null) {
-                const sanitized = sanitizeActor(String(found.value));
-                if (sanitized) {
-                  actorFromMeta = sanitized;
-                  break;
-                }
-              }
-            }
-          }
+        // the LAPI -> signals roundtrip and lands in the alerts table. Anyone
+        // can post signals, so the actor is only kept when it matches a manual
+        // ban this instance recorded; otherwise the alert gets no actor.
+        let actorFromMeta = extractActorFromMeta(alert);
+        if (actorFromMeta !== null && !(await isActorOfLocalManualBan(alert, actorFromMeta))) {
+          options?.logger?.warn(
+            { scenario: alert.scenario, sourceValue: alert.source?.value },
+            'Ignoring actor meta that matches no manual ban issued by this instance'
+          );
+          actorFromMeta = null;
         }
 
         // Track alerts with replicable decisions (to be marked as replicated after successful replication)

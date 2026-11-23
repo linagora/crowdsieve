@@ -507,3 +507,101 @@ describe('Stats exclude manual-ban audit events; listings include them', () => {
     }
   });
 });
+
+describe('actor meta on alerts received through signals (GHSA-8gp7-jp8p-g9xr)', () => {
+  let storage: AlertStorage;
+  const warn = vi.fn();
+
+  beforeEach(() => {
+    setupTestDatabase();
+    storage = createStorage();
+    warn.mockClear();
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  /** A `crowdsieve/manual` alert as it comes back from the LAPI. */
+  function manualBanSignal(actor: string, ip = '203.0.113.50', scenario = 'crowdsieve/manual'): Alert {
+    return createBanAlert({
+      scenario,
+      source: { scope: 'ip', value: ip, ip },
+      events: [
+        {
+          timestamp: new Date().toISOString(),
+          meta: [
+            { key: 'source', value: 'crowdsieve-dashboard' },
+            { key: 'actor', value: actor },
+          ],
+        },
+      ],
+      decisions: [
+        { origin: 'crowdsieve', type: 'ban', scope: 'ip', value: ip, duration: '4h', scenario },
+      ],
+    });
+  }
+
+  async function storedActor(alert: Alert): Promise<string | null> {
+    await storage.storeAlerts([alert], noFilter(1), { logger: { warn } });
+    const row = sqlite
+      .prepare('SELECT actor, local_audit FROM alerts WHERE uuid = ?')
+      .get(alert.uuid) as { actor: string | null; local_audit: number };
+    // A signal can never create a local audit row.
+    expect(row.local_audit).toBe(0);
+    return row.actor;
+  }
+
+  async function recordAliceBan(ip = '203.0.113.50'): Promise<void> {
+    await storage.recordManualBanAuditEvent({
+      ip,
+      scope: 'ip',
+      comment: 'manual ban',
+      server: 'lapi',
+      duration: '4h',
+      actor: 'alice',
+    });
+  }
+
+  it('keeps the actor of a manual ban this instance issued', async () => {
+    await recordAliceBan();
+
+    expect(await storedActor(manualBanSignal('alice'))).toBe('alice');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('ignores a forged actor when no manual ban was issued', async () => {
+    expect(await storedActor(manualBanSignal('alice'))).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ scenario: 'crowdsieve/manual' }),
+      'Ignoring actor meta that matches no manual ban issued by this instance'
+    );
+  });
+
+  it('ignores an actor on any other scenario', async () => {
+    await recordAliceBan();
+
+    expect(await storedActor(manualBanSignal('alice', '203.0.113.50', 'crowdsecurity/ssh-bf'))).toBeNull();
+  });
+
+  it('ignores an actor naming another operator than the one who banned', async () => {
+    await recordAliceBan();
+
+    expect(await storedActor(manualBanSignal('mallory'))).toBeNull();
+  });
+
+  it('ignores an actor for another target than the banned one', async () => {
+    await recordAliceBan('203.0.113.50');
+
+    expect(await storedActor(manualBanSignal('alice', '198.51.100.7'))).toBeNull();
+  });
+
+  it('ignores an actor when the matching manual ban is too old', async () => {
+    await recordAliceBan();
+    sqlite
+      .prepare('UPDATE alerts SET received_at = ? WHERE local_audit = 1')
+      .run(new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString());
+
+    expect(await storedActor(manualBanSignal('alice'))).toBeNull();
+  });
+});

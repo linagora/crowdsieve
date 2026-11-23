@@ -189,6 +189,8 @@ See [CrowdSec machines documentation](https://docs.crowdsec.net/docs/cscli/cscli
 
 When multiple servers are configured, you can ban an IP on all servers at once or select a specific server. Manual bans use the `crowdsieve/manual` scenario with immediate effect.
 
+The operator who issued a manual ban is recorded on a local audit row at once. When the ban's alert later comes back from the LAPI through `/v2/signals` or `/v3/signals`, its `actor` event meta is only kept if this instance recorded a manual ban by that same operator on that same target within the last 24 hours. Any other `actor` meta received through signals is ignored (and logged), so a forged signal cannot appear as a ban by a named operator.
+
 ### Decision Replication
 
 CrowdSieve can optionally replicate received decisions to your LAPI servers. This is useful when you have multiple CrowdSec instances and want to share decisions across them without going through CAPI.
