@@ -552,11 +552,13 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             },
             "in": "query",
             "name": "ip",
-            "required": false
+            "required": false,
+            "description": "An IP address (exact match on the source IP or value) or a CIDR range (alerts whose source IP or source range lies inside it)"
           },
           {
             "schema": {
@@ -1978,6 +1980,7 @@
                     "topScenarios",
                     "allScenarios",
                     "topCountries",
+                    "allCountries",
                     "timeBounds"
                   ],
                   "properties": {
@@ -2040,6 +2043,36 @@
                         "properties": {
                           "country": {
                             "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "allCountries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "country",
+                          "countryName",
+                          "count"
+                        ],
+                        "properties": {
+                          "country": {
+                            "type": "string",
+                            "description": "ISO 3166-1 alpha-2 country code"
+                          },
+                          "countryName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "count": {
                             "type": "integer"
