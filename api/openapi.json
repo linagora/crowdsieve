@@ -3,7 +3,7 @@
   "info": {
     "title": "CrowdSieve API",
     "description": "CrowdSec CAPI filtering proxy — internal management API + signals passthrough.",
-    "version": "0.6.10"
+    "version": "0.7.0"
   },
   "components": {
     "securitySchemes": {
@@ -39,6 +39,424 @@
                       "type": "string"
                     },
                     "timestamp": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filters": {
+      "get": {
+        "summary": "List the filter rules and the filter mode",
+        "tags": [
+          "filters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "rules"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "block"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "allow"
+                          ]
+                        }
+                      ]
+                    },
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "description",
+                          "enabled",
+                          "file",
+                          "condition"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "file": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "Name of the file the rule was loaded from"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "condition": {
+                            "type": "string",
+                            "description": "The rule condition, as YAML"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filters/stats": {
+      "get": {
+        "summary": "Count the stored alerts matched by each filter rule",
+        "tags": [
+          "filters"
+        ],
+        "description": "Counts alerts by the rule names saved when they were stored. Local audit rows and alerts stored before rule names were saved count under no rule.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "description": "ISO 8601 date-time string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "filtered",
+                    "byRule"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "filtered": {
+                      "type": "integer"
+                    },
+                    "byRule": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "count",
+                          "lastMatchedAt"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "lastMatchedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filters/test": {
+      "post": {
+        "summary": "Test the current filter rules on a stored alert",
+        "tags": [
+          "filters"
+        ],
+        "description": "Runs the loaded rules on the payload stored with the alert and tells whether it would be filtered. Read-only: nothing is stored or forwarded.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "alertId"
+                ],
+                "properties": {
+                  "alertId": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "filtered",
+                    "matched"
+                  ],
+                  "properties": {
+                    "filtered": {
+                      "type": "boolean"
+                    },
+                    "matched": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "reason"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
                       "type": "string"
                     }
                   }
@@ -124,11 +542,23 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "rule",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
             },
             "in": "query",
             "name": "ip",
-            "required": false
+            "required": false,
+            "description": "An IP address (exact match on the source IP or value) or a CIDR range (alerts whose source IP or source range lies inside it)"
           },
           {
             "schema": {
@@ -207,10 +637,14 @@
                       "geoOrg",
                       "filtered",
                       "filterReasons",
+                      "filterRules",
                       "forwardedToCapi",
                       "forwardedAt",
                       "localAudit",
                       "actor",
+                      "auditServer",
+                      "auditType",
+                      "auditDuration",
                       "rawJson"
                     ],
                     "properties": {
@@ -553,6 +987,16 @@
                           }
                         ]
                       },
+                      "filterRules": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "forwardedToCapi": {
                         "anyOf": [
                           {
@@ -584,6 +1028,36 @@
                         ]
                       },
                       "actor": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "auditServer": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "auditType": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "auditDuration": {
                         "anyOf": [
                           {
                             "type": "string"
@@ -727,11 +1201,18 @@
                     "geoOrg",
                     "filtered",
                     "filterReasons",
+                    "filterRules",
                     "forwardedToCapi",
                     "forwardedAt",
                     "localAudit",
                     "actor",
-                    "rawJson"
+                    "auditServer",
+                    "auditType",
+                    "auditDuration",
+                    "rawJson",
+                    "decisions",
+                    "events",
+                    "eventsTotal"
                   ],
                   "properties": {
                     "id": {
@@ -1073,6 +1554,16 @@
                         }
                       ]
                     },
+                    "filterRules": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "forwardedToCapi": {
                       "anyOf": [
                         {
@@ -1113,6 +1604,36 @@
                         }
                       ]
                     },
+                    "auditServer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "auditType": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "auditDuration": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "rawJson": {
                       "anyOf": [
                         {
@@ -1122,6 +1643,241 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "type",
+                          "scope",
+                          "value",
+                          "duration",
+                          "origin",
+                          "scenario",
+                          "until",
+                          "simulated"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "duration": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "origin": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scenario": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "until": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "simulated": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "timestamp",
+                          "meta"
+                        ],
+                        "properties": {
+                          "timestamp": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "meta": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "key",
+                                "value"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "eventsTotal": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{id}/raw": {
+      "get": {
+        "summary": "Get the raw JSON stored for an alert",
+        "tags": [
+          "alerts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rawJson"
+                  ],
+                  "properties": {
+                    "rawJson": {
+                      "type": "string"
                     }
                   }
                 }
@@ -1224,6 +1980,7 @@
                     "topScenarios",
                     "allScenarios",
                     "topCountries",
+                    "allCountries",
                     "timeBounds"
                   ],
                   "properties": {
@@ -1286,6 +2043,36 @@
                         "properties": {
                           "country": {
                             "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "allCountries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "country",
+                          "countryName",
+                          "count"
+                        ],
+                        "properties": {
+                          "country": {
+                            "type": "string",
+                            "description": "ISO 3166-1 alpha-2 country code"
+                          },
+                          "countryName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "count": {
                             "type": "integer"
@@ -2236,6 +3023,235 @@
         }
       }
     },
+    "/api/decisions/active": {
+      "get": {
+        "summary": "List the active decisions of the configured LAPI servers",
+        "tags": [
+          "decisions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "in": "query",
+            "name": "server",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "description": "Decision type, e.g. ban or captcha"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]+$",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "description": "Decision origin, e.g. crowdsec, cscli, crowdsieve, CAPI or lists"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+            },
+            "in": "query",
+            "name": "scenario",
+            "required": false,
+            "description": "Case-insensitive substring of the scenario (or reason)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "value",
+            "required": false,
+            "description": "IP address (decisions that contain it) or CIDR range (decisions inside it)"
+          },
+          {
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "in": "query",
+            "name": "include_shared",
+            "required": false,
+            "description": "Include the community blocklists (origins CAPI and lists)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "server",
+                          "decisions"
+                        ],
+                        "properties": {
+                          "server": {
+                            "type": "string"
+                          },
+                          "decisions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "origin",
+                                "type",
+                                "scope",
+                                "value",
+                                "duration",
+                                "scenario"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "integer"
+                                },
+                                "origin": {
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "type": "string"
+                                },
+                                "scope": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "duration": {
+                                  "type": "string"
+                                },
+                                "scenario": {
+                                  "type": "string"
+                                },
+                                "until": {
+                                  "type": "string"
+                                }
+                              },
+                              "additionalProperties": true
+                            }
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          },
+                          "total": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/decisions/ban": {
       "post": {
         "summary": "Issue a manual ban decision via a LAPI server",
@@ -2272,6 +3288,23 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 500
+                  },
+                  "type": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "ban"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "captcha"
+                        ]
+                      }
+                    ],
+                    "description": "Remediation type of the decision (default: ban)"
                   }
                 }
               }
@@ -2563,6 +3596,347 @@
             }
           },
           "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "summary": "List manual bans and unbans (audit log)",
+        "tags": [
+          "audit"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "in": "query",
+            "name": "actor",
+            "required": false
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ban"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "unban"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "action",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "ip",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "description": "ISO 8601 date-time string"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "description": "ISO 8601 date-time string"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "in": "query",
+            "name": "offset",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "at",
+                          "action",
+                          "actor",
+                          "ip",
+                          "server",
+                          "type",
+                          "duration",
+                          "reason"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": "Id of the audit row (alert detail page)"
+                          },
+                          "at": {
+                            "type": "string",
+                            "description": "When the action was recorded (ISO 8601)"
+                          },
+                          "action": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "ban"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "unban"
+                                ]
+                              }
+                            ]
+                          },
+                          "actor": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ip": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "Targeted IP address or CIDR range"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "server": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "LAPI server the action was sent to"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "Remediation type of a ban; null for unbans"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "duration": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "Duration of a ban; null for unbans"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/actors": {
+      "get": {
+        "summary": "List the users who issued manual bans or unbans",
+        "tags": [
+          "audit"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "actors"
+                  ],
+                  "properties": {
+                    "actors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -3186,7 +4560,11 @@
                         "required": [
                           "lapiServerName",
                           "bouncerName",
-                          "bouncerType"
+                          "bouncerType",
+                          "lastSeenAt",
+                          "version",
+                          "osName",
+                          "osVersion"
                         ],
                         "properties": {
                           "lapiServerName": {
@@ -3196,6 +4574,39 @@
                             "type": "string"
                           },
                           "bouncerType": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastSeenAt": {
+                            "type": "integer"
+                          },
+                          "version": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "osName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "osVersion": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -3331,6 +4742,821 @@
             }
           },
           "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "Health of CAPI forwarding and LAPI connectivity",
+        "tags": [
+          "status"
+        ],
+        "description": "In-memory state, reset at restart. Never contains API keys, passwords or URL credentials.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "problems",
+                    "capi",
+                    "lapis",
+                    "generatedAt"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "problems": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "since",
+                          "message"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "capi"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "lapi"
+                                ]
+                              }
+                            ]
+                          },
+                          "server": {
+                            "type": "string"
+                          },
+                          "since": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "capi": {
+                      "type": "object",
+                      "required": [
+                        "enabled",
+                        "state",
+                        "lastSuccessAt",
+                        "lastError",
+                        "failingSince",
+                        "sent24h",
+                        "failed24h"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "idle"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "ok"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "failing"
+                              ]
+                            }
+                          ]
+                        },
+                        "lastSuccessAt": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastError": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "at",
+                                "message"
+                              ],
+                              "properties": {
+                                "at": {
+                                  "type": "integer"
+                                },
+                                "message": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "failingSince": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "sent24h": {
+                          "type": "integer"
+                        },
+                        "failed24h": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "lapis": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "host",
+                          "reachable",
+                          "responseTimeMs",
+                          "error",
+                          "checkedAt",
+                          "unreachableSince",
+                          "machineCredentials",
+                          "machineAuth",
+                          "manualBanAvailable",
+                          "replication"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "reachable": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "responseTimeMs": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "checkedAt": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "unreachableSince": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "machineCredentials": {
+                            "type": "boolean"
+                          },
+                          "machineAuth": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "not_configured"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "ok"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "failed"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "unknown"
+                                ]
+                              }
+                            ]
+                          },
+                          "manualBanAvailable": {
+                            "type": "boolean"
+                          },
+                          "replication": {
+                            "type": "object",
+                            "required": [
+                              "enabled",
+                              "lastError",
+                              "lastSuccessAt"
+                            ],
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "lastError": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": [
+                                      "at",
+                                      "message"
+                                    ],
+                                    "properties": {
+                                      "at": {
+                                        "type": "integer"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "lastSuccessAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "generatedAt": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Notification targets and their last delivery result",
+        "tags": [
+          "notifications"
+        ],
+        "description": "In-memory state, reset at restart. Never contains target URLs (only their host) or headers.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "dashboardUrl",
+                    "targets"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "dashboardUrl": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "targets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "type",
+                          "host",
+                          "events",
+                          "minInterval",
+                          "minIntervalMs",
+                          "match",
+                          "lastResult",
+                          "lastSuccessAt",
+                          "retrying",
+                          "queued",
+                          "buffered",
+                          "dropped"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "webhook"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "slack"
+                                ]
+                              }
+                            ]
+                          },
+                          "host": {
+                            "type": "string",
+                            "description": "Host of the target URL (no path, query or credentials)"
+                          },
+                          "events": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "alert"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "manual_ban"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "unban"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "forwarding_error"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "lapi_error"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          "minInterval": {
+                            "type": "string"
+                          },
+                          "minIntervalMs": {
+                            "type": "integer"
+                          },
+                          "match": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "scenarios",
+                                  "countries",
+                                  "machines",
+                                  "status"
+                                ],
+                                "properties": {
+                                  "scenarios": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "countries": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "machines": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "forwarded"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "filtered"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "any"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastResult": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "at",
+                                  "ok",
+                                  "event",
+                                  "message",
+                                  "attempts"
+                                ],
+                                "properties": {
+                                  "at": {
+                                    "type": "integer"
+                                  },
+                                  "ok": {
+                                    "type": "boolean"
+                                  },
+                                  "event": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "alert"
+                                            ]
+                                          },
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "manual_ban"
+                                            ]
+                                          },
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "unban"
+                                            ]
+                                          },
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "forwarding_error"
+                                            ]
+                                          },
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "lapi_error"
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "test"
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "attempts": {
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastSuccessAt": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "retrying": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "attempt",
+                                  "maxAttempts",
+                                  "nextAttemptAt",
+                                  "message"
+                                ],
+                                "properties": {
+                                  "attempt": {
+                                    "type": "integer"
+                                  },
+                                  "maxAttempts": {
+                                    "type": "integer"
+                                  },
+                                  "nextAttemptAt": {
+                                    "type": "integer"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "queued": {
+                            "type": "integer"
+                          },
+                          "buffered": {
+                            "type": "integer"
+                          },
+                          "dropped": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifications/{name}/test": {
+      "post": {
+        "summary": "Send a test message to a notification target",
+        "tags": [
+          "notifications"
+        ],
+        "description": "Delivers \"CrowdSieve test notification from <dashboard_url>\" once, without retry. A delivery failure is answered with 200 and ok=false.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "description": "Name of a notification target"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "message"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
             "description": "Default Response",
             "content": {
               "application/json": {
