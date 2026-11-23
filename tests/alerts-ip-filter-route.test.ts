@@ -160,8 +160,53 @@ describe('GET /api/alerts — ip filter', () => {
     expect(queries).toHaveLength(0);
   });
 
+  it('rejects a CIDR whose prefix has trailing garbage', async () => {
+    // parseInt would read "24abc" as 24: the storage parser refuses it, so
+    // the route must answer 400 rather than fail later with a 500.
+    const res = await getAlerts('198.51.100.0/24abc');
+
+    expect(res.statusCode).toBe(400);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('rejects an over-long value', async () => {
+    const res = await getAlerts(`${'1'.repeat(70)}`);
+
+    expect(res.statusCode).toBe(400);
+    expect(queries).toHaveLength(0);
+  });
+
   it('rejects a CIDR with an out-of-range prefix', async () => {
     const res = await getAlerts('198.51.100.128/33');
+
+    expect(res.statusCode).toBe(400);
+    expect(queries).toHaveLength(0);
+  });
+});
+
+describe('GET /api/alerts — country and paging', () => {
+  function get(qs: string) {
+    return app.inject({
+      method: 'GET',
+      url: `/api/alerts?${qs}`,
+      headers: { 'X-API-Key': TEST_API_KEY },
+    });
+  }
+
+  it('forwards an ISO country code with the IP search and paging', async () => {
+    const res = await get('country=FR&ip=203.0.113.0%2F24&limit=100&offset=300');
+
+    expect(res.statusCode).toBe(200);
+    expect(queries[0]).toMatchObject({
+      sourceCountry: 'FR',
+      sourceIp: '203.0.113.0/24',
+      limit: 100,
+      offset: 300,
+    });
+  });
+
+  it('rejects a country that is not an upper-case ISO code', async () => {
+    const res = await get('country=fr');
 
     expect(res.statusCode).toBe(400);
     expect(queries).toHaveLength(0);

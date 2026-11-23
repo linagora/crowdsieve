@@ -17,6 +17,9 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Bouncer Metrics**: Transparent capture of CrowdSec `usage-metrics` as LAPI relays them to CAPI (CrowdSec ≥ 1.6) — visualize per-bouncer blocked requests in the dashboard with no extra LAPI configuration
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
+  - Search alerts by IP address or CIDR range and by country, and page through the whole history
+  - Export alerts and decision search results to CSV or JSON
+  - Click a Statistics bar (country or scenario) to open the matching alerts
 - **Dashboard Authentication**: Two modes, both documented in [docs/oidc-authentication.md](./docs/oidc-authentication.md)
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
   - **HTTP Headers** for deployments behind a trusted reverse proxy (LemonLDAP-NG handler, NGINX `auth_request`, Apache `mod_auth_*`, etc.) — identity is forwarded via `Auth-*` headers.
@@ -344,6 +347,35 @@ Only rows recorded by CrowdSieve itself when a ban or an unban succeeds are list
 
 API: `GET /api/audit` (`actor`, `action` = `ban`|`unban`, `ip`, `since`, `until`, `limit` (default 50, max 1000), `offset`; answers `{ items: [{ id, at, action, actor, ip, server, type, duration, reason }], total }`) and `GET /api/audit/actors` (`{ actors: [...] }`).
 
+### Alert Search and Export
+
+The filter bar of the **Alerts** page and of the home page's recent alerts combines:
+
+- **Search IP**: an IPv4 or IPv6 address (alerts whose source is that address) or a CIDR
+  range such as `203.0.113.0/24` or `2001:db8::/32` (alerts whose source address lies inside
+  the range, and range-scoped alerts whose range is inside it). The search applies on Enter or
+  half a second after you stop typing.
+- **Country**: the source countries found by GeoIP, with their alert counts. On the home page,
+  clicking a map cluster selects its country.
+- Time range, scenario, server and status, as before.
+
+Every filter is kept in the URL (`ip=`, `country=`, `scenario=`, …), so a filtered list can be
+reloaded or shared. The lists show the newest alerts first; **Load more alerts** at the end of
+the list fetches the next 100. The bars of the **Top Countries** and **Top Scenarios** charts
+of the Statistics page link to the matching alerts, for the selected period.
+
+**Export** (next to Refresh on the Alerts page) downloads every alert matching the current
+filters, not only the loaded ones, as CSV or JSON, up to the 10,000 newest. The CSV is UTF-8
+with a header row, RFC 4180 quoting, and a leading apostrophe on cells starting with `=`, `+`,
+`-`, `@`, a tab or a carriage return, so that spreadsheets never evaluate alert data as
+formulas. Columns: `id`, `received_at` (ISO 8601 UTC), `scenario`, `source_ip`, `source_range`,
+`country`, `machine`, `events_count`, `has_decision`, `filtered`, `filter_reasons` (joined with
+`; `), `forwarded_to_capi`, `simulated`, `actor`, `message`. The JSON file holds the alerts as
+returned by the API. The Decisions page offers the same export for its search results.
+
+In the REST API, `GET /api/alerts` accepts the same filters: `ip` takes an address or a CIDR,
+`country` an ISO 3166-1 alpha-2 code, and `limit` / `offset` page through the results.
+
 ### Decision Search
 
 The dashboard includes a **Decisions** page (accessible from the navigation) that lets you search for active decisions on any IP address across all configured LAPI servers.
@@ -356,6 +388,17 @@ Features:
 - Shared decisions (from CAPI/blocklists) are deduplicated and shown separately
 - Direct link from alert details to view decisions for the source IP
 - A "CrowdSec CTI ↗" link next to single public IPs (see below)
+- Export of the results to CSV or JSON (columns `server`, `id`, `type`, `scope`, `value`,
+  `origin`, `scenario`, `duration`, `until`)
+
+Below the search, the **Active decisions** table lists the current blocklist of every LAPI server, without typing anything:
+
+- Filters, kept in the URL (`/decisions?server=lapi-1&type=captcha`): LAPI server, type, origin, IP or range (an IP matches the decisions that contain it, a CIDR the decisions inside it), scenario/reason substring, and "Include community blocklists (CAPI, lists)", off by default
+- Sorted by expiry (soonest first), 50 rows per page
+- A LAPI that cannot be reached is reported above the table; the other servers are still listed
+- Delete one decision, or select several and **Delete selected**. A reason is required; each decision is deleted through the same route as a single delete, so every deletion records its own unban event (with the reason and the signed-in user) in the alert list. Decisions from the community blocklists cannot be selected (LAPI would pull them again), nor can the decisions of a server without machine credentials
+
+The list is read from LAPI's `GET /v1/decisions` with the bouncer API key. Without the community blocklists, CrowdSieve asks LAPI for the origins `crowdsec`, `cscli`, `cscli-import`, `console`, `appsec`, `crowdsieve` and `crowdsieve-replication`; decisions with another origin are only listed with the community blocklists included. At most 20,000 decisions per server are listed; the table says so when a server has more.
 
 ### Alert Details
 
@@ -379,15 +422,6 @@ The **Status** page (header entry) shows the health of the integrations CrowdSie
 - **Each LAPI server**: reachable (with the response time) or unreachable (with the error), checked every 60 seconds with `GET /v1/heartbeat` using the machine credentials when configured (else `GET /v1/decisions?ip=127.0.0.1` with the bouncer key), whether manual ban is available (machine credentials configured and accepted), and the last decision-replication error.
 
 When CAPI forwarding fails or a LAPI is unreachable, a red banner appears under the header on every page. The home page's "Forwarded" card reads "Forwarding disabled" when forwarding is off. The state is kept in memory and is reset at restart. It is served by `GET /api/status` and never contains API keys, passwords or URL credentials.
-
-Below the search, the **Active decisions** table lists the current blocklist of every LAPI server, without typing anything:
-
-- Filters, kept in the URL (`/decisions?server=lapi-1&type=captcha`): LAPI server, type, origin, IP or range (an IP matches the decisions that contain it, a CIDR the decisions inside it), scenario/reason substring, and "Include community blocklists (CAPI, lists)", off by default
-- Sorted by expiry (soonest first), 50 rows per page
-- A LAPI that cannot be reached is reported above the table; the other servers are still listed
-- Delete one decision, or select several and **Delete selected**. A reason is required; each decision is deleted through the same route as a single delete, so every deletion records its own unban event (with the reason and the signed-in user) in the alert list. Decisions from the community blocklists cannot be selected (LAPI would pull them again), nor can the decisions of a server without machine credentials
-
-The list is read from LAPI's `GET /v1/decisions` with the bouncer API key. Without the community blocklists, CrowdSieve asks LAPI for the origins `crowdsec`, `cscli`, `cscli-import`, `console`, `appsec`, `crowdsieve` and `crowdsieve-replication`; decisions with another origin are only listed with the community blocklists included. At most 20,000 decisions per server are listed; the table says so when a server has more.
 
 ### Filter Rules
 

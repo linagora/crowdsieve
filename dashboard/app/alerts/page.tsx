@@ -81,6 +81,7 @@ async function getStats(): Promise<ApiResult<AlertStats>> {
     topScenarios: [],
     allScenarios: [],
     topCountries: [],
+    allCountries: [],
     timeBounds: { min: null, max: null },
   };
   return fetchApi(`${apiBase}/api/stats`, defaultStats);

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { TimeRangeSlider } from './TimeRangeSlider';
 import { ScenarioFilter } from './ScenarioFilter';
 import { ServerFilter } from './ServerFilter';
+import { CountryFilter, type CountryOption } from './CountryFilter';
+import { IpSearchInput } from './IpSearchInput';
 import type { FilterState } from '@/components/hooks/useAlertFilters';
 
 interface FilterBarProps {
@@ -13,6 +15,7 @@ interface FilterBarProps {
   onReset: () => void;
   scenarios: Array<{ scenario: string; count: number }>;
   machines: Array<{ machineId: string; count: number }>;
+  countries: CountryOption[];
   timeBounds: { min: Date; max: Date };
   hasActiveFilters: boolean;
   isLoading?: boolean;
@@ -24,6 +27,7 @@ export function FilterBar({
   onReset,
   scenarios,
   machines,
+  countries,
   timeBounds,
   hasActiveFilters,
   isLoading = false,
@@ -102,8 +106,25 @@ export function FilterBar({
         />
       </div>
 
-      {/* Scenario, Server and Status filters */}
-      <div className="flex flex-wrap items-center gap-4">
+      {/* IP search, Country, Scenario, Server and Status filters */}
+      <div className="flex flex-wrap items-start gap-4">
+        {/* IP search */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-2 block">Search IP</label>
+          <IpSearchInput value={filters.ip} onChange={(ip) => onFiltersChange({ ip })} />
+        </div>
+
+        {/* Country */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-2 block">Country</label>
+          <CountryFilter
+            countries={countries}
+            selectedCountry={filters.country}
+            onCountryChange={(country) => onFiltersChange({ country })}
+            isLoading={isLoading}
+          />
+        </div>
+
         {/* Scenario */}
         <div>
           <label className="text-xs font-medium text-slate-500 mb-2 block">Scenario</label>
@@ -146,6 +167,51 @@ export function FilterBar({
           </div>
         </div>
       </div>
+
+      {/* Active IP / country filters, removable */}
+      {(filters.country || filters.ip) && (
+        <div className="flex flex-wrap gap-2">
+          {filters.ip && (
+            <FilterChip
+              label={`IP: ${filters.ip}`}
+              onRemove={() => onFiltersChange({ ip: null })}
+              removeLabel="Remove IP filter"
+            />
+          )}
+          {filters.country && (
+            <FilterChip
+              label={`Country: ${filters.country}`}
+              onRemove={() => onFiltersChange({ country: null })}
+              removeLabel="Remove country filter"
+            />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function FilterChip({
+  label,
+  onRemove,
+  removeLabel,
+}: {
+  label: string;
+  onRemove: () => void;
+  removeLabel: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs font-medium text-slate-700">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-full p-0.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+        aria-label={removeLabel}
+        title={removeLabel}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
   );
 }

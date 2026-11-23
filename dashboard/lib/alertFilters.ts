@@ -1,4 +1,5 @@
 import type { StoredAlert } from './types';
+import { alertMatchesIpSearch, parseIpSearch } from './ipSearch';
 
 export const TIME_RANGE_PRESETS = ['24h', '7d', '30d'] as const;
 
@@ -18,6 +19,10 @@ export interface FilterState {
   /** Name of a filter rule the alert matched */
   rule: string | null;
   status: 'all' | 'filtered' | 'forwarded';
+  /** Valid "Search IP" value (address or CIDR, see `parseIpSearch`). */
+  ip: string | null;
+  /** Upper-case ISO 3166-1 alpha-2 code of the source country. */
+  country: string | null;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -28,6 +33,8 @@ export const DEFAULT_FILTERS: FilterState = {
   machineId: null,
   rule: null,
   status: 'all',
+  ip: null,
+  country: null,
 };
 
 // Query string keys used to persist filters in the URL
@@ -38,6 +45,8 @@ const PARAM_SCENARIO = 'scenario';
 const PARAM_MACHINE = 'machine';
 const PARAM_RULE = 'rule';
 const PARAM_STATUS = 'status';
+const PARAM_IP = 'ip';
+const PARAM_COUNTRY = 'country';
 
 // Pages that render an alert list and may be used as a "back" target
 const RETURN_PATHS: Record<string, string> = {
@@ -50,6 +59,16 @@ function parseDate(value: string | null): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Normalise a country code to the upper-case ISO 3166-1 alpha-2 form the API
+ * accepts, or null if it is not one.
+ */
+export function normalizeCountryCode(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const code = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : null;
 }
 
 function parseTimeRangePreset(value: string | null): TimeRangePreset | null {
@@ -94,6 +113,8 @@ export function parseFilterParams(params: URLSearchParams): FilterState {
     machineId: params.get(PARAM_MACHINE) || null,
     rule: params.get(PARAM_RULE) || null,
     status: status === 'filtered' || status === 'forwarded' ? status : 'all',
+    ip: parseIpSearch(params.get(PARAM_IP))?.value ?? null,
+    country: normalizeCountryCode(params.get(PARAM_COUNTRY)),
   };
 }
 
@@ -110,6 +131,8 @@ export function writeFilterParams(params: URLSearchParams, filters: FilterState)
     [PARAM_MACHINE, filters.machineId],
     [PARAM_RULE, filters.rule],
     [PARAM_STATUS, filters.status === 'all' ? null : filters.status],
+    [PARAM_IP, filters.ip],
+    [PARAM_COUNTRY, filters.country],
   ];
   for (const [key, value] of entries) {
     if (value) params.set(key, value);
@@ -139,6 +162,11 @@ export function alertMatchesFilters(alert: StoredAlert, filters: FilterState): b
   if (filters.status === 'forwarded' && (!alert.forwardedToCapi || alert.localAudit)) return false;
   if (filters.machineId && alert.machineId !== filters.machineId) return false;
   if (filters.rule && !alertRuleNames(alert).includes(filters.rule)) return false;
+  if (filters.country && alert.geoCountryCode !== filters.country) return false;
+  if (filters.ip) {
+    const search = parseIpSearch(filters.ip);
+    if (search && !alertMatchesIpSearch(search, alert)) return false;
+  }
   // The API uses a LIKE '%...%' match; stay case-insensitive so this never
   // hides an alert the API would return
   if (filters.scenario && !alert.scenario.toLowerCase().includes(filters.scenario.toLowerCase())) {
@@ -148,6 +176,56 @@ export function alertMatchesFilters(alert: StoredAlert, filters: FilterState): b
   if (filters.since && receivedAt < filters.since.getTime()) return false;
   if (filters.until && receivedAt > filters.until.getTime()) return false;
   return true;
+}
+
+/** Whether any filter differs from {@link DEFAULT_FILTERS}. */
+export function hasActiveFilters(filters: FilterState): boolean {
+  return (
+    filters.since !== null ||
+    filters.until !== null ||
+    filters.scenario !== null ||
+    filters.machineId !== null ||
+    filters.rule !== null ||
+    filters.status !== 'all' ||
+    filters.ip !== null ||
+    filters.country !== null
+  );
+}
+
+/** Query parameters of `GET /api/alerts` for the given filters. */
+export function filtersToAlertQuery(filters: FilterState): {
+  since?: string;
+  until?: string;
+  scenario?: string;
+  machineId?: string;
+  rule?: string;
+  filtered?: boolean;
+  forwardedToCapi?: boolean;
+  ip?: string;
+  country?: string;
+} {
+  return {
+    since: filters.since?.toISOString(),
+    until: filters.until?.toISOString(),
+    scenario: filters.scenario || undefined,
+    machineId: filters.machineId || undefined,
+    rule: filters.rule || undefined,
+    filtered: filters.status === 'filtered' ? true : undefined,
+    forwardedToCapi: filters.status === 'forwarded' ? true : undefined,
+    ip: filters.ip || undefined,
+    country: filters.country || undefined,
+  };
+}
+
+/**
+ * Link to the Alerts page with the given filters applied (the others keep
+ * their defaults), e.g. `alertsHref({ country: 'CN' })` -> `/alerts?country=CN`.
+ */
+export function alertsHref(filters: Partial<FilterState>): string {
+  const params = new URLSearchParams();
+  writeFilterParams(params, { ...DEFAULT_FILTERS, ...filters });
+  const qs = params.toString();
+  return qs ? `/alerts?${qs}` : '/alerts';
 }
 
 /**

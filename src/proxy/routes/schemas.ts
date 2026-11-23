@@ -178,6 +178,12 @@ const CountryCount = Type.Object({
   count: Type.Integer(),
 });
 
+const CountryWithOptionalName = Type.Object({
+  country: Type.String({ description: 'ISO 3166-1 alpha-2 country code' }),
+  countryName: Nullable(Type.String()),
+  count: Type.Integer(),
+});
+
 const CountryWithName = Type.Object({
   countryCode: Type.String(),
   countryName: Type.String(),
@@ -213,6 +219,7 @@ export const StatsResponse = Type.Object({
   topScenarios: Type.Array(ScenarioCount),
   allScenarios: Type.Array(ScenarioCount),
   topCountries: Type.Array(CountryCount),
+  allCountries: Type.Array(CountryWithOptionalName),
   timeBounds: Type.Object({
     min: Nullable(Type.String()),
     max: Nullable(Type.String()),

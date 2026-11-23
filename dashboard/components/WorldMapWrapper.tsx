@@ -15,11 +15,11 @@ const WorldMap = dynamic(() => import('./WorldMap').then((mod) => mod.WorldMap),
 
 interface WorldMapWrapperProps {
   alerts: StoredAlert[];
-  onLocationSelect?: (location: { lat: number; lng: number } | null) => void;
+  onCountrySelect?: (countryCode: string) => void;
 }
 
-function WorldMapWrapperInner({ alerts, onLocationSelect }: WorldMapWrapperProps) {
-  return <WorldMap alerts={alerts} onLocationSelect={onLocationSelect} />;
+function WorldMapWrapperInner({ alerts, onCountrySelect }: WorldMapWrapperProps) {
+  return <WorldMap alerts={alerts} onCountrySelect={onCountrySelect} />;
 }
 
 // Prevent re-renders when only the callback changes (which happens on parent state change)

@@ -10,6 +10,7 @@ import filterRoutes from './filters.js';
 import { getMachineToken, CROWDSIEVE_VERSION } from '../../auth/machineToken.js';
 import { MANUAL_BAN_SCENARIO } from '../../storage/index.js';
 import { extractAlertEvents } from '../../storage/alertEvents.js';
+import { parseCidr } from '../../filters/cidr.js';
 import {
   LOCAL_DECISION_ORIGINS,
   isSharedOrigin,
@@ -207,7 +208,14 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
           country: Type.Optional(CountryCode),
           machineId: Type.Optional(MachineId),
           rule: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_SCENARIO_LENGTH })),
-          ip: Type.Optional(Type.String()),
+          ip: Type.Optional(
+            Type.String({
+              maxLength: 64,
+              description:
+                'An IP address (exact match on the source IP or value) or a CIDR range ' +
+                '(alerts whose source IP or source range lies inside it)',
+            })
+          ),
           since: Type.Optional(IsoDate),
           until: Type.Optional(IsoDate),
           newerThan: Type.Optional(IsoDate),
@@ -238,13 +246,22 @@ const apiRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         } = request.query;
 
         // Schema can't validate IP semantics — accept a single address or a
-        // CIDR so that range-scoped alerts (stored as `sourceValue`) can be
-        // looked up too. `parseIpOrCidr` handles v4 and v6.
+        // CIDR. A CIDR matches the alerts whose source address or range lies
+        // inside it (storage layer). `parseIpOrCidr` handles v4 and v6; a
+        // range must also pass the stricter parser the storage matches with
+        // (it refuses e.g. "/24abc", which parseInt would read as 24).
         let sourceIp: string | undefined;
         if (ip) {
           const parsed = parseIpOrCidr(ip);
           if (!parsed.valid) {
             return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
+          }
+          if (parsed.scope === 'range') {
+            try {
+              parseCidr(parsed.value);
+            } catch {
+              return reply.code(400).send({ error: 'Invalid IP address or CIDR format' });
+            }
           }
           sourceIp = parsed.value;
         }
