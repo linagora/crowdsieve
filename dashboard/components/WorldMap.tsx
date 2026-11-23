@@ -4,6 +4,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { StoredAlert } from '@/lib/types';
+import { buildMapPopup } from '@/lib/mapPopup';
 
 interface WorldMapProps {
   alerts: StoredAlert[];
@@ -95,15 +96,12 @@ export function WorldMap({ alerts, height = '400px', onLocationSelect }: WorldMa
 
       const marker = L.marker([lat, lng], { icon });
 
-      const popupContent = `
-        <div style="padding: 8px;">
-          <div style="font-weight: bold;">${latestAlert.geoCity || latestAlert.geoCountryName || 'Unknown'}</div>
-          <div style="font-size: 12px; color: #666;">${count} alert${count > 1 ? 's' : ''}</div>
-          <div style="font-size: 11px; margin-top: 4px;">
-            Latest: ${latestAlert.scenario}
-          </div>
-        </div>
-      `;
+      const popupContent = buildMapPopup({
+        geoCity: latestAlert.geoCity,
+        geoCountryName: latestAlert.geoCountryName,
+        scenario: latestAlert.scenario,
+        count,
+      });
 
       marker.bindPopup(popupContent);
 
