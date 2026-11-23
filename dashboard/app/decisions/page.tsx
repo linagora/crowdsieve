@@ -6,6 +6,8 @@ import { Search, Loader2, Shield, ShieldAlert, Globe, Server, Trash2 } from 'luc
 import { Button } from '@/components/ui/button';
 import type { DecisionSearchResponse, Decision } from '@/lib/types';
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { ExportMenu } from '@/components/ExportMenu';
+import { DECISION_EXPORT_COLUMNS, decisionSearchExportRows } from '@/lib/export';
 
 interface DecisionCardProps {
   decision: Decision;
@@ -254,11 +256,20 @@ function DecisionSearchContent() {
       {results && (
         <div className="space-y-6">
           {/* Summary */}
-          <div className="card p-4">
+          <div className="card p-4 flex flex-wrap items-center justify-between gap-2">
             <p className="text-lg">
               Found <strong>{totalDecisions}</strong> decision{totalDecisions !== 1 ? 's' : ''} for{' '}
               <span className="font-mono bg-slate-100 px-2 py-1 rounded">{results.ip}</span>
             </p>
+            <ExportMenu
+              columns={DECISION_EXPORT_COLUMNS}
+              filePrefix="crowdsieve-decisions"
+              loadRows={async () => ({
+                rows: decisionSearchExportRows(results),
+                truncated: false,
+              })}
+              disabled={totalDecisions === 0}
+            />
           </div>
 
           {/* Shared decisions (from CAPI/lists) - cannot be deleted */}

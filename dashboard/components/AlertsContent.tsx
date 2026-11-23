@@ -1,17 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { useAlertFilters } from '@/components/hooks/useAlertFilters';
 import { AlertCard } from '@/components/AlertCard';
+import { ExportMenu } from '@/components/ExportMenu';
 import { LoadMoreAlerts } from '@/components/LoadMoreAlerts';
-import { alertDetailHref } from '@/lib/alertFilters';
+import { alertDetailHref, filtersToAlertQuery } from '@/lib/alertFilters';
 import { alertCountLabel } from '@/lib/alertPaging';
+import { fetchAlerts } from '@/lib/api';
+import {
+  ALERT_EXPORT_COLUMNS,
+  ALERT_EXPORT_TRUNCATED_NOTICE,
+  MAX_EXPORT_ALERTS,
+  fetchAllPages,
+} from '@/lib/export';
 import { Button } from '@/components/ui/button';
 import type { StoredAlert, AlertStats } from '@/lib/types';
+
+// Alerts fetched per request while exporting (the API allows up to 1000)
+const EXPORT_PAGE_SIZE = 1000;
 
 interface AlertsContentProps {
   initialAlerts: StoredAlert[];
@@ -38,6 +49,19 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
     loadMoreError,
     loadMore,
   } = useAlertFilters({ initialAlerts, limit: 200, statsTimeBounds: stats.timeBounds });
+
+  // Export every alert matching the current filters, not only those loaded
+  const loadExportRows = useCallback(
+    (onProgress: (loaded: number) => void) => {
+      const query = filtersToAlertQuery(filters);
+      return fetchAllPages((offset, limit) => fetchAlerts({ ...query, offset, limit }), {
+        pageSize: EXPORT_PAGE_SIZE,
+        maxRows: MAX_EXPORT_ALERTS,
+        onProgress,
+      });
+    },
+    [filters]
+  );
 
   // Force re-render every minute to update relative times
   const [, setTick] = useState(0);
@@ -76,6 +100,12 @@ export function AlertsContent({ initialAlerts, stats }: AlertsContentProps) {
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
+            <ExportMenu
+              columns={ALERT_EXPORT_COLUMNS}
+              filePrefix="crowdsieve-alerts"
+              loadRows={loadExportRows}
+              truncatedNotice={ALERT_EXPORT_TRUNCATED_NOTICE}
+            />
           </div>
           <div className="text-right">
             <span className="text-sm text-slate-500">

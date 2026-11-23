@@ -18,6 +18,7 @@ A filtering proxy for CrowdSec that sits between your local CrowdSec instances (
 - **Client Validation**: Optional validation of CrowdSec clients against CAPI before accepting alerts
 - **Dashboard**: Web interface to visualize alerts with GeoIP enrichment
   - Search alerts by IP address or CIDR range and by country, and page through the whole history
+  - Export alerts and decision search results to CSV or JSON
   - Click a Statistics bar (country or scenario) to open the matching alerts
 - **Dashboard Authentication**: Two modes, both documented in [docs/oidc-authentication.md](./docs/oidc-authentication.md)
   - **OIDC** with any OpenID Connect provider (Keycloak, LemonLDAP::NG, Auth0, Okta, etc.), including Private Key JWT (`private_key_jwt`), encrypted tokens (JWE), and back-channel logout.
@@ -327,7 +328,7 @@ AUTH_LOGOUT_URL=https://portal.example.com/logout
 
 > **Critical:** in headers mode the dashboard MUST be unreachable except via the trusted proxy, and should require `AUTH_PROXY_SECRET`. See [docs/oidc-authentication.md](./docs/oidc-authentication.md#http-headers-mode-lemonldap-ng-handler) for full details.
 
-### Alert Search
+### Alert Search and Export
 
 The filter bar of the **Alerts** page and of the home page's recent alerts combines:
 
@@ -344,6 +345,15 @@ reloaded or shared. The lists show the newest alerts first; **Load more alerts**
 the list fetches the next 100. The bars of the **Top Countries** and **Top Scenarios** charts
 of the Statistics page link to the matching alerts, for the selected period.
 
+**Export** (next to Refresh on the Alerts page) downloads every alert matching the current
+filters, not only the loaded ones, as CSV or JSON, up to the 10,000 newest. The CSV is UTF-8
+with a header row, RFC 4180 quoting, and a leading apostrophe on cells starting with `=`, `+`,
+`-`, `@`, a tab or a carriage return, so that spreadsheets never evaluate alert data as
+formulas. Columns: `id`, `received_at` (ISO 8601 UTC), `scenario`, `source_ip`, `source_range`,
+`country`, `machine`, `events_count`, `has_decision`, `filtered`, `filter_reasons` (joined with
+`; `), `forwarded_to_capi`, `simulated`, `actor`, `message`. The JSON file holds the alerts as
+returned by the API. The Decisions page offers the same export for its search results.
+
 In the REST API, `GET /api/alerts` accepts the same filters: `ip` takes an address or a CIDR,
 `country` an ISO 3166-1 alpha-2 code, and `limit` / `offset` page through the results.
 
@@ -357,6 +367,8 @@ Features:
 - Results grouped by server
 - Shared decisions (from CAPI/blocklists) are deduplicated and shown separately
 - Direct link from alert details to view decisions for the source IP
+- Export of the results to CSV or JSON (columns `server`, `id`, `type`, `scope`, `value`,
+  `origin`, `scenario`, `duration`, `until`)
 
 ### Filter Rules
 
