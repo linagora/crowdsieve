@@ -37,6 +37,26 @@ function sanitizeActor(value: unknown): string | null {
   return trimmed.slice(0, MAX_ACTOR_LENGTH);
 }
 
+/** Maximum stored length of an alert or decision `scenario`. */
+export const MAX_SCENARIO_LENGTH = 256;
+
+/**
+ * Sanitise a `scenario` received through signals before storing it.
+ *
+ * Scenarios are not only hub names (`crowdsecurity/ssh-bf`,
+ * `crowdsecurity/vpatch-CVE-2023-1234`): CrowdSec uses the free-text reason
+ * of `cscli decisions add` (by default `manual 'ban' from 'localhost'`), so
+ * spaces and quotes must stay. Only markup and control characters, which no
+ * legitimate scenario carries, are removed, and the length is capped, as a
+ * defence in depth for the dashboard views that display it. Non-string values
+ * are stored as before. The batch forwarded to CAPI is left untouched.
+ */
+export function sanitizeScenario<T>(value: T): T | string {
+  if (typeof value !== 'string') return value;
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[<>\u0000-\u001f\u007f]/g, '').slice(0, MAX_SCENARIO_LENGTH);
+}
+
 /** Scenario string for unban audit rows recorded after a decision delete. */
 export const UNBAN_AUDIT_SCENARIO = 'crowdsieve/unban';
 /** Scenario string for manual ban audit rows recorded after a manual LAPI ban. */
@@ -505,7 +525,7 @@ export function createStorage(): AlertStorage {
             .values({
               uuid: alert.uuid,
               machineId: alert.machine_id,
-              scenario: alert.scenario,
+              scenario: sanitizeScenario(alert.scenario),
               scenarioHash: alert.scenario_hash,
               scenarioVersion: alert.scenario_version,
               message: alert.message,
@@ -581,7 +601,7 @@ export function createStorage(): AlertStorage {
                 scope: decision.scope,
                 value: decision.value,
                 duration: decision.duration,
-                scenario: decision.scenario,
+                scenario: sanitizeScenario(decision.scenario),
                 simulated: decision.simulated,
                 until: decision.until,
               } as typeof schema.decisions.$inferInsert);

@@ -413,4 +413,54 @@ describe('Storage Deduplication', () => {
       expect(forwarded[0].uuid).toBe('uuid-2');
     });
   });
+
+  describe('scenario sanitising', () => {
+    function storedScenarios(uuid: string) {
+      const alert = sqlite.prepare('SELECT id, scenario, raw_json FROM alerts WHERE uuid = ?').get(uuid) as {
+        id: number;
+        scenario: string;
+        raw_json: string;
+      };
+      const decision = sqlite
+        .prepare('SELECT scenario FROM decisions WHERE alert_id = ?')
+        .get(alert.id) as { scenario: string };
+      return { alert, decision };
+    }
+
+    it.each([
+      'crowdsecurity/ssh-bf',
+      'crowdsecurity/vpatch-CVE-2023-49103',
+      'crowdsecurity/appsec-vpatch',
+      'ltsich/http-w00tw00t',
+      "manual 'ban' from 'localhost'",
+      'manual ban: "spam" from 10.0.0.1 (ticket #42)',
+    ])('keeps a legitimate scenario unchanged: %s', async (scenario) => {
+      const alert = createMockAlert('legit');
+      alert.scenario = scenario;
+      alert.decisions![0].scenario = scenario;
+
+      await storage.storeAlerts([alert], createMockFilterDetails(1));
+
+      const { alert: row, decision } = storedScenarios('legit');
+      expect(row.scenario).toBe(scenario);
+      expect(decision.scenario).toBe(scenario);
+    });
+
+    it('strips markup and control characters and caps the length', async () => {
+      const alert = createMockAlert('xss');
+      alert.scenario = '<img src=x onerror=alert(1)>\u0000\n' + 'a'.repeat(400);
+      alert.decisions![0].scenario = 'crowdsecurity/<script>x</script>';
+
+      const result = await storage.storeAlerts([alert], createMockFilterDetails(1));
+
+      const { alert: row, decision } = storedScenarios('xss');
+      expect(row.scenario).not.toMatch(/[<>\u0000-\u001f]/);
+      expect(row.scenario.startsWith('img src=x onerror=alert(1)a')).toBe(true);
+      expect(row.scenario).toHaveLength(256);
+      expect(decision.scenario).toBe('crowdsecurity/scriptx/script');
+      // The raw payload is kept as received, and the alert stays replicable.
+      expect(JSON.parse(row.raw_json).scenario).toBe(alert.scenario);
+      expect(result.replicableIndices).toEqual([0]);
+    });
+  });
 });
