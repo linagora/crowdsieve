@@ -4,15 +4,11 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Server, Send } from 'lucide-react';
 import { useStatus } from '@/components/hooks/useStatus';
 import { NotificationsCard } from '@/components/NotificationsCard';
+import { useCanWrite } from '@/components/UserRoleProvider';
 import { formatAgo } from '@/lib/relativeTime';
 import { summaryLabel, type CapiStatus, type LapiStatus } from '@/lib/status';
 
 const REFRESH_INTERVAL_MS = 30_000;
-/**
- * Show the "Send test" button of the notification targets. Single switch to
- * hide it from users who may not trigger outgoing messages.
- */
-const CAN_SEND_TEST_NOTIFICATION = true;
 
 type Tone = 'green' | 'red' | 'slate' | 'amber';
 
@@ -133,6 +129,8 @@ function LapiCard({ lapi, now }: { lapi: LapiStatus; now: number }) {
 
 export function StatusContent() {
   const { status, unauthorized, error } = useStatus(REFRESH_INTERVAL_MS);
+  // Only operators may trigger outgoing test messages.
+  const canSendTest = useCanWrite();
   // Relative times are computed on the client only (set after mount).
   const [now, setNow] = useState<number>(0);
 
@@ -197,7 +195,7 @@ export function StatusContent() {
         </>
       )}
 
-      {!unauthorized && <NotificationsCard now={clock} canSendTest={CAN_SEND_TEST_NOTIFICATION} />}
+      {!unauthorized && <NotificationsCard now={clock} canSendTest={canSendTest} />}
     </div>
   );
 }
